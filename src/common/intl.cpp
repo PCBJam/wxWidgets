@@ -391,7 +391,9 @@ bool wxLocale::DoCommonPostInit(bool success,
 {
     if ( !success )
     {
+#ifndef __WXWASM__
         wxLogWarning(_("Cannot set locale to language \"%s\"."), name);
+#endif
 
         // As we failed to change locale, there is no need to restore the
         // previous one: it's still valid.

@@ -98,9 +98,9 @@ int wxSystemSettings::GetMetric(wxSystemMetric index, const wxWindow* win)
     switch ( index )
     {
         case wxSYS_VSCROLL_X:
-            return wxTheme::Get()->GetRenderer()->GetScrollbarArrowSize().x;
+            return wxTheme::Get()->GetRenderer()->GetScrollbarArrowSize(wxVERTICAL).x;
         case wxSYS_HSCROLL_Y:
-            return wxTheme::Get()->GetRenderer()->GetScrollbarArrowSize().y;
+            return wxTheme::Get()->GetRenderer()->GetScrollbarArrowSize(wxHORIZONTAL).y;
 
         default:
             return wxSystemSettingsNative::GetMetric(index, win);

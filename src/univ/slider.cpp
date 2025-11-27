@@ -648,14 +648,13 @@ void wxSlider::CalcThumbRect(const wxRect *rectShaftIn,
     // position is not at lenShaft but at lenShaft - thumbSize
     if ( m_max != m_min )
     {
-        if ( isVertical )
-        {
-            *p += ((lenShaft - lenThumb)*(m_max - value))/(m_max - m_min);
-        }
+        int offset;
+        if (IsInverted())
+            offset = m_max - value;
         else
-        { // horz
-            *p += ((lenShaft - lenThumb)*(value - m_min))/(m_max - m_min);
-        }
+            offset = value - m_min;
+
+        *p += ((lenShaft - lenThumb) * offset)/(m_max - m_min);
     }
 
     // calc the label rect
@@ -704,11 +703,15 @@ void wxSlider::DoDraw(wxControlRenderer *renderer)
     wxSize sz = GetThumbSize();
     int len = IsVert() ? sz.x : sz.y;
 
+    int offset = IsInverted() ? m_max - m_value : m_value - m_min;
+    int range = m_max - m_min;
+    double fracValue = range > 0 ? static_cast<double>(offset) / range : 0.0;
+
     // first draw the shaft
     wxRect rectShaft = rend->GetSliderShaftRect(m_rectSlider, len, orient, style);
     if ( rectUpdate.Intersects(rectShaft) )
     {
-        rend->DrawSliderShaft(dc, m_rectSlider, len, orient, flags, style);
+        rend->DrawSliderShaft(dc, m_rectSlider, fracValue, len, orient, flags, style);
     }
 
     // calculate the thumb position in pixels and draw it
@@ -921,16 +924,21 @@ int wxSlider::PixelToThumbPos(wxCoord x) const
         len = rectShaft.width - sizeThumb.x;
     }
 
+    int logicalPos;
+    if (IsInverted())
+        logicalPos = x0 + len - x;
+    else
+        logicalPos = x - x0;
+
     int pos = m_min;
     if ( len > 0 )
     {
-        if ( x > x0 )
-        {
-            pos += ((x - x0) * (m_max - m_min)) / len;
-            if ( pos > m_max )
+        if (logicalPos > 0) {
+            if (logicalPos <= len)
+                pos += (logicalPos * (m_max - m_min)) / len;
+            else
                 pos = m_max;
         }
-        //else: x <= x0, leave pos = min
     }
 
     return pos;
@@ -955,38 +963,17 @@ void wxSlider::SetShaftPartState(wxScrollThumb::Shaft shaftPart,
 
 void wxSlider::OnThumbDragStart(int pos)
 {
-    if (IsVert())
-    {
-        PerformAction(wxACTION_SLIDER_THUMB_DRAG, m_max - pos);
-    }
-    else
-    {
-        PerformAction(wxACTION_SLIDER_THUMB_DRAG, pos);
-    }
+    PerformAction(wxACTION_SLIDER_THUMB_DRAG, pos);
 }
 
 void wxSlider::OnThumbDrag(int pos)
 {
-    if (IsVert())
-    {
-        PerformAction(wxACTION_SLIDER_THUMB_MOVE, m_max - pos);
-    }
-    else
-    {
-        PerformAction(wxACTION_SLIDER_THUMB_MOVE, pos);
-    }
+    PerformAction(wxACTION_SLIDER_THUMB_MOVE, pos);
 }
 
 void wxSlider::OnThumbDragEnd(int pos)
 {
-    if (IsVert())
-    {
-        PerformAction(wxACTION_SLIDER_THUMB_RELEASE, m_max - pos);
-    }
-    else
-    {
-        PerformAction(wxACTION_SLIDER_THUMB_RELEASE, pos);
-    }
+    PerformAction(wxACTION_SLIDER_THUMB_RELEASE, pos);
 }
 
 void wxSlider::OnPageScrollStart()

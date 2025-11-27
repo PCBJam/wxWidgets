@@ -146,6 +146,7 @@ public:
 #if wxUSE_SLIDER
     virtual void DrawSliderShaft(wxDC& dc,
                                  const wxRect& rect,
+                                 double fracValue,
                                  int lenThumb,
                                  wxOrientation orient,
                                  int flags = 0,
@@ -201,7 +202,7 @@ public:
     virtual void AdjustSize(wxSize *size, const wxWindow *window);
     virtual bool AreScrollbarsInsideBorder() const;
 
-    virtual wxSize GetScrollbarArrowSize() const
+    virtual wxSize GetScrollbarArrowSize(wxOrientation WXUNUSED(orientation)) const
         { return m_sizeScrollbarArrow; }
 
     virtual wxSize GetCheckBitmapSize() const
@@ -2062,6 +2063,7 @@ wxRect wxWin32Renderer::GetSliderShaftRect(const wxRect& rectOrig,
 
 void wxWin32Renderer::DrawSliderShaft(wxDC& dc,
                                       const wxRect& rectOrig,
+                                      double WXUNUSED(fracValue),
                                       int lenThumb,
                                       wxOrientation orient,
                                       int flags,

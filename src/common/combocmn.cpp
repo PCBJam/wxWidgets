@@ -162,6 +162,18 @@ wxCONSTRUCTOR_5( wxComboBox, wxWindow*, Parent, wxWindowID, Id, \
 #undef COMBO_MARGIN
 #define COMBO_MARGIN                  FOCUS_RING
 
+#elif defined(__WXWASM__)
+
+#include "wx/dialog.h"
+#define wxComboCtrlGenericTLW   wxDialog
+
+#define USE_TRANSIENT_POPUP           1 // Use wxPopupWindowTransient (preferred, if it works properly on platform)
+#define TRANSIENT_POPUPWIN_IS_PERFECT 1 // wxPopupTransientWindow works, its child can have focus, and common
+                                        // native controls work on it like normal.
+#define POPUPWIN_IS_PERFECT           1 // Same, but for non-transient popup window.
+#define TEXTCTRL_TEXT_CENTERED        0 // 1 if text in textctrl is vertically centered
+#define FOCUS_RING                    0 // No focus ring on wxWASM
+
 #else
 
 #include "wx/dialog.h"

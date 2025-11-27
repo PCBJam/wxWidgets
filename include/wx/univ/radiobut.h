@@ -65,6 +65,12 @@ protected:
     // another radiobutton
     void ClearValue();
 
+    void Toggle();
+
+    virtual bool PerformAction(const wxControlAction& action,
+                               long numArg,
+                               const wxString& strArg) wxOVERRIDE;
+
     // called when the radio button becomes checked: we clear all the buttons
     // in the same group with us here
     virtual void OnCheck() wxOVERRIDE;

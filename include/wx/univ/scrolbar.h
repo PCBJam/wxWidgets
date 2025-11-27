@@ -91,6 +91,9 @@ public:
     bool ScrollLines(int nLines) wxOVERRIDE;
     bool ScrollPages(int nPages) wxOVERRIDE;
 
+    // get the size of a scrollbar arrow (using orientation)
+    wxSize GetScrollbarArrowSize() const;
+
     virtual bool PerformAction(const wxControlAction& action,
                                long numArg = 0,
                                const wxString& strArg = wxEmptyString) wxOVERRIDE;

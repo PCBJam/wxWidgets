@@ -104,6 +104,8 @@ protected:
     #include "wx/msw/nonownedwnd.h"
 #elif defined(__WXQT__)
     #include "wx/qt/nonownedwnd.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/nonownedwnd.h"
 #else
     // No special class needed in other ports, they can derive both wxTLW and
     // wxPopupWindow directly from wxWindow and don't implement SetShape().

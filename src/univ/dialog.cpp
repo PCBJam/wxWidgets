@@ -27,6 +27,8 @@
 #include "wx/evtloop.h"
 #include "wx/modalhook.h"
 
+#include <emscripten.h>
+
 //-----------------------------------------------------------------------------
 // wxDialog
 //-----------------------------------------------------------------------------
@@ -43,6 +45,7 @@ void wxDialog::Init()
     m_returnCode = 0;
     m_windowDisabler = NULL;
     m_eventLoop = NULL;
+    m_modalCallback = NULL;
     m_isShowingModal = false;
 }
 
@@ -164,6 +167,26 @@ bool wxDialog::IsModal() const
     return m_isShowingModal;
 }
 
+EM_JS(int, startModal, (), {
+  return Asyncify.handleAsync(async () => {
+    console.log('startModal');
+
+    var runEventLoop = function () {
+      modalTimer = setTimeout(function () {
+        ccall('ProcessEvents', 'void', [], []);
+        runEventLoop();
+      }, 17);
+    };
+
+    const result = await new Promise((resolve, reject) => {
+      runEventLoop();
+      endModal = resolve;
+    });
+    console.log('modal result: ' + result);
+    return result;
+  });
+});
+
 int wxDialog::ShowModal()
 {
     WX_HOOK_MODAL_DIALOG();
@@ -184,12 +207,15 @@ int wxDialog::ShowModal()
     m_isShowingModal = true;
     Show(true);
 
+    //int result = startModal();
+
+    return wxID_CANCEL;
+/*
     wxASSERT_MSG( !m_windowDisabler, wxT("disabling windows twice?") );
 
 #if defined(__WXGTK__)
     wxBusyCursorSuspender suspender;
 #endif
-
     m_windowDisabler = new wxWindowDisabler(this);
     if ( !m_eventLoop )
         m_eventLoop = new wxEventLoop;
@@ -197,11 +223,20 @@ int wxDialog::ShowModal()
     m_eventLoop->Run();
 
     return GetReturnCode();
+*/
+}
+
+void wxDialog::ShowModal(std::function<void (int)> callback)
+{
+    ShowModal();
+
+    m_modalCallback = callback;
 }
 
 void wxDialog::EndModal(int retCode)
 {
-    wxASSERT_MSG( m_eventLoop, wxT("wxDialog is not modal") );
+    wxLogDebug(wxT("EndModal: %d"), retCode);
+    //wxASSERT_MSG( m_eventLoop, wxT("wxDialog is not modal") );
 
     SetReturnCode(retCode);
 
@@ -213,7 +248,21 @@ void wxDialog::EndModal(int retCode)
 
     m_isShowingModal = false;
 
-    m_eventLoop->Exit();
+    //m_eventLoop->Exit();
+
+/*
+    EM_ASM({
+        clearTimeout(modalTimer);
+        endModal($0);
+    }, retCode);
+*/
 
     Show(false);
+
+    if (m_modalCallback)
+    {
+        auto callback = m_modalCallback;
+        m_modalCallback = NULL;
+        callback(retCode);
+    }
 }

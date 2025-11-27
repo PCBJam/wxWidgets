@@ -77,6 +77,7 @@ USE_WIN32=0
 USE_DOS=0
 USE_BEOS=0
 USE_MAC=0
+USE_WASM=0
 
 dnl Unix kind
 USE_AIX=
@@ -111,7 +112,7 @@ NEEDS_D_REENTRANT_FOR_R_FUNCS=0
 dnl the list of all available toolkits
 dnl
 dnl update NUM_TOOLKITS calculation below when adding a new toolkit here!
-ALL_TOOLKITS="GTK OSX_COCOA OSX_IPHONE MOTIF MSW X11 DFB QT"
+ALL_TOOLKITS="GTK OSX_COCOA OSX_IPHONE MOTIF MSW X11 DFB QT WASM"
 
 dnl NB: these wxUSE_XXX constants have value of 0 or 1 unlike all the other ones
 dnl     which are either yes or no
@@ -123,6 +124,7 @@ DEFAULT_wxUSE_MSW=0
 DEFAULT_wxUSE_X11=0
 DEFAULT_wxUSE_DFB=0
 DEFAULT_wxUSE_QT=0
+DEFAULT_wxUSE_WASM=0
 
 dnl these are the values which are really default for the given platform:
 dnl they're used if no --with-<toolkit> options were given to detect the
@@ -135,6 +137,7 @@ DEFAULT_DEFAULT_wxUSE_MSW=0
 DEFAULT_DEFAULT_wxUSE_X11=0
 DEFAULT_DEFAULT_wxUSE_DFB=0
 DEFAULT_DEFAULT_wxUSE_QT=0
+DEFAULT_DEFAULT_wxUSE_WASM=0
 
 PROGRAM_EXT=
 SAMPLES_CXXFLAGS=
@@ -304,6 +307,13 @@ case "${host}" in
     DEFAULT_DEFAULT_wxUSE_QT=1
   ;;
 
+  *-*-emscripten* )
+    USE_WASM=1
+    AC_DEFINE(__WASM__)
+    DEFAULT_DEFAULT_wxUSE_WASM=1
+    PROGRAM_EXT=".js"
+  ;;
+
   *)
     AC_MSG_WARN([*** System type ${host} is unknown, assuming generic Unix and continuing nevertheless.])
     AC_MSG_WARN([*** Please report the build results to wx-dev@googlegroups.com.])
@@ -443,6 +453,7 @@ WX_ARG_ONLY_WITH(msw,           [  --with-msw              use MS-Windows], [wxU
 WX_ARG_ONLY_WITH(directfb,      [  --with-directfb         use DirectFB], [wxUSE_DFB="$withval" wxUSE_UNIVERSAL="yes" CACHE_DFB=1 TOOLKIT_GIVEN=1])
 WX_ARG_ONLY_WITH(x11,           [  --with-x11              use X11], [wxUSE_X11="$withval" wxUSE_UNIVERSAL="yes" CACHE_X11=1 TOOLKIT_GIVEN=1])
 WX_ARG_ONLY_WITH(qt,            [  --with-qt               use Qt], [wxUSE_QT="$withval" CACHE_QT=1 TOOLKIT_GIVEN=1])
+WX_ARG_ONLY_WITH(wasm,          [  --with-wasm             use WebAssembly], [wxUSE_WASM="$withval" CACHE_WASM=1 TOOLKIT_GIVEN=1])
 WX_ARG_ENABLE(nanox,       [  --enable-nanox          use NanoX], wxUSE_NANOX)
 WX_ARG_ENABLE(gpe,         [  --enable-gpe            use GNOME PDA Environment features if possible], wxUSE_GPE)
 
@@ -498,7 +509,7 @@ if test "$wxUSE_GUI" = "yes"; then
     NUM_TOOLKITS=`expr ${wxUSE_GTK:-0} \
                   + ${wxUSE_OSX_COCOA:-0} + ${wxUSE_OSX_IPHONE:-0} + ${wxUSE_DFB:-0} \
                   + ${wxUSE_MOTIF:-0} + ${wxUSE_MSW:-0} \
-                  + ${wxUSE_X11:-0} + ${wxUSE_QT:-0}`
+                  + ${wxUSE_X11:-0} + ${wxUSE_QT:-0} + ${wxUSE_WASM:-0}`
 
 
     case "$NUM_TOOLKITS" in
@@ -3738,6 +3749,13 @@ libraries returned by 'pkg-config gtk+-2.0 --libs' or 'gtk-config
             )
         fi
     fi
+
+    if test "$wxUSE_WASM" = 1; then
+        TOOLKIT=WASM
+        dnl Use built-in png/zlib via Emscripten ports
+        GUI_TK_LIBRARY="-sUSE_LIBPNG=1 -sUSE_ZLIB=1"
+    fi
+
     dnl the name of the directory where the files for this toolkit live
     TOOLKIT_DIR=`echo ${TOOLKIT} | tr '[[A-Z]]' '[[a-z]]'`
 

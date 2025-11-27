@@ -11,6 +11,8 @@
 #ifndef _WX_GENERIC_MSGDLGG_H_
 #define _WX_GENERIC_MSGDLGG_H_
 
+#include <functional>
+
 class WXDLLIMPEXP_FWD_CORE wxSizer;
 
 class WXDLLIMPEXP_CORE wxGenericMessageDialog : public wxMessageDialogBase
@@ -23,6 +25,7 @@ public:
                            const wxPoint& pos = wxDefaultPosition);
 
     virtual int ShowModal() wxOVERRIDE;
+    virtual void ShowModal(std::function<void (int)> callback) wxOVERRIDE;
 
 protected:
     // Creates a message dialog taking any options that have been set after

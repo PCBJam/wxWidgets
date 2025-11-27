@@ -10,6 +10,8 @@
 #ifndef _WX_UNIV_DIALOG_H_
 #define _WX_UNIV_DIALOG_H_
 
+#include <functional>
+
 extern WXDLLIMPEXP_DATA_CORE(const char) wxDialogNameStr[];
 class WXDLLIMPEXP_FWD_CORE wxWindowDisabler;
 class WXDLLIMPEXP_FWD_CORE wxEventLoop;
@@ -47,6 +49,8 @@ public:
     // For now, same as Show(true) but returns return code
     virtual int ShowModal() wxOVERRIDE;
 
+    virtual void ShowModal(std::function<void (int)> callback) wxOVERRIDE;
+
     // may be called to terminate the dialog with the given return code
     virtual void EndModal(int retCode) wxOVERRIDE;
 
@@ -75,6 +79,8 @@ private:
 
     // modal dialog runs its own event loop
     wxEventLoop *m_eventLoop;
+
+    std::function<void (int)> m_modalCallback;
 
     // is modal right now?
     bool m_isShowingModal;

@@ -612,6 +612,8 @@ void wxMouseEvent::Assign(const wxMouseEvent& event)
     m_aux1Down = event.m_aux1Down;
     m_aux2Down = event.m_aux2Down;
 
+    m_clickCount = event.m_clickCount;
+
     m_wheelRotation = event.m_wheelRotation;
     m_wheelDelta = event.m_wheelDelta;
     m_wheelInverted = event.m_wheelInverted;

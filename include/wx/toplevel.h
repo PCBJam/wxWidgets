@@ -396,6 +396,9 @@ protected:
 #elif defined(__WXQT__)
     #include "wx/qt/toplevel.h"
 #define wxTopLevelWindowNative wxTopLevelWindowQt
+#elif defined(__WXWASM__)
+    #include "wx/wasm/toplevel.h"
+#define wxTopLevelWindowNative wxTopLevelWindowWasm
 #endif
 
 #ifdef __WXUNIVERSAL__

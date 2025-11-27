@@ -412,6 +412,10 @@ case $1 in
 				basic_machine=le32-unknown
 				basic_os=nacl
 				;;
+      emscripten)
+        basic_machine=asmjs-unknown
+        basic_os=emscripten
+        ;;
 			ncr3000)
 				basic_machine=i486-ncr
 				basic_os=sysv4
@@ -624,6 +628,9 @@ case $1 in
 				basic_machine=a29k-wrs
 				basic_os=vxworks
 				;;
+      wasm32 | wasm32_simd128)
+        basic_machine=wasm32-unknown
+        ;;
 			xbox)
 				basic_machine=i686-pc
 				basic_os=mingw32
@@ -1250,7 +1257,7 @@ case $cpu-$vendor in
 			| vax \
 			| visium \
 			| w65 \
-			| wasm32 | wasm64 \
+			| wasm32 | wasm32_simd128 | wasm64 \
 			| we32k \
 			| x86 | x86_64 | xc16x | xgate | xps100 \
 			| xstormy16 | xtensa* \

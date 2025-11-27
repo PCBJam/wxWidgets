@@ -54,7 +54,7 @@ wxIMPLEMENT_DYNAMIC_CLASS(wxSpinDoubleEvent, wxNotifyEvent);
 // so the generic control looks similarly to the native one there, we might
 // need to use different value for the other platforms (and maybe even
 // determine it dynamically?).
-static const wxCoord MARGIN = 1;
+static const wxCoord MARGIN = 0;
 
 #define SPINCTRLBUT_MAX 32000 // large to avoid wrap around trouble
 
@@ -318,11 +318,15 @@ void wxSpinCtrlGenericBase::DoMoveWindow(int x, int y, int width, int height)
     // that the control should be. Normally, GetBestSize and GetSize should
     // always return the same value because the size of the spinButton never
     // changes.
-    wxSize sizeBtn = m_spinButton->GetBestSize();
 
-    wxCoord wText = width - sizeBtn.x - MARGIN;
-    m_textCtrl->SetSize(0, 0, wText, height);
-    m_spinButton->SetSize(0 + wText + MARGIN, 0, wxDefaultCoord, height);
+    if (m_spinButton)
+    {
+        wxSize sizeBtn = m_spinButton->GetBestSize();
+
+        wxCoord wText = width - sizeBtn.x - MARGIN;
+        m_textCtrl->SetSize(0, 0, wText, height);
+        m_spinButton->SetSize(0 + wText + MARGIN, 0, sizeBtn.x, height);
+    }
 }
 
 // ----------------------------------------------------------------------------

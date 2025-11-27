@@ -224,6 +224,8 @@ protected:
     #include "wx/osx/region.h"
 #elif defined(__WXQT__)
     #include "wx/qt/region.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/region.h"
 #endif
 
 // ----------------------------------------------------------------------------

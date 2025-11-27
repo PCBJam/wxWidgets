@@ -118,7 +118,11 @@ WXDLLIMPEXP_BASE size_t wxWC2MB(char *buf, const wchar_t *pwz, size_t n)
 
 char* wxSetlocale(int category, const char *locale)
 {
+#ifdef __WXWASM__
+    char *rv = NULL;
+#else
     char *rv = setlocale(category, locale);
+#endif
     if ( locale != NULL /* setting locale, not querying */ &&
          rv /* call was successful */ )
     {

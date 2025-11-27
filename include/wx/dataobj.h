@@ -87,6 +87,8 @@ public:
     #include "wx/osx/dataform.h"
 #elif defined(__WXQT__)
     #include "wx/qt/dataform.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/dataform.h"
 #endif
 
 // the value for default argument to some functions (corresponds to
@@ -173,6 +175,8 @@ public:
     #include "wx/osx/dataobj.h"
 #elif defined(__WXQT__)
     #include "wx/qt/dataobj.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/dataobj.h"
 #endif
 
 // ----------------------------------------------------------------------------
@@ -585,6 +589,8 @@ private:
         #include "wx/osx/dataobj2.h"
     #elif defined(__WXQT__)
         #include "wx/qt/dataobj2.h"
+    #elif defined(__WXWASM__)
+        #include "wx/wasm/dataobj2.h"
     #endif
 
     // wxURLDataObject is simply wxTextDataObject with a different name

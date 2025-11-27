@@ -298,6 +298,8 @@ private:
     #include "wx/gtk/evtloop.h"
 #elif defined(__WXQT__)
     #include "wx/qt/evtloop.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/evtloop.h"
 #else // other platform
 
 #include "wx/stopwatch.h"   // for wxMilliClock_t

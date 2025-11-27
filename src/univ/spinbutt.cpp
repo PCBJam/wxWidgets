@@ -186,13 +186,15 @@ wxSize wxSpinButton::DoGetBestClientSize() const
 {
     // a spin button has by default the same size as two scrollbar arrows put
     // together
-    wxSize size = m_renderer->GetScrollbarArrowSize();
+    wxSize size;
     if ( IsVertical() )
     {
+        size = m_renderer->GetScrollbarArrowSize(wxVERTICAL);
         size.y *= 2;
     }
     else
     {
+        size = m_renderer->GetScrollbarArrowSize(wxHORIZONTAL);
         size.x *= 2;
     }
 
@@ -290,30 +292,40 @@ void wxSpinButton::DoDraw(wxControlRenderer *renderer)
 
 void wxSpinButton::CalcArrowRects(wxRect *rect1, wxRect *rect2) const
 {
-    // calculate the rectangles for both arrows: note that normally the 2
-    // arrows are adjacent to each other but if the total control width/height
-    // is odd, we can have 1 pixel between them
+    const wxCoord ARROW_WIDTH = 9;
+    const wxCoord ARROW_HEIGHT = 5;
+
     wxRect rectTotal = GetClientRect();
 
-    *rect1 =
-    *rect2 = rectTotal;
     if ( IsVertical() )
     {
-        rect1->height /= 2;
-        rect2->height /= 2;
+        wxCoord h = rectTotal.height / 2;
+        wxCoord w = rectTotal.width;
 
-        rect2->y += rect1->height;
-        if ( rectTotal.height % 2 )
-            rect2->y++;
+        rect1->x = rectTotal.x + (w - ARROW_WIDTH) / 2;
+        rect1->y = rectTotal.y + (h - ARROW_HEIGHT) / 2;
+        rect1->width = ARROW_WIDTH;
+        rect1->height = ARROW_HEIGHT;
+
+        rect2->x = rect1->x;
+        rect2->y = rect1->y + h;
+        rect2->width = ARROW_WIDTH;
+        rect2->height = ARROW_HEIGHT;
     }
     else // horizontal
     {
-        rect1->width /= 2;
-        rect2->width /= 2;
+        wxCoord h = rectTotal.height;
+        wxCoord w = rectTotal.width / 2;
 
-        rect2->x += rect1->width;
-        if ( rectTotal.width % 2 )
-            rect2->x++;
+        rect1->x = rectTotal.x + (w - ARROW_WIDTH) / 2;
+        rect1->y = rectTotal.y + (h - ARROW_HEIGHT) / 2;
+        rect1->width = ARROW_WIDTH;
+        rect1->height = ARROW_HEIGHT;
+
+        rect2->x = rect1->x + w;
+        rect2->y = rect1->y;
+        rect2->width = ARROW_WIDTH;
+        rect2->height = ARROW_HEIGHT;
     }
 }
 

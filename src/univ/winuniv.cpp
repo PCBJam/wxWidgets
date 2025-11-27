@@ -96,13 +96,15 @@ public:
     wxIMPLEMENT_DYNAMIC_CLASS(wxWindow, wxWindowDFB);
 #elif defined(__WXX11__)
     wxIMPLEMENT_DYNAMIC_CLASS(wxWindow, wxWindowX11);
+#elif defined(__WXWASM__)
+    wxIMPLEMENT_DYNAMIC_CLASS(wxWindow, wxWindowWasm);
 #endif
 
 wxBEGIN_EVENT_TABLE(wxWindow, wxWindowNative)
     EVT_SIZE(wxWindow::OnSize)
 
 #if wxUSE_ACCEL || wxUSE_MENUS
-    EVT_KEY_DOWN(wxWindow::OnKeyDown)
+    //EVT_KEY_DOWN(wxWindow::OnKeyDown)
 #endif // wxUSE_ACCEL
 
 #if wxUSE_MENUS
@@ -132,6 +134,10 @@ void wxWindow::Init()
 
     m_oldSize.x = wxDefaultCoord;
     m_oldSize.y = wxDefaultCoord;
+
+#if wxUSE_MENUS
+    m_popupCallback = NULL;
+#endif
 }
 
 bool wxWindow::Create(wxWindow *parent,

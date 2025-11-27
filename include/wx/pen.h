@@ -114,6 +114,8 @@ public:
     #include "wx/osx/pen.h"
 #elif defined(__WXQT__)
     #include "wx/qt/pen.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/pen.h"
 #endif
 
 class WXDLLIMPEXP_CORE wxPenList: public wxGDIObjListBase

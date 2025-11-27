@@ -746,6 +746,7 @@ bool wxTextCtrl::Create(wxWindow *parent,
     RecalcFontMetrics();
     ChangeValue(value);
     SetInitialSize(size);
+    SetBackgroundColour(*wxWHITE);
 
     m_isEditable = !(style & wxTE_READONLY);
 
@@ -2401,6 +2402,23 @@ wxSize wxTextCtrl::DoGetBestClientSize() const
     rectText.width = w;
     rectText.height = h;
     wxRect rectTotal = GetRenderer()->GetTextTotalArea(this, rectText);
+    return wxSize(rectTotal.width, rectTotal.height);
+}
+
+wxSize wxTextCtrl::DoGetSizeFromTextSize(int xlen, int ylen) const
+{
+    wxRect rectText(0, 0, xlen, ylen);
+    wxRect rectTotal = GetRenderer()->GetTextTotalArea(this, rectText);
+
+    if (xlen == -1 || ylen == -1)
+    {
+          wxSize bestSize = DoGetBestClientSize();
+          if (xlen == -1)
+              rectTotal.width = bestSize.x;
+          if (ylen == -1)
+              rectTotal.height = bestSize.y;
+    }
+
     return wxSize(rectTotal.width, rectTotal.height);
 }
 

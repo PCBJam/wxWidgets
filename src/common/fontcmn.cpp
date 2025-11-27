@@ -732,6 +732,8 @@ void wxNativeFontInfo::SetPointSize(int pointsize)
 
 #ifdef wxNO_NATIVE_FONTINFO
 
+#if !defined(__WXWASM__)
+
 // These are the generic forms of FromString()/ToString.
 //
 // convert to/from the string representation: the general format is
@@ -822,6 +824,8 @@ wxString wxNativeFontInfo::ToString() const
     return s;
 }
 
+#endif // !defined(__WXWASM__)
+
 void wxNativeFontInfo::Init()
 {
     pointSize = 0.0f;
@@ -832,6 +836,9 @@ void wxNativeFontInfo::Init()
     strikethrough = false;
     faceName.clear();
     encoding = wxFONTENCODING_DEFAULT;
+#if defined(__WXWASM__)
+    m_isRendered = false;
+#endif
 }
 
 double wxNativeFontInfo::GetFractionalPointSize() const
@@ -874,6 +881,8 @@ wxFontEncoding wxNativeFontInfo::GetEncoding() const
     return encoding;
 }
 
+#if !defined(__WXWASM__)
+
 void wxNativeFontInfo::SetFractionalPointSize(double pointsize)
 {
     pointSize = pointsize;
@@ -914,6 +923,8 @@ void wxNativeFontInfo::SetEncoding(wxFontEncoding encoding_)
 {
     encoding = encoding_;
 }
+
+#endif // !defined(__WXWASM__)
 
 #endif // generic wxNativeFontInfo implementation
 

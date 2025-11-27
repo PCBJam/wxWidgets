@@ -981,8 +981,8 @@ void wxGenericTreeCtrl::Init()
     m_dirty = false;
 
     m_lineHeight = 10;
-    m_indent = 15;
-    m_spacing = 18;
+    m_indent = 10;
+    m_spacing = 10;
 
     m_dragCount = 0;
     m_isDragging = false;
@@ -1081,7 +1081,7 @@ void wxGenericTreeCtrl::InitVisualAttributes()
     m_hilightBrush = wxBrush(wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT));
     m_hilightUnfocusedBrush = wxBrush(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNSHADOW));
 
-    m_dottedPen = wxPen(wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT), 1, wxPENSTYLE_DOT);
+    m_dottedPen = wxPen(wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT), 1, wxPENSTYLE_TRANSPARENT);
 
 #if defined(__WXOSX__)
     m_normalFont = wxFont(wxOSX_SYSTEM_FONT_VIEWS);

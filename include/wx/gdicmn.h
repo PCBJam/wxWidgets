@@ -137,7 +137,7 @@ enum wxStockCursor
     wxCURSOR_BASED_ARROW_DOWN,
 #endif // X11
     wxCURSOR_ARROWWAIT,
-#ifdef __WXMAC__
+#if defined(__WXMAC__) || defined(__WXWASM__)
     wxCURSOR_OPEN_HAND,
     wxCURSOR_CLOSED_HAND,
 #endif
@@ -149,7 +149,7 @@ enum wxStockCursor
     #define wxCURSOR_DEFAULT        wxCURSOR_ARROW
 #endif
 
-#ifndef __WXMAC__
+#if !defined(__WXMAC__) && !defined(__WXWASM__)
     // TODO CS supply openhand and closedhand cursors
     #define wxCURSOR_OPEN_HAND      wxCURSOR_HAND
     #define wxCURSOR_CLOSED_HAND    wxCURSOR_HAND
@@ -227,6 +227,9 @@ enum wxEllipsizeMode
 #elif defined(__WXQT__)
     // Initialize from an included XPM
     #define wxICON(X) wxIcon( X##_xpm )
+#elif defined(__WXWASM__)
+    // Initialize from an included XPM
+    #define wxICON(X) wxIcon( X##_xpm )
 #else
     // This will usually mean something on any platform
     #define wxICON(X) wxIcon(wxT(#X))
@@ -242,7 +245,8 @@ enum wxEllipsizeMode
       defined(__WXMOTIF__) || \
       defined(__WXX11__)   || \
       defined(__WXMAC__)   || \
-      defined(__WXDFB__)
+      defined(__WXDFB__)   || \
+      defined(__WXWASM__)
     // Initialize from an included XPM
     #define wxBITMAP(name) wxBitmap(name##_xpm)
 #else // other platforms

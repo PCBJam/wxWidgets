@@ -244,6 +244,8 @@ void wxScrollBar::SetScrollbar(int position, int thumbSize,
                                int range, int pageSize,
                                bool refresh)
 {
+    thumbSize = wxMax(wxMin(thumbSize, range), 0);
+
     // we only refresh everything when the range changes, thumb position
     // changes are handled in OnIdle
     bool needsRefresh = (range != m_range) ||
@@ -272,19 +274,24 @@ void wxScrollBar::SetScrollbar(int position, int thumbSize,
 // geometry
 // ----------------------------------------------------------------------------
 
+wxSize wxScrollBar::GetScrollbarArrowSize() const
+{
+    return m_renderer->GetScrollbarArrowSize(IsVertical() ? wxVERTICAL : wxHORIZONTAL);
+}
+
 wxSize wxScrollBar::DoGetBestClientSize() const
 {
     // this dimension is completely arbitrary
     static const wxCoord SIZE = 140;
 
-    wxSize size = m_renderer->GetScrollbarArrowSize();
+    wxSize size = GetScrollbarArrowSize();
     if ( IsVertical() )
     {
         size.y = SIZE;
     }
     else // horizontal
     {
-        size.x = SIZE;
+        size.y = 15;
     }
 
     return size;
@@ -310,7 +317,7 @@ wxHitTest wxScrollBar::HitTestBar(const wxPoint& pt) const
     // we only need to work with either x or y coord depending on the
     // orientation, choose one (but still check the other one to verify if the
     // mouse is in the window at all)
-    const wxSize sizeArrowSB = m_renderer->GetScrollbarArrowSize();
+    const wxSize sizeArrowSB = GetScrollbarArrowSize();
 
     wxCoord coord, sizeArrow, sizeTotal;
     wxSize size = GetSize();
@@ -417,7 +424,7 @@ wxRect wxScrollBar::GetScrollbarRect(wxScrollBar::Element elem,
         thumbPos = GetThumbPosition();
     }
 
-    const wxSize sizeArrow = m_renderer->GetScrollbarArrowSize();
+    const wxSize sizeArrow = GetScrollbarArrowSize();
 
     wxSize sizeTotal = GetClientSize();
     wxCoord *start, *width;
@@ -513,7 +520,7 @@ wxRect wxScrollBar::GetScrollbarRect(wxScrollBar::Element elem,
 
 wxCoord wxScrollBar::GetScrollbarSize() const
 {
-    const wxSize sizeArrowSB = m_renderer->GetScrollbarArrowSize();
+    const wxSize sizeArrowSB = GetScrollbarArrowSize();
 
     wxCoord sizeArrow, sizeTotal;
     if ( GetWindowStyle() & wxVERTICAL )
@@ -546,14 +553,14 @@ wxCoord wxScrollBar::ScrollbarToPixel(int thumbPos)
         thumbPos = GetThumbPosition();
     }
 
-    const wxSize sizeArrow = m_renderer->GetScrollbarArrowSize();
+    const wxSize sizeArrow = GetScrollbarArrowSize();
     return (thumbPos * GetScrollbarSize()) / range
              + (IsVertical() ? sizeArrow.y : sizeArrow.x);
 }
 
 int wxScrollBar::PixelToScrollbar(wxCoord coord)
 {
-    const wxSize sizeArrow = m_renderer->GetScrollbarArrowSize();
+    const wxSize sizeArrow = GetScrollbarArrowSize();
     return ((coord - (IsVertical() ? sizeArrow.y : sizeArrow.x)) *
                GetRange() ) / GetScrollbarSize();
 }

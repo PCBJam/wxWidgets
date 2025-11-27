@@ -248,7 +248,7 @@ public:
 
 protected:
     // ensure we have correct default border
-    virtual wxBorder GetDefaultBorder() const wxOVERRIDE { return wxBORDER_SUNKEN; }
+    virtual wxBorder GetDefaultBorder() const wxOVERRIDE { return wxBORDER_STATIC; }
 
     // override base class methods
     virtual void DoDrawBorder(wxDC& dc, const wxRect& rect) wxOVERRIDE;
@@ -256,6 +256,8 @@ protected:
 
     // calc the size from the text extent
     virtual wxSize DoGetBestClientSize() const wxOVERRIDE;
+
+    virtual wxSize DoGetSizeFromTextSize(int xlen, int ylen) const wxOVERRIDE;
 
     // implements Set/ChangeValue()
     virtual void DoSetValue(const wxString& value, int flags = 0) wxOVERRIDE;

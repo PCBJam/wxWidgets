@@ -63,6 +63,8 @@ public:
     // get the total size of the menu
     virtual wxSize GetSize() const = 0;
 
+    virtual wxCoord GetOverflowHeight() const { return 0; }
+
     virtual ~wxMenuGeometryInfo();
 };
 
@@ -248,6 +250,7 @@ public:
     // draw the slider shaft
     virtual void DrawSliderShaft(wxDC& dc,
                                  const wxRect& rect,
+                                 double fracValue,
                                  int lenThumb,
                                  wxOrientation orient,
                                  int flags = 0,
@@ -297,6 +300,11 @@ public:
     virtual void DrawMenuSeparator(wxDC& dc,
                                    wxCoord y,
                                    const wxMenuGeometryInfo& geomInfo) = 0;
+
+    // draw menu overflow arrow
+    virtual void DrawMenuOverflowArrow(wxDC& WXUNUSED(dc),
+                                       const wxRect& WXUNUSED(rect),
+                                       wxDirection WXUNUSED(direction)) {}
 #endif // wxUSE_MENUS
 
 #if wxUSE_STATUSBAR
@@ -375,7 +383,7 @@ public:
 
 #if wxUSE_SCROLLBAR
     // get the size of a scrollbar arrow
-    virtual wxSize GetScrollbarArrowSize() const = 0;
+    virtual wxSize GetScrollbarArrowSize(wxOrientation orientation) const = 0;
 #endif // wxUSE_SCROLLBAR
 
     // get the height of a listbox item from the base font height
@@ -649,12 +657,13 @@ public:
 
     virtual void DrawSliderShaft(wxDC& dc,
                                  const wxRect& rect,
+                                 double fracValue,
                                  int lenThumb,
                                  wxOrientation orient,
                                  int flags = 0,
                                  long style = 0,
                                  wxRect *rectShaft = NULL) wxOVERRIDE
-        { m_renderer->DrawSliderShaft(dc, rect, lenThumb, orient, flags, style, rectShaft); }
+        { m_renderer->DrawSliderShaft(dc, rect, fracValue, lenThumb, orient, flags, style, rectShaft); }
     virtual void DrawSliderThumb(wxDC& dc,
                                  const wxRect& rect,
                                  wxOrientation orient,
@@ -695,6 +704,12 @@ public:
                                    wxCoord y,
                                    const wxMenuGeometryInfo& geomInfo) wxOVERRIDE
         { m_renderer->DrawMenuSeparator(dc, y, geomInfo); }
+
+    virtual void DrawMenuOverflowArrow(wxDC& dc,
+                                       const wxRect& rect,
+                                       wxDirection direction) wxOVERRIDE
+        { m_renderer->DrawMenuOverflowArrow(dc, rect, direction); }
+
 #endif // wxUSE_MENUS
 
 #if wxUSE_STATUSBAR
@@ -755,8 +770,8 @@ public:
         { return m_renderer->AreScrollbarsInsideBorder(); }
 
 #if wxUSE_SCROLLBAR
-    virtual wxSize GetScrollbarArrowSize() const wxOVERRIDE
-        { return m_renderer->GetScrollbarArrowSize(); }
+    virtual wxSize GetScrollbarArrowSize(wxOrientation orientation) const wxOVERRIDE
+        { return m_renderer->GetScrollbarArrowSize(orientation); }
 #endif // wxUSE_SCROLLBAR
 
     virtual wxCoord GetListboxItemHeight(wxCoord fontHeight) wxOVERRIDE

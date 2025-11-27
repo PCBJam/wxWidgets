@@ -355,7 +355,8 @@ AC_DEFUN([AC_BAKEFILE_SHARED_LD],
       *-*-sunos4* | \
       *-*-osf* | \
       *-*-dgux5* | \
-      *-*-sysv5* )
+      *-*-sysv5* | \
+      *-*-emscripten )
         dnl defaults are ok
       ;;
 

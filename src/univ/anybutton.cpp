@@ -52,12 +52,13 @@ void wxAnyButton::Toggle()
     else
         Press();
 
+    Refresh();
+
     if ( !m_isPressed )
     {
         // releasing button after it had been pressed generates a click event
         Click();
     }
-    Refresh();
 }
 
 bool wxAnyButton::PerformAction(const wxControlAction& action,
@@ -94,7 +95,7 @@ wxSize wxAnyButton::DoGetBestClientSize() const
 {
     wxClientDC dc(wxConstCast(this, wxAnyButton));
     wxCoord width, height;
-    dc.GetMultiLineTextExtent(GetLabel(), &width, &height);
+    dc.GetMultiLineTextExtent(GetLabelText(), &width, &height);
 
     if ( m_bitmap.IsOk() )
     {

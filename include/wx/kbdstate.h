@@ -28,7 +28,7 @@ public:
           m_shiftDown(shiftDown),
           m_altDown(altDown),
           m_metaDown(metaDown)
-#ifdef __WXOSX__
+#if defined(__WXOSX__) || defined(__WXWASM__)
           ,m_rawControlDown(false)
 #endif
     {
@@ -48,7 +48,7 @@ public:
         return (m_controlDown ? wxMOD_CONTROL : 0) |
                (m_shiftDown ? wxMOD_SHIFT : 0) |
                (m_metaDown ? wxMOD_META : 0) |
-#ifdef __WXOSX__
+#if defined(__WXOSX__) || defined(__WXWASM__)
                (m_rawControlDown ? wxMOD_RAW_CONTROL : 0) |
 #endif
                (m_altDown ? wxMOD_ALT : 0);
@@ -68,7 +68,7 @@ public:
     bool ControlDown() const { return m_controlDown; }
     bool RawControlDown() const
     {
-#ifdef __WXOSX__
+#if defined(__WXOSX__) || defined(__WXWASM__)
         return m_rawControlDown;
 #else
         return m_controlDown;
@@ -94,7 +94,7 @@ public:
     void SetControlDown(bool down) { m_controlDown = down; }
     void SetRawControlDown(bool down)
     {
-#ifdef __WXOSX__
+#if defined(__WXOSX__) || defined(__WXWASM__)
         m_rawControlDown = down;
 #else
         m_controlDown = down;
@@ -113,7 +113,7 @@ public:
     bool m_shiftDown       : 1;
     bool m_altDown         : 1;
     bool m_metaDown        : 1;
-#ifdef __WXOSX__
+#if defined(__WXOSX__) || defined(__WXWASM__)
     bool m_rawControlDown : 1;
 #endif
 };
