@@ -83,6 +83,7 @@
 #endif
 
 #include <math.h>
+#include <functional>
 
 // Windows List
 WXDLLIMPEXP_DATA_CORE(wxWindowList) wxTopLevelWindows;
@@ -3067,15 +3068,27 @@ bool wxWindowBase::PopupMenu(wxMenu *menu, int x, int y)
 {
     wxCHECK_MSG( menu, false, "can't popup NULL menu" );
 
+/*
     wxMenuInvokingWindowSetter
         setInvokingWin(*menu, static_cast<wxWindow *>(this));
+*/
+    menu->SetInvokingWindow(static_cast<wxWindow *>(this));
 
     wxCurrentPopupMenu = menu;
-    menu->UpdateUI();
     const bool rc = DoPopupMenu(menu, x, y);
-    wxCurrentPopupMenu = NULL;
+    //wxCurrentPopupMenu = NULL;
 
     return rc;
+}
+
+void wxWindowBase::PopupMenu(wxMenu *menu, int x, int y, std::function<void (bool)> callback)
+{
+    wxCHECK_RET( menu, "can't popup NULL menu" );
+
+    menu->SetInvokingWindow(static_cast<wxWindow *>(this));
+
+    wxCurrentPopupMenu = menu;
+    DoPopupMenu(menu, x, y, callback);
 }
 
 // this is used to pass the id of the selected item from the menu event handler

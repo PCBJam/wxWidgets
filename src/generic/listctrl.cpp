@@ -5732,7 +5732,7 @@ wxGenericListCtrl::GetClassDefaultAttributes(wxWindowVariant variant)
     wxUnusedVar(variant);
     wxVisualAttributes attr;
     attr.colFg = wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOXTEXT);
-    attr.colBg = wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOX);
+    attr.colBg = *wxWHITE; //wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOX);
     attr.font  = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
     return attr;
 #endif

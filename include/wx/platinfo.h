@@ -57,7 +57,9 @@ enum wxOperatingSystemId
     // 1<<13 and 1<<14 available for other Unix flavours
 
     wxOS_DOS            = 1 << 15,      // obsolete
-    wxOS_OS2            = 1 << 16       // obsolete
+    wxOS_OS2            = 1 << 16,      // obsolete
+
+    wxOS_CHROME_OS      = 1 << 17       // Chrome OS
 };
 
 // list of wxWidgets ports - some of them can be used with more than
@@ -79,7 +81,19 @@ enum wxPortId
     wxPORT_OSX      = wxPORT_MAC,   // wxOSX, using Cocoa or iPhone API
     wxPORT_COCOA    = 1 << 8,       // wxCocoa, using Cocoa NextStep/Mac API
     wxPORT_WINCE    = 1 << 9,       // obsolete
-    wxPORT_QT       = 1 << 10       // wxQT, using Qt 5+
+    wxPORT_QT       = 1 << 10,      // wxQT, using Qt 5+
+    wxPORT_WASM     = 1 << 11       // wxWebAssembly, using wxUniversal
+};
+
+enum wxBrowserId
+{
+    wxBROWSER_UNKNOWN = 0,
+    wxBROWSER_FIREFOX = 1 << 0,     // Firefox
+    wxBROWSER_CHROME  = 1 << 1,     // Chrome
+    wxBROWSER_SAFARI  = 1 << 2,     // Safari
+    wxBROWSER_EDGE    = 1 << 3,     // Edge
+    wxBROWSER_MSIE    = 1 << 4,     // Internet Explorer (no WASM support)
+    wxBROWSER_OPERA   = 1 << 5      // Opera
 };
 
 // architecture bitness of the operating system
@@ -103,6 +117,58 @@ const wxArchitecture
     wxARCH_32 = wxBITNESS_32,
     wxARCH_64 = wxBITNESS_64,
     wxARCH_MAX = wxBITNESS_MAX;
+
+// information about the browser (for WebAssembly)
+class wxBrowserInfo
+{
+public:
+    wxBrowserInfo(wxBrowserId browserId = wxBROWSER_UNKNOWN,
+                  wxString browserName = wxEmptyString,
+                  wxString userAgent = wxEmptyString,
+                  wxString versionString = wxEmptyString,
+                  int versionMajor = -1,
+                  int versionMinor = -1,
+                  int versionMicro = -1)
+      : m_browserId(browserId),
+        m_browserName(browserName),
+        m_userAgent(userAgent),
+        m_versionString(versionString),
+        m_versionMajor(versionMajor),
+        m_versionMinor(versionMinor),
+        m_versionMicro(versionMicro)
+    {
+    }
+
+    wxBrowserId GetBrowserId() const
+      { return m_browserId; }
+
+    wxString GetBrowserName() const
+      { return m_browserName; }
+
+    wxString GetUserAgent() const
+      { return m_userAgent; }
+
+    wxString GetVersionString() const
+      { return m_versionString; }
+
+    int GetVersionMajor() const
+      { return m_versionMajor; }
+
+    int GetVersionMinor() const
+      { return m_versionMinor; }
+
+    int GetVersionMicro() const
+      { return m_versionMicro; }
+
+protected:
+    wxBrowserId m_browserId;
+    wxString m_browserName;
+    wxString m_userAgent;
+    wxString m_versionString;
+    int m_versionMajor;
+    int m_versionMinor;
+    int m_versionMicro;
+};
 
 
 // endian-ness of the machine
@@ -265,6 +331,8 @@ public:
         { return m_os; }
     wxLinuxDistributionInfo GetLinuxDistributionInfo() const
         { return m_ldi; }
+    wxBrowserInfo GetBrowserInfo() const
+        { return m_browserInfo; }
     wxPortId GetPortId() const
         { return m_port; }
     wxBitness GetBitness() const
@@ -348,6 +416,8 @@ public:
         { m_desktopEnv = de; }
     void SetLinuxDistributionInfo(const wxLinuxDistributionInfo& di)
         { m_ldi = di; }
+    void SetBrowserInfo(const wxBrowserInfo& browserInfo)
+        { m_browserInfo = browserInfo; }
 
 
     // miscellaneous
@@ -404,6 +474,9 @@ protected:
 
     wxString m_desktopEnv;
     wxLinuxDistributionInfo m_ldi;
+
+    // wxWebAssembly specific
+    wxBrowserInfo m_browserInfo;
 
 
     // toolkit

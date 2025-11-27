@@ -91,7 +91,7 @@ wxSize wxGenericStaticText::DoGetBestClientSize() const
         return m_markupText->Measure(dc);
 #endif // wxUSE_MARKUP
 
-    return dc.GetMultiLineTextExtent(GetLabel());
+    return dc.GetMultiLineTextExtent(GetLabelText());
 }
 
 void wxGenericStaticText::SetLabel(const wxString& label)
