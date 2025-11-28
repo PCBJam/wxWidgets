@@ -107,13 +107,19 @@ protected:
     // Create the WebGL context
     bool CreateWebGLContext(const wxGLAttributes& dispAttrs);
 
+    // Override size and visibility handling to update the canvas element
+    virtual void DoSetSize(int x, int y, int width, int height,
+                           int sizeFlags = wxSIZE_AUTO) wxOVERRIDE;
+    virtual bool Show(bool show = true) wxOVERRIDE;
+
     // Convert wxGL attributes to Emscripten WebGL context attributes
     static void ConvertWXAttrsToWebGL(const wxGLAttributes& dispAttrs,
                                       EmscriptenWebGLContextAttributes& attrs);
 
 private:
-    std::string m_canvasTarget;  // Canvas element selector (e.g., "#canvas")
+    std::string m_canvasTarget;  // Canvas element selector (e.g., "#window-123 canvas")
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE m_webglContext;
+    int m_cssId;  // CSS ID for the canvas element in DOM
 
     wxDECLARE_CLASS(wxGLCanvas);
 };

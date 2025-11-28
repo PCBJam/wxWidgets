@@ -417,6 +417,112 @@ if (typeof navigator !== 'undefined') {
     }
   };
 
+  // GL canvas element management (for wxGLCanvas child windows)
+  var glCanvasMap = new Map();
+  var nextGLCanvasId = 1;
+
+  var createGLCanvas = function (isVisible) {
+    var id = nextGLCanvasId++;
+    var canvas = document.createElement('canvas');
+    canvas.id = 'glcanvas-' + id;
+    canvas.className = 'gl-canvas';
+    canvas.style.position = 'absolute';
+    canvas.style.display = 'none';  // Always start hidden until properly positioned
+    canvas.style.zIndex = '100';  // Above 2D canvas
+    canvas.style.pointerEvents = 'none';  // Don't intercept clicks - let main canvas handle events
+    document.getElementById('window-container').appendChild(canvas);
+    glCanvasMap.set(id, canvas);
+    return id;
+  };
+
+  var setGLCanvasRect = function (id, x, y, width, height) {
+    var canvas = glCanvasMap.get(id);
+    if (!canvas) return;
+
+    // Only position and show if we have valid dimensions
+    if (width <= 0 || height <= 0) {
+      canvas.style.display = 'none';
+      return;
+    }
+
+    var header = document.getElementsByClassName('header')[0];
+    var headerHeight = header ? header.offsetHeight : 0;
+
+    canvas.style.left = x + 'px';
+    canvas.style.top = (y + headerHeight) + 'px';
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    var scaleFactor = getDisplayScaleFactor();
+    canvas.width = width * scaleFactor;
+    canvas.height = height * scaleFactor;
+
+    // Show the canvas now that it's properly positioned
+    // (visibility is also controlled by setGLCanvasVisibility for show/hide logic)
+    if (canvas.dataset.shouldBeVisible !== 'false') {
+      canvas.style.display = 'block';
+    }
+  };
+
+  var setGLCanvasVisibility = function (id, isVisible) {
+    var canvas = glCanvasMap.get(id);
+    if (canvas) {
+      canvas.dataset.shouldBeVisible = isVisible ? 'true' : 'false';
+      canvas.style.display = isVisible ? 'block' : 'none';
+    }
+  };
+
+  var destroyGLCanvas = function (id) {
+    var canvas = glCanvasMap.get(id);
+    if (canvas && canvas.parentNode) {
+      canvas.parentNode.removeChild(canvas);
+    }
+    glCanvasMap.delete(id);
+  };
+
+  // Patch Emscripten's GL.newRenderingFrameStarted to handle contexts without temp buffers
+  // This is needed because wxGLCanvas creates additional WebGL contexts that don't have
+  // the temp buffers initialized (those are only set up during GLImmediate.init for the main context)
+  var patchGLNewRenderingFrameStarted = function () {
+    if (typeof GL === 'undefined' || !GL.newRenderingFrameStarted) {
+      return; // GL not initialized yet
+    }
+    if (GL._wxPatched) {
+      return; // Already patched
+    }
+    var originalNewRenderingFrameStarted = GL.newRenderingFrameStarted;
+    GL.newRenderingFrameStarted = function () {
+      if (!GL.currentContext) {
+        return;
+      }
+      // Skip temp buffer operations if they haven't been initialized for this context
+      if (!GL.currentContext.tempVertexBuffers1 || !GL.currentContext.tempVertexBufferCounters1) {
+        return;
+      }
+      return originalNewRenderingFrameStarted.call(this);
+    };
+    GL._wxPatched = true;
+  };
+
+  // Try to patch GL immediately and also set up a delayed check
+  // (GL object is created after wx.js runs)
+  if (typeof GL !== 'undefined') {
+    patchGLNewRenderingFrameStarted();
+  }
+  // Check periodically until patched (GL is created during Module initialization)
+  var glPatchInterval = setInterval(function () {
+    if (typeof GL !== 'undefined') {
+      patchGLNewRenderingFrameStarted();
+      if (GL._wxPatched) {
+        clearInterval(glPatchInterval);
+      }
+    }
+  }, 10);
+  // Clear interval after 5 seconds to avoid memory leak if GL never gets created
+  setTimeout(function () {
+    clearInterval(glPatchInterval);
+  }, 5000);
+
   var createWindowContext = function (windowId, x, y, width, height, scaleFactor) {
     var id = nextContextId++;
     //console.log('createWindowContext: ' + windowId + ' ' + x + ' ' + y + ' ' + width + ' ' + height);
@@ -442,7 +548,7 @@ if (typeof navigator !== 'undefined') {
   };
 
   var destroyWindowContext = function (id) {
-    var ctx = contextMap.get(id); 
+    var ctx = contextMap.get(id);
 
     if (ctx.isInitialized) {
       ctx.restore();

@@ -23,6 +23,7 @@
 #endif
 
 #ifdef __EMSCRIPTEN__
+#include <emscripten.h>
 #include <emscripten/html5.h>
 #include <GLES2/gl2.h>
 #endif
@@ -312,7 +313,29 @@ bool wxGLContext::SetCurrent(const wxGLCanvas& win) const
         return false;
 
     EMSCRIPTEN_RESULT result = emscripten_webgl_make_context_current(ctx);
-    return result == EMSCRIPTEN_RESULT_SUCCESS;
+    if ( result != EMSCRIPTEN_RESULT_SUCCESS )
+        return false;
+
+    // Initialize GLImmediate if not already done
+    // This is needed because GLImmediate.init() is normally called only for the
+    // main canvas context, but wxGLCanvas creates its own separate WebGL context.
+    // Without this, GL emulation functions like glEnable crash with null texUnits.
+    //
+    // We need to set Browser.useWebGL=true first, because GLImmediate.init() checks
+    // this flag and returns early without initializing TexEnvJIT if it's false.
+    // The main wxWidgets canvas uses 2D context, so Browser.useWebGL would be false.
+    EM_ASM({
+        if (typeof GLImmediate !== 'undefined' && !GLImmediate.initted) {
+            // Save old value and set useWebGL to true for init
+            var oldUseWebGL = Browser.useWebGL;
+            Browser.useWebGL = true;
+            GLImmediate.init();
+            // Restore original value
+            Browser.useWebGL = oldUseWebGL;
+        }
+    });
+
+    return true;
 }
 
 // ============================================================================
@@ -324,7 +347,8 @@ wxIMPLEMENT_CLASS(wxGLCanvas, wxWindow);
 void wxGLCanvas::Init()
 {
     m_webglContext = 0;
-    m_canvasTarget = "#canvas";  // Default canvas selector
+    m_cssId = wxID_NONE;
+    m_canvasTarget = "";  // Will be set dynamically in Create()
 }
 
 wxGLCanvas::wxGLCanvas(wxWindow *parent,
@@ -367,6 +391,24 @@ bool wxGLCanvas::Create(wxWindow *parent,
     if ( !wxWindow::Create(parent, id, pos, size, style, name) )
         return false;
 
+    // Create a dedicated GL canvas element in JavaScript
+    // This canvas is separate from the 2D UI canvas to avoid context conflicts
+    m_cssId = EM_ASM_INT({
+        return createGLCanvas(true);
+    });
+
+    // Position the GL canvas element to match this window's screen position
+    wxPoint screenPos = GetScreenPosition();
+    wxSize clientSize = GetClientSize();
+    EM_ASM({
+        setGLCanvasRect($0, $1, $2, $3, $4);
+    }, m_cssId, screenPos.x, screenPos.y, clientSize.GetWidth(), clientSize.GetHeight());
+
+    // Set canvas selector to point to our dedicated GL canvas element
+    char selectorBuf[64];
+    snprintf(selectorBuf, sizeof(selectorBuf), "#glcanvas-%d", m_cssId);
+    m_canvasTarget = selectorBuf;
+
     return CreateWebGLContext(dispAttrs);
 }
 
@@ -399,6 +441,45 @@ wxGLCanvas::~wxGLCanvas()
         emscripten_webgl_destroy_context(m_webglContext);
         m_webglContext = 0;
     }
+
+    // Destroy the GL canvas element we created
+    if ( m_cssId != wxID_NONE )
+    {
+        EM_ASM({
+            destroyGLCanvas($0);
+        }, m_cssId);
+        m_cssId = wxID_NONE;
+    }
+}
+
+void wxGLCanvas::DoSetSize(int x, int y, int width, int height, int sizeFlags)
+{
+    wxWindow::DoSetSize(x, y, width, height, sizeFlags);
+
+    // Update the GL canvas element position to match the window
+    if ( m_cssId != wxID_NONE )
+    {
+        wxPoint screenPos = GetScreenPosition();
+        wxSize clientSize = GetClientSize();
+        EM_ASM({
+            setGLCanvasRect($0, $1, $2, $3, $4);
+        }, m_cssId, screenPos.x, screenPos.y, clientSize.GetWidth(), clientSize.GetHeight());
+    }
+}
+
+bool wxGLCanvas::Show(bool show)
+{
+    bool result = wxWindow::Show(show);
+
+    // Update the GL canvas element visibility to match the window
+    if ( m_cssId != wxID_NONE )
+    {
+        EM_ASM({
+            setGLCanvasVisibility($0, $1);
+        }, m_cssId, show);
+    }
+
+    return result;
 }
 
 bool wxGLCanvas::CreateWebGLContext(const wxGLAttributes& dispAttrs)
@@ -540,9 +621,8 @@ bool wxGLCanvas::IsDisplaySupported(const int *attribList)
 
 // ============================================================================
 // wxGLApp implementation
+// Note: wxIMPLEMENT_CLASS(wxGLApp, wxApp) is in glcmn.cpp (common code)
 // ============================================================================
-
-wxIMPLEMENT_DYNAMIC_CLASS(wxGLApp, wxApp);
 
 bool wxGLApp::InitGLVisual(const int *attribList)
 {
