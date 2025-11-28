@@ -1114,6 +1114,7 @@ bool wxGetUserName(wxChar *buf, int sz)
 #endif // HAVE_PW_GECOS/!HAVE_PW_GECOS
 }
 
+#ifndef __WXWASM__
 bool wxIsPlatform64Bit()
 {
 #if SIZEOF_VOID_P == 8
@@ -1133,6 +1134,7 @@ wxString wxGetCpuArchitectureName()
 {
     return wxGetCommandOutput(wxT("uname -m"));
 }
+#endif // !__WXWASM__
 
 wxString wxGetNativeCpuArchitectureName()
 {
@@ -1213,8 +1215,9 @@ wxLinuxDistributionInfo wxGetLinuxDistributionInfo()
 }
 #endif // __LINUX__
 
-// these functions are in src/osx/utils_base.mm for wxOSX.
-#ifndef __DARWIN__
+// these functions are in src/osx/utils_base.mm for wxOSX
+// and in src/wasm/utils.cpp for wxWASM.
+#if !defined(__DARWIN__) && !defined(__WXWASM__)
 
 wxOperatingSystemId wxGetOsVersion(int *verMaj, int *verMin, int *verMicro)
 {
@@ -1283,7 +1286,7 @@ bool wxCheckOsVersion(int majorVsn, int minorVsn, int microVsn)
         || (majorCur == majorVsn && minorCur == minorVsn && microCur >= microVsn);
 }
 
-#endif // !__DARWIN__
+#endif // !__DARWIN__ && !__WXWASM__
 
 unsigned long wxGetProcessId()
 {

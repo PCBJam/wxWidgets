@@ -1053,7 +1053,7 @@ bool wxSetDetectableAutoRepeat( bool WXUNUSED(flag) )
 
 #if defined(__WINDOWS__) && !defined(__WXQT__) || \
     defined(__WXX11__) || defined(__WXGTK__) || defined(__WXMOTIF__) || \
-    defined(__WXOSX__)
+    defined(__WXOSX__) || defined(__WXWASM__)
 
 // implemented in a port-specific utils source file:
 bool wxDoLaunchDefaultBrowser(const wxLaunchBrowserParams& params);
