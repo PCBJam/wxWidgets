@@ -10,6 +10,7 @@
 /setup.h
 /*tags
 /autom4te.cache
+/configure~
 
 # /build/
 
@@ -248,6 +249,7 @@
 /locale/msw/*.mo
 
 # /samples/
+/samples/**/*.sln
 /samples/**/*c*_msw
 /samples/**/*c*_msw_x64
 /samples/**/*c*_msw_arm64
@@ -345,6 +347,7 @@
 /src/zlib/Release
 
 # /tests/
+/tests/*.sln
 /tests/*c*_msw
 /tests/*c*_msw_x64
 /tests/*c*_msw_arm64

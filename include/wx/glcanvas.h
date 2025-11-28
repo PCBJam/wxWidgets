@@ -332,6 +332,8 @@ public:
     #include "wx/osx/glcanvas.h"
 #elif defined(__WXQT__)
     #include "wx/qt/glcanvas.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/glcanvas.h"
 #else
     #error "wxGLCanvas not supported in this wxWidgets port"
 #endif

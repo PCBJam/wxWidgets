@@ -1320,6 +1320,13 @@
 // otherwise.
 #define wxUSE_GLCANVAS       1
 
+// Enable OpenGL emulation for WebGL compatibility.
+// WebGL doesn't support immediate mode GL (glBegin/glEnd/etc.), so we need
+// to emulate these using vertex arrays.
+//
+// Default is 0 for desktop GL, but must be 1 for WASM/WebGL.
+#define wxUSE_OPENGL_EMULATION 1
+
 // wxRichTextCtrl allows editing of styled text.
 //
 // Default is 1.

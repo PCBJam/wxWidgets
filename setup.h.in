@@ -548,6 +548,8 @@
 
 #define wxUSE_GLCANVAS_EGL   0
 
+#define wxUSE_OPENGL_EMULATION 0
+
 #define wxUSE_RICHTEXT       0
 
 

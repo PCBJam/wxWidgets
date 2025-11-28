@@ -3985,6 +3985,13 @@ if test "$wxUSE_OPENGL" = "yes" -o "$wxUSE_OPENGL" = "auto"; then
                 USE_OPENGL=0
             fi
         fi
+    elif test "$USE_WASM" = 1; then
+        dnl WASM uses WebGL through Emscripten - no external libraries needed
+        AC_MSG_NOTICE([Using WebGL for OpenGL support on WASM])
+        OPENGL_LIBS=""
+        dnl WebGL doesn't support immediate mode GL (glBegin/glEnd/etc.), so we need
+        dnl to emulate these using vertex arrays
+        AC_DEFINE(wxUSE_OPENGL_EMULATION)
     else
         AC_MSG_WARN([wxGLCanvas not implemented for this port, library will be compiled without it.])
         wxUSE_OPENGL="no"

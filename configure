@@ -725,6 +725,8 @@ COND_USE_CAIRO_1
 COND_UNICODE_1
 COND_TOOLKIT_X11_USE_GUI_1
 COND_TOOLKIT_X11
+COND_TOOLKIT_WASM_USE_GUI_1
+COND_TOOLKIT_WASM
 COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0
 COND_TOOLKIT_QT
 COND_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0
@@ -735,8 +737,6 @@ COND_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0
 COND_TOOLKIT_OSX_COCOA_USE_GUI_1
 COND_TOOLKIT_OSX_COCOA
 COND_TOOLKIT_OSX_CARBON
-COND_TOOLKIT_WASM_USE_GUI_1
-COND_TOOLKIT_WASM
 COND_TOOLKIT_MSW_USE_GUI_1_WXUNIV_0
 COND_TOOLKIT_MSW_USE_GUI_1
 COND_TOOLKIT_MSW
@@ -35532,6 +35532,12 @@ printf "%s\n" "$as_me: WARNING: OpenGL libraries not available, disabling suppor
                 USE_OPENGL=0
             fi
         fi
+    elif test "$USE_WASM" = 1; then
+                { printf "%s\n" "$as_me:${as_lineno-$LINENO}: Using WebGL for OpenGL support on WASM" >&5
+printf "%s\n" "$as_me: Using WebGL for OpenGL support on WASM" >&6;}
+        OPENGL_LIBS=""
+                        printf "%s\n" "#define wxUSE_OPENGL_EMULATION 1" >>confdefs.h
+
     else
         { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: wxGLCanvas not implemented for this port, library will be compiled without it." >&5
 printf "%s\n" "$as_me: WARNING: wxGLCanvas not implemented for this port, library will be compiled without it." >&2;}
@@ -47809,16 +47815,6 @@ EOF
         COND_TOOLKIT_MSW_USE_GUI_1_WXUNIV_0=""
     fi
 
-    COND_TOOLKIT_WASM="#"
-    if test "x$TOOLKIT" = "xWASM" ; then
-        COND_TOOLKIT_WASM=""
-    fi
-
-    COND_TOOLKIT_WASM_USE_GUI_1="#"
-    if test "x$TOOLKIT" = "xWASM" -a "x$USE_GUI" = "x1" ; then
-        COND_TOOLKIT_WASM_USE_GUI_1=""
-    fi
-
     COND_TOOLKIT_OSX_CARBON="#"
     if test "x$TOOLKIT" = "xOSX_CARBON" ; then
         COND_TOOLKIT_OSX_CARBON=""
@@ -47867,6 +47863,16 @@ EOF
     COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0="#"
     if test "x$TOOLKIT" = "xQT" -a "x$USE_GUI" = "x1" -a "x$WXUNIV" = "x0" ; then
         COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0=""
+    fi
+
+    COND_TOOLKIT_WASM="#"
+    if test "x$TOOLKIT" = "xWASM" ; then
+        COND_TOOLKIT_WASM=""
+    fi
+
+    COND_TOOLKIT_WASM_USE_GUI_1="#"
+    if test "x$TOOLKIT" = "xWASM" -a "x$USE_GUI" = "x1" ; then
+        COND_TOOLKIT_WASM_USE_GUI_1=""
     fi
 
     COND_TOOLKIT_X11="#"
