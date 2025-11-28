@@ -66,7 +66,7 @@ public:
     virtual wxString GetDesktopEnvironment() const wxOVERRIDE;
 #endif // __WXGTK20____
 
-#if defined(__WXGTK20__)
+#if defined(__WXGTK20__) || defined(__WXWASM__)
     virtual bool ShowAssertDialog(const wxString& msg) wxOVERRIDE;
 #endif
 

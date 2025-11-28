@@ -2928,7 +2928,40 @@ COND_TOOLKIT_MSW_LOWLEVEL_HDR =  \
 	wx/msw/joystick.h \
 	wx/msw/evtloop.h
 @COND_TOOLKIT_MSW@LOWLEVEL_HDR = $(COND_TOOLKIT_MSW_LOWLEVEL_HDR)
-@COND_TOOLKIT_OSX_COCOA@LOWLEVEL_HDR = 
+COND_TOOLKIT_WASM_LOWLEVEL_HDR =  \
+	wx/generic/caret.h \
+	wx/generic/icon.h \
+	wx/generic/imaglist.h \
+	wx/generic/paletteg.h \
+	wx/generic/region.h \
+	wx/unix/sound.h \
+	wx/wasm/app.h \
+	wx/wasm/bitmap.h \
+	wx/wasm/brush.h \
+	wx/wasm/chkconf.h \
+	wx/wasm/clipbrd.h \
+	wx/wasm/colour.h \
+	wx/wasm/config.h \
+	wx/wasm/cursor.h \
+	wx/wasm/dataform.h \
+	wx/wasm/dataobj.h \
+	wx/wasm/dataobj2.h \
+	wx/wasm/dc.h \
+	wx/wasm/dcclient.h \
+	wx/wasm/dcmemory.h \
+	wx/wasm/dcscreen.h \
+	wx/wasm/dnd.h \
+	wx/wasm/evtloop.h \
+	wx/wasm/font.h \
+	wx/wasm/nonownedwnd.h \
+	wx/wasm/private.h \
+	wx/wasm/pen.h \
+	wx/wasm/popupwin.h \
+	wx/wasm/region.h \
+	wx/wasm/toplevel.h \
+	wx/wasm/window.h
+@COND_TOOLKIT_WASM@LOWLEVEL_HDR = $(COND_TOOLKIT_WASM_LOWLEVEL_HDR)
+@COND_TOOLKIT_OSX_COCOA@LOWLEVEL_HDR =
 @COND_TOOLKIT_OSX_IPHONE@LOWLEVEL_HDR = 
 COND_TOOLKIT_X11_LOWLEVEL_HDR =  \
 	wx/generic/caret.h \
@@ -5283,6 +5316,44 @@ COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS =  \
 	monodll_access.o \
 	monodll_msw_bmpbndl.o
 @COND_TOOLKIT_MSW@__LOWLEVEL_SRC_OBJECTS = $(COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS)
+COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS =  \
+	monodll_generic_caret.o \
+	monodll_generic_icon.o \
+	monodll_generic_imaglist.o \
+	monodll_unix_sound.o \
+	monodll_paletteg.o \
+	monodll_regiong.o \
+	monodll_generic_textmeasure.o \
+	monodll_wasm_app.o \
+	monodll_wasm_bitmap.o \
+	monodll_wasm_brush.o \
+	monodll_wasm_clipbrd.o \
+	monodll_wasm_colour.o \
+	monodll_wasm_config.o \
+	monodll_wasm_cursor.o \
+	monodll_wasm_dataobj.o \
+	monodll_wasm_dc.o \
+	monodll_wasm_dcclient.o \
+	monodll_wasm_dcmemory.o \
+	monodll_wasm_dcscreen.o \
+	monodll_wasm_display.o \
+	monodll_wasm_dnd.o \
+	monodll_wasm_evtloop.o \
+	monodll_wasm_font.o \
+	monodll_wasm_fontenum.o \
+	monodll_wasm_fontutil.o \
+	monodll_keyboard.o \
+	monodll_mouse.o \
+	monodll_wasm_nonownedwnd.o \
+	monodll_wasm_pen.o \
+	monodll_wasm_popupwin.o \
+	monodll_wasm_region.o \
+	monodll_wasm_settings.o \
+	monodll_wasm_timer.o \
+	monodll_wasm_toplevel.o \
+	monodll_wasm_utils.o \
+	monodll_wasm_window.o
+@COND_TOOLKIT_WASM@__LOWLEVEL_SRC_OBJECTS = $(COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS)
 @COND_TOOLKIT_OSX_COCOA@__LOWLEVEL_SRC_OBJECTS = \
 @COND_TOOLKIT_OSX_COCOA@	$(__OSX_LOWLEVEL_SRC_OBJECTS)
 @COND_TOOLKIT_OSX_IPHONE@__LOWLEVEL_SRC_OBJECTS = \
@@ -6194,6 +6265,44 @@ COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_1 =  \
 	monodll_access.o \
 	monodll_msw_bmpbndl.o
 @COND_TOOLKIT_MSW@__LOWLEVEL_SRC_OBJECTS_1 = $(COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_1)
+COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_1 =  \
+	monodll_generic_caret.o \
+	monodll_generic_icon.o \
+	monodll_generic_imaglist.o \
+	monodll_unix_sound.o \
+	monodll_paletteg.o \
+	monodll_regiong.o \
+	monodll_generic_textmeasure.o \
+	monodll_wasm_app.o \
+	monodll_wasm_bitmap.o \
+	monodll_wasm_brush.o \
+	monodll_wasm_clipbrd.o \
+	monodll_wasm_colour.o \
+	monodll_wasm_config.o \
+	monodll_wasm_cursor.o \
+	monodll_wasm_dataobj.o \
+	monodll_wasm_dc.o \
+	monodll_wasm_dcclient.o \
+	monodll_wasm_dcmemory.o \
+	monodll_wasm_dcscreen.o \
+	monodll_wasm_display.o \
+	monodll_wasm_dnd.o \
+	monodll_wasm_evtloop.o \
+	monodll_wasm_font.o \
+	monodll_wasm_fontenum.o \
+	monodll_wasm_fontutil.o \
+	monodll_keyboard.o \
+	monodll_mouse.o \
+	monodll_wasm_nonownedwnd.o \
+	monodll_wasm_pen.o \
+	monodll_wasm_popupwin.o \
+	monodll_wasm_region.o \
+	monodll_wasm_settings.o \
+	monodll_wasm_timer.o \
+	monodll_wasm_toplevel.o \
+	monodll_wasm_utils.o \
+	monodll_wasm_window.o
+@COND_TOOLKIT_WASM@__LOWLEVEL_SRC_OBJECTS_1 = $(COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_1)
 @COND_TOOLKIT_OSX_COCOA@__LOWLEVEL_SRC_OBJECTS_1 = \
 @COND_TOOLKIT_OSX_COCOA@	$(__OSX_LOWLEVEL_SRC_OBJECTS)
 @COND_TOOLKIT_OSX_IPHONE@__LOWLEVEL_SRC_OBJECTS_1 \
@@ -7294,6 +7403,44 @@ COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_2 =  \
 	monolib_access.o \
 	monolib_msw_bmpbndl.o
 @COND_TOOLKIT_MSW@__LOWLEVEL_SRC_OBJECTS_2 = $(COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_2)
+COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_2 =  \
+	monolib_generic_caret.o \
+	monolib_generic_icon.o \
+	monolib_generic_imaglist.o \
+	monolib_unix_sound.o \
+	monolib_paletteg.o \
+	monolib_regiong.o \
+	monolib_generic_textmeasure.o \
+	monolib_wasm_app.o \
+	monolib_wasm_bitmap.o \
+	monolib_wasm_brush.o \
+	monolib_wasm_clipbrd.o \
+	monolib_wasm_colour.o \
+	monolib_wasm_config.o \
+	monolib_wasm_cursor.o \
+	monolib_wasm_dataobj.o \
+	monolib_wasm_dc.o \
+	monolib_wasm_dcclient.o \
+	monolib_wasm_dcmemory.o \
+	monolib_wasm_dcscreen.o \
+	monolib_wasm_display.o \
+	monolib_wasm_dnd.o \
+	monolib_wasm_evtloop.o \
+	monolib_wasm_font.o \
+	monolib_wasm_fontenum.o \
+	monolib_wasm_fontutil.o \
+	monolib_keyboard.o \
+	monolib_mouse.o \
+	monolib_wasm_nonownedwnd.o \
+	monolib_wasm_pen.o \
+	monolib_wasm_popupwin.o \
+	monolib_wasm_region.o \
+	monolib_wasm_settings.o \
+	monolib_wasm_timer.o \
+	monolib_wasm_toplevel.o \
+	monolib_wasm_utils.o \
+	monolib_wasm_window.o
+@COND_TOOLKIT_WASM@__LOWLEVEL_SRC_OBJECTS_2 = $(COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_2)
 @COND_TOOLKIT_OSX_COCOA@__LOWLEVEL_SRC_OBJECTS_2 = \
 @COND_TOOLKIT_OSX_COCOA@	$(__OSX_LOWLEVEL_SRC_OBJECTS_17)
 @COND_TOOLKIT_OSX_IPHONE@__LOWLEVEL_SRC_OBJECTS_2 \
@@ -8205,6 +8352,44 @@ COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_3 =  \
 	monolib_access.o \
 	monolib_msw_bmpbndl.o
 @COND_TOOLKIT_MSW@__LOWLEVEL_SRC_OBJECTS_3 = $(COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_3)
+COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_3 =  \
+	monolib_generic_caret.o \
+	monolib_generic_icon.o \
+	monolib_generic_imaglist.o \
+	monolib_unix_sound.o \
+	monolib_paletteg.o \
+	monolib_regiong.o \
+	monolib_generic_textmeasure.o \
+	monolib_wasm_app.o \
+	monolib_wasm_bitmap.o \
+	monolib_wasm_brush.o \
+	monolib_wasm_clipbrd.o \
+	monolib_wasm_colour.o \
+	monolib_wasm_config.o \
+	monolib_wasm_cursor.o \
+	monolib_wasm_dataobj.o \
+	monolib_wasm_dc.o \
+	monolib_wasm_dcclient.o \
+	monolib_wasm_dcmemory.o \
+	monolib_wasm_dcscreen.o \
+	monolib_wasm_display.o \
+	monolib_wasm_dnd.o \
+	monolib_wasm_evtloop.o \
+	monolib_wasm_font.o \
+	monolib_wasm_fontenum.o \
+	monolib_wasm_fontutil.o \
+	monolib_keyboard.o \
+	monolib_mouse.o \
+	monolib_wasm_nonownedwnd.o \
+	monolib_wasm_pen.o \
+	monolib_wasm_popupwin.o \
+	monolib_wasm_region.o \
+	monolib_wasm_settings.o \
+	monolib_wasm_timer.o \
+	monolib_wasm_toplevel.o \
+	monolib_wasm_utils.o \
+	monolib_wasm_window.o
+@COND_TOOLKIT_WASM@__LOWLEVEL_SRC_OBJECTS_3 = $(COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_3)
 @COND_TOOLKIT_OSX_COCOA@__LOWLEVEL_SRC_OBJECTS_3 = \
 @COND_TOOLKIT_OSX_COCOA@	$(__OSX_LOWLEVEL_SRC_OBJECTS_17)
 @COND_TOOLKIT_OSX_IPHONE@__LOWLEVEL_SRC_OBJECTS_3 \
@@ -9459,6 +9644,44 @@ COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_4 =  \
 	coredll_access.o \
 	coredll_msw_bmpbndl.o
 @COND_TOOLKIT_MSW@__LOWLEVEL_SRC_OBJECTS_4 = $(COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_4)
+COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_4 =  \
+	coredll_generic_caret.o \
+	coredll_generic_icon.o \
+	coredll_generic_imaglist.o \
+	coredll_unix_sound.o \
+	coredll_paletteg.o \
+	coredll_regiong.o \
+	coredll_generic_textmeasure.o \
+	coredll_wasm_app.o \
+	coredll_wasm_bitmap.o \
+	coredll_wasm_brush.o \
+	coredll_wasm_clipbrd.o \
+	coredll_wasm_colour.o \
+	coredll_wasm_config.o \
+	coredll_wasm_cursor.o \
+	coredll_wasm_dataobj.o \
+	coredll_wasm_dc.o \
+	coredll_wasm_dcclient.o \
+	coredll_wasm_dcmemory.o \
+	coredll_wasm_dcscreen.o \
+	coredll_wasm_display.o \
+	coredll_wasm_dnd.o \
+	coredll_wasm_evtloop.o \
+	coredll_wasm_font.o \
+	coredll_wasm_fontenum.o \
+	coredll_wasm_fontutil.o \
+	coredll_keyboard.o \
+	coredll_mouse.o \
+	coredll_wasm_nonownedwnd.o \
+	coredll_wasm_pen.o \
+	coredll_wasm_popupwin.o \
+	coredll_wasm_region.o \
+	coredll_wasm_settings.o \
+	coredll_wasm_timer.o \
+	coredll_wasm_toplevel.o \
+	coredll_wasm_utils.o \
+	coredll_wasm_window.o
+@COND_TOOLKIT_WASM@__LOWLEVEL_SRC_OBJECTS_4 = $(COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_4)
 @COND_TOOLKIT_OSX_COCOA@__LOWLEVEL_SRC_OBJECTS_4 = \
 @COND_TOOLKIT_OSX_COCOA@	$(__OSX_LOWLEVEL_SRC_OBJECTS_1_1)
 @COND_TOOLKIT_OSX_IPHONE@__LOWLEVEL_SRC_OBJECTS_4 \
@@ -10370,6 +10593,44 @@ COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_5 =  \
 	coredll_access.o \
 	coredll_msw_bmpbndl.o
 @COND_TOOLKIT_MSW@__LOWLEVEL_SRC_OBJECTS_5 = $(COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_5)
+COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_5 =  \
+	coredll_generic_caret.o \
+	coredll_generic_icon.o \
+	coredll_generic_imaglist.o \
+	coredll_unix_sound.o \
+	coredll_paletteg.o \
+	coredll_regiong.o \
+	coredll_generic_textmeasure.o \
+	coredll_wasm_app.o \
+	coredll_wasm_bitmap.o \
+	coredll_wasm_brush.o \
+	coredll_wasm_clipbrd.o \
+	coredll_wasm_colour.o \
+	coredll_wasm_config.o \
+	coredll_wasm_cursor.o \
+	coredll_wasm_dataobj.o \
+	coredll_wasm_dc.o \
+	coredll_wasm_dcclient.o \
+	coredll_wasm_dcmemory.o \
+	coredll_wasm_dcscreen.o \
+	coredll_wasm_display.o \
+	coredll_wasm_dnd.o \
+	coredll_wasm_evtloop.o \
+	coredll_wasm_font.o \
+	coredll_wasm_fontenum.o \
+	coredll_wasm_fontutil.o \
+	coredll_keyboard.o \
+	coredll_mouse.o \
+	coredll_wasm_nonownedwnd.o \
+	coredll_wasm_pen.o \
+	coredll_wasm_popupwin.o \
+	coredll_wasm_region.o \
+	coredll_wasm_settings.o \
+	coredll_wasm_timer.o \
+	coredll_wasm_toplevel.o \
+	coredll_wasm_utils.o \
+	coredll_wasm_window.o
+@COND_TOOLKIT_WASM@__LOWLEVEL_SRC_OBJECTS_5 = $(COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_5)
 @COND_TOOLKIT_OSX_COCOA@__LOWLEVEL_SRC_OBJECTS_5 = \
 @COND_TOOLKIT_OSX_COCOA@	$(__OSX_LOWLEVEL_SRC_OBJECTS_1_1)
 @COND_TOOLKIT_OSX_IPHONE@__LOWLEVEL_SRC_OBJECTS_5 \
@@ -11197,6 +11458,44 @@ COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_6 =  \
 	corelib_access.o \
 	corelib_msw_bmpbndl.o
 @COND_TOOLKIT_MSW@__LOWLEVEL_SRC_OBJECTS_6 = $(COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_6)
+COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_6 =  \
+	corelib_generic_caret.o \
+	corelib_generic_icon.o \
+	corelib_generic_imaglist.o \
+	corelib_unix_sound.o \
+	corelib_paletteg.o \
+	corelib_regiong.o \
+	corelib_generic_textmeasure.o \
+	corelib_wasm_app.o \
+	corelib_wasm_bitmap.o \
+	corelib_wasm_brush.o \
+	corelib_wasm_clipbrd.o \
+	corelib_wasm_colour.o \
+	corelib_wasm_config.o \
+	corelib_wasm_cursor.o \
+	corelib_wasm_dataobj.o \
+	corelib_wasm_dc.o \
+	corelib_wasm_dcclient.o \
+	corelib_wasm_dcmemory.o \
+	corelib_wasm_dcscreen.o \
+	corelib_wasm_display.o \
+	corelib_wasm_dnd.o \
+	corelib_wasm_evtloop.o \
+	corelib_wasm_font.o \
+	corelib_wasm_fontenum.o \
+	corelib_wasm_fontutil.o \
+	corelib_keyboard.o \
+	corelib_mouse.o \
+	corelib_wasm_nonownedwnd.o \
+	corelib_wasm_pen.o \
+	corelib_wasm_popupwin.o \
+	corelib_wasm_region.o \
+	corelib_wasm_settings.o \
+	corelib_wasm_timer.o \
+	corelib_wasm_toplevel.o \
+	corelib_wasm_utils.o \
+	corelib_wasm_window.o
+@COND_TOOLKIT_WASM@__LOWLEVEL_SRC_OBJECTS_6 = $(COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_6)
 @COND_TOOLKIT_OSX_COCOA@__LOWLEVEL_SRC_OBJECTS_6 = \
 @COND_TOOLKIT_OSX_COCOA@	$(__OSX_LOWLEVEL_SRC_OBJECTS_1_4)
 @COND_TOOLKIT_OSX_IPHONE@__LOWLEVEL_SRC_OBJECTS_6 \
@@ -12108,6 +12407,44 @@ COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_7 =  \
 	corelib_access.o \
 	corelib_msw_bmpbndl.o
 @COND_TOOLKIT_MSW@__LOWLEVEL_SRC_OBJECTS_7 = $(COND_TOOLKIT_MSW___LOWLEVEL_SRC_OBJECTS_7)
+COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_7 =  \
+	corelib_generic_caret.o \
+	corelib_generic_icon.o \
+	corelib_generic_imaglist.o \
+	corelib_unix_sound.o \
+	corelib_paletteg.o \
+	corelib_regiong.o \
+	corelib_generic_textmeasure.o \
+	corelib_wasm_app.o \
+	corelib_wasm_bitmap.o \
+	corelib_wasm_brush.o \
+	corelib_wasm_clipbrd.o \
+	corelib_wasm_colour.o \
+	corelib_wasm_config.o \
+	corelib_wasm_cursor.o \
+	corelib_wasm_dataobj.o \
+	corelib_wasm_dc.o \
+	corelib_wasm_dcclient.o \
+	corelib_wasm_dcmemory.o \
+	corelib_wasm_dcscreen.o \
+	corelib_wasm_display.o \
+	corelib_wasm_dnd.o \
+	corelib_wasm_evtloop.o \
+	corelib_wasm_font.o \
+	corelib_wasm_fontenum.o \
+	corelib_wasm_fontutil.o \
+	corelib_keyboard.o \
+	corelib_mouse.o \
+	corelib_wasm_nonownedwnd.o \
+	corelib_wasm_pen.o \
+	corelib_wasm_popupwin.o \
+	corelib_wasm_region.o \
+	corelib_wasm_settings.o \
+	corelib_wasm_timer.o \
+	corelib_wasm_toplevel.o \
+	corelib_wasm_utils.o \
+	corelib_wasm_window.o
+@COND_TOOLKIT_WASM@__LOWLEVEL_SRC_OBJECTS_7 = $(COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_7)
 @COND_TOOLKIT_OSX_COCOA@__LOWLEVEL_SRC_OBJECTS_7 = \
 @COND_TOOLKIT_OSX_COCOA@	$(__OSX_LOWLEVEL_SRC_OBJECTS_1_4)
 @COND_TOOLKIT_OSX_IPHONE@__LOWLEVEL_SRC_OBJECTS_7 \
@@ -19139,6 +19476,93 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_MSW_USE_GUI_1@monodll_msw_bmpbndl.o: $(srcdir)/src/msw/bmpbndl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_MSW_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/msw/bmpbndl.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_app.o: $(srcdir)/src/wasm/app.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/app.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_bitmap.o: $(srcdir)/src/wasm/bitmap.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/bitmap.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_brush.o: $(srcdir)/src/wasm/brush.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/brush.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_clipbrd.o: $(srcdir)/src/wasm/clipbrd.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/clipbrd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_colour.o: $(srcdir)/src/wasm/colour.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/colour.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_config.o: $(srcdir)/src/wasm/config.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/config.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_cursor.o: $(srcdir)/src/wasm/cursor.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/cursor.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_dataobj.o: $(srcdir)/src/wasm/dataobj.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/dataobj.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_dc.o: $(srcdir)/src/wasm/dc.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/dc.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_dcclient.o: $(srcdir)/src/wasm/dcclient.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/dcclient.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_dcmemory.o: $(srcdir)/src/wasm/dcmemory.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/dcmemory.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_dcscreen.o: $(srcdir)/src/wasm/dcscreen.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/dcscreen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_display.o: $(srcdir)/src/wasm/display.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/display.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_dnd.o: $(srcdir)/src/wasm/dnd.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/dnd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_evtloop.o: $(srcdir)/src/wasm/evtloop.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/evtloop.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_font.o: $(srcdir)/src/wasm/font.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/font.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_fontenum.o: $(srcdir)/src/wasm/fontenum.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/fontenum.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_fontutil.o: $(srcdir)/src/wasm/fontutil.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/fontutil.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_keyboard.o: $(srcdir)/src/wasm/keyboard.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/keyboard.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_mouse.o: $(srcdir)/src/wasm/mouse.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/mouse.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_nonownedwnd.o: $(srcdir)/src/wasm/nonownedwnd.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/nonownedwnd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_pen.o: $(srcdir)/src/wasm/pen.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/pen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_popupwin.o: $(srcdir)/src/wasm/popupwin.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/popupwin.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_region.o: $(srcdir)/src/wasm/region.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/region.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_settings.o: $(srcdir)/src/wasm/settings.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/settings.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_timer.o: $(srcdir)/src/wasm/timer.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/timer.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_toplevel.o: $(srcdir)/src/wasm/toplevel.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/toplevel.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_utils.o: $(srcdir)/src/wasm/utils.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/utils.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_window.o: $(srcdir)/src/wasm/window.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/window.cpp
+
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1@monodll_artmac.o: $(srcdir)/src/osx/artmac.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/osx/artmac.cpp
 
@@ -24460,6 +24884,93 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_TOOLKIT_MSW_USE_GUI_1@monolib_msw_bmpbndl.o: $(srcdir)/src/msw/bmpbndl.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_MSW_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/msw/bmpbndl.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_app.o: $(srcdir)/src/wasm/app.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/app.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_bitmap.o: $(srcdir)/src/wasm/bitmap.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/bitmap.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_brush.o: $(srcdir)/src/wasm/brush.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/brush.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_clipbrd.o: $(srcdir)/src/wasm/clipbrd.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/clipbrd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_colour.o: $(srcdir)/src/wasm/colour.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/colour.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_config.o: $(srcdir)/src/wasm/config.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/config.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_cursor.o: $(srcdir)/src/wasm/cursor.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/cursor.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_dataobj.o: $(srcdir)/src/wasm/dataobj.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/dataobj.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_dc.o: $(srcdir)/src/wasm/dc.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/dc.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_dcclient.o: $(srcdir)/src/wasm/dcclient.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/dcclient.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_dcmemory.o: $(srcdir)/src/wasm/dcmemory.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/dcmemory.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_dcscreen.o: $(srcdir)/src/wasm/dcscreen.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/dcscreen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_display.o: $(srcdir)/src/wasm/display.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/display.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_dnd.o: $(srcdir)/src/wasm/dnd.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/dnd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_evtloop.o: $(srcdir)/src/wasm/evtloop.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/evtloop.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_font.o: $(srcdir)/src/wasm/font.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/font.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_fontenum.o: $(srcdir)/src/wasm/fontenum.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/fontenum.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_fontutil.o: $(srcdir)/src/wasm/fontutil.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/fontutil.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_keyboard.o: $(srcdir)/src/wasm/keyboard.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/keyboard.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_mouse.o: $(srcdir)/src/wasm/mouse.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/mouse.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_nonownedwnd.o: $(srcdir)/src/wasm/nonownedwnd.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/nonownedwnd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_pen.o: $(srcdir)/src/wasm/pen.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/pen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_popupwin.o: $(srcdir)/src/wasm/popupwin.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/popupwin.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_region.o: $(srcdir)/src/wasm/region.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/region.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_settings.o: $(srcdir)/src/wasm/settings.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/settings.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_timer.o: $(srcdir)/src/wasm/timer.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/timer.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_toplevel.o: $(srcdir)/src/wasm/toplevel.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/toplevel.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_utils.o: $(srcdir)/src/wasm/utils.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/utils.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_window.o: $(srcdir)/src/wasm/window.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/window.cpp
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1@monolib_artmac.o: $(srcdir)/src/osx/artmac.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/osx/artmac.cpp
@@ -29888,6 +30399,93 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_MSW_USE_GUI_1@coredll_msw_bmpbndl.o: $(srcdir)/src/msw/bmpbndl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_MSW_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/msw/bmpbndl.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_app.o: $(srcdir)/src/wasm/app.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/app.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_bitmap.o: $(srcdir)/src/wasm/bitmap.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/bitmap.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_brush.o: $(srcdir)/src/wasm/brush.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/brush.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_clipbrd.o: $(srcdir)/src/wasm/clipbrd.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/clipbrd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_colour.o: $(srcdir)/src/wasm/colour.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/colour.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_config.o: $(srcdir)/src/wasm/config.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/config.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_cursor.o: $(srcdir)/src/wasm/cursor.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/cursor.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_dataobj.o: $(srcdir)/src/wasm/dataobj.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/dataobj.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_dc.o: $(srcdir)/src/wasm/dc.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/dc.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_dcclient.o: $(srcdir)/src/wasm/dcclient.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/dcclient.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_dcmemory.o: $(srcdir)/src/wasm/dcmemory.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/dcmemory.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_dcscreen.o: $(srcdir)/src/wasm/dcscreen.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/dcscreen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_display.o: $(srcdir)/src/wasm/display.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/display.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_dnd.o: $(srcdir)/src/wasm/dnd.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/dnd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_evtloop.o: $(srcdir)/src/wasm/evtloop.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/evtloop.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_font.o: $(srcdir)/src/wasm/font.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/font.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_fontenum.o: $(srcdir)/src/wasm/fontenum.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/fontenum.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_fontutil.o: $(srcdir)/src/wasm/fontutil.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/fontutil.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_keyboard.o: $(srcdir)/src/wasm/keyboard.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/keyboard.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_mouse.o: $(srcdir)/src/wasm/mouse.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/mouse.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_nonownedwnd.o: $(srcdir)/src/wasm/nonownedwnd.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/nonownedwnd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_pen.o: $(srcdir)/src/wasm/pen.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/pen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_popupwin.o: $(srcdir)/src/wasm/popupwin.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/popupwin.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_region.o: $(srcdir)/src/wasm/region.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/region.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_settings.o: $(srcdir)/src/wasm/settings.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/settings.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_timer.o: $(srcdir)/src/wasm/timer.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/timer.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_toplevel.o: $(srcdir)/src/wasm/toplevel.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/toplevel.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_utils.o: $(srcdir)/src/wasm/utils.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/utils.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_window.o: $(srcdir)/src/wasm/window.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/window.cpp
+
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1@coredll_artmac.o: $(srcdir)/src/osx/artmac.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/osx/artmac.cpp
 
@@ -33008,6 +33606,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@corelib_generic_caret.o: $(srcdir)/src/generic/caret.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/caret.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_generic_caret.o: $(srcdir)/src/generic/caret.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/caret.cpp
+
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@corelib_generic_imaglist.o: $(srcdir)/src/generic/imaglist.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/imaglist.cpp
 
@@ -33055,6 +33656,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_TOOLKIT_DFB_USE_GUI_1@corelib_generic_imaglist.o: $(srcdir)/src/generic/imaglist.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/imaglist.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_generic_imaglist.o: $(srcdir)/src/generic/imaglist.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/imaglist.cpp
 
 @COND_PLATFORM_UNIX_1_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1@corelib_unix_dialup.o: $(srcdir)/src/unix/dialup.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_UNIX_1_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/unix/dialup.cpp
@@ -33235,6 +33839,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_TOOLKIT_X11_USE_GUI_1@corelib_unix_sound.o: $(srcdir)/src/unix/sound.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_X11_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/unix/sound.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_unix_sound.o: $(srcdir)/src/unix/sound.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/unix/sound.cpp
 
 @COND_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@corelib_taskbarcmn.o: $(srcdir)/src/common/taskbarcmn.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/common/taskbarcmn.cpp
@@ -33521,6 +34128,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@corelib_generic_icon.o: $(srcdir)/src/generic/icon.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/icon.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_generic_icon.o: $(srcdir)/src/generic/icon.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/icon.cpp
+
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1@corelib_paletteg.o: $(srcdir)/src/generic/paletteg.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/paletteg.cpp
 
@@ -33532,6 +34142,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1@corelib_paletteg.o: $(srcdir)/src/generic/paletteg.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/paletteg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_paletteg.o: $(srcdir)/src/generic/paletteg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/paletteg.cpp
 
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1@corelib_gtk_app.o: $(srcdir)/src/gtk/app.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/gtk/app.cpp
@@ -33869,6 +34482,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@corelib_generic_textmeasure.o: $(srcdir)/src/generic/textmeasure.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/textmeasure.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_generic_textmeasure.o: $(srcdir)/src/generic/textmeasure.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/textmeasure.cpp
+
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1@corelib_gtk1_app.o: $(srcdir)/src/gtk1/app.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/gtk1/app.cpp
 
@@ -34169,6 +34785,93 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_MSW_USE_GUI_1@corelib_msw_bmpbndl.o: $(srcdir)/src/msw/bmpbndl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_MSW_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/msw/bmpbndl.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_app.o: $(srcdir)/src/wasm/app.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/app.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_bitmap.o: $(srcdir)/src/wasm/bitmap.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/bitmap.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_brush.o: $(srcdir)/src/wasm/brush.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/brush.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_clipbrd.o: $(srcdir)/src/wasm/clipbrd.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/clipbrd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_colour.o: $(srcdir)/src/wasm/colour.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/colour.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_config.o: $(srcdir)/src/wasm/config.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/config.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_cursor.o: $(srcdir)/src/wasm/cursor.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/cursor.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_dataobj.o: $(srcdir)/src/wasm/dataobj.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/dataobj.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_dc.o: $(srcdir)/src/wasm/dc.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/dc.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_dcclient.o: $(srcdir)/src/wasm/dcclient.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/dcclient.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_dcmemory.o: $(srcdir)/src/wasm/dcmemory.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/dcmemory.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_dcscreen.o: $(srcdir)/src/wasm/dcscreen.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/dcscreen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_display.o: $(srcdir)/src/wasm/display.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/display.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_dnd.o: $(srcdir)/src/wasm/dnd.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/dnd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_evtloop.o: $(srcdir)/src/wasm/evtloop.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/evtloop.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_font.o: $(srcdir)/src/wasm/font.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/font.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_fontenum.o: $(srcdir)/src/wasm/fontenum.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/fontenum.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_fontutil.o: $(srcdir)/src/wasm/fontutil.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/fontutil.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_keyboard.o: $(srcdir)/src/wasm/keyboard.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/keyboard.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_mouse.o: $(srcdir)/src/wasm/mouse.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/mouse.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_nonownedwnd.o: $(srcdir)/src/wasm/nonownedwnd.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/nonownedwnd.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_pen.o: $(srcdir)/src/wasm/pen.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/pen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_popupwin.o: $(srcdir)/src/wasm/popupwin.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/popupwin.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_region.o: $(srcdir)/src/wasm/region.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/region.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_settings.o: $(srcdir)/src/wasm/settings.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/settings.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_timer.o: $(srcdir)/src/wasm/timer.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/timer.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_toplevel.o: $(srcdir)/src/wasm/toplevel.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/toplevel.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_utils.o: $(srcdir)/src/wasm/utils.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/utils.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_window.o: $(srcdir)/src/wasm/window.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/window.cpp
+
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1@corelib_artmac.o: $(srcdir)/src/osx/artmac.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/osx/artmac.cpp
 
@@ -34363,6 +35066,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_TOOLKIT_DFB_USE_GUI_1@corelib_generic_colour.o: $(srcdir)/src/generic/colour.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/colour.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_generic_colour.o: $(srcdir)/src/generic/colour.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/colour.cpp
 
 @COND_TOOLKIT_DFB_USE_GUI_1@corelib_mask.o: $(srcdir)/src/generic/mask.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_DFB_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/mask.cpp

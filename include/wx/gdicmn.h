@@ -1108,6 +1108,12 @@ extern bool WXDLLIMPEXP_CORE wxColourDisplay();
 extern int WXDLLIMPEXP_CORE wxDisplayDepth();
 #define wxGetDisplayDepth wxDisplayDepth
 
+#ifdef __WXWASM__
+// WASM display scale factors
+extern double wxDisplayScaleFactor();
+extern double wxContentScaleFactor();
+#endif
+
 // get the display size
 extern void WXDLLIMPEXP_CORE wxDisplaySize(int *width, int *height);
 extern wxSize WXDLLIMPEXP_CORE wxGetDisplaySize();
