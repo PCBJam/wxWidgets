@@ -46,6 +46,12 @@
     var statusElement = document.getElementById('progress-text');
     var progressElement = document.getElementById('progress-bar-position');
 
+    var showError = function(msg) {
+      console.error(msg);
+      statusElement.innerHTML = msg;
+      statusElement.style.color = 'red';
+    };
+
     var createCanvas = function () {
       var canvas = document.createElement('canvas');
       canvas.id = 'canvas';

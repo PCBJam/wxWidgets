@@ -1416,7 +1416,11 @@ bool wxStdListboxInputHandler::HandleMouse(wxInputConsumer *consumer,
     if ( event.LeftDown() )
     {
         // capture the mouse to track the selected item
-        lbox->CaptureMouse();
+        // Only capture if we don't already have capture (avoids re-capture assertion)
+        if ( wxWindow::GetCapture() != lbox )
+        {
+            lbox->CaptureMouse();
+        }
 
         action = SetupCapture(lbox, event, item);
     }

@@ -411,26 +411,57 @@ bool wxBitmap::Create(int width, int height, const wxDC& dc)
 
 bool wxBitmap::Create(const char bits[], int width, int height, int depth)
 {
+    // Store original depth for XBM conversion
+    int originalDepth = depth;
+
     if (!Create(width, height, depth))
     {
         return false;
     }
 
-    int srcBytesPerRow = static_cast<int>(ceil(width * depth / 8.0));
-    int dstBytesPerRow = GetBytesPerRow();
-
     unsigned char *data = static_cast<unsigned char*>(BeginRawAccess());
     wxASSERT_MSG(data != NULL, wxT("bitmap not allocated"));
 
-    const char *srcPtr = bits;
-    unsigned char *dstPtr = data;
+    int dstBytesPerRow = GetBytesPerRow();
 
-    for (int y = 0; y < height; y++)
+    // Handle 1-bit XBM format conversion to 32-bit RGBA
+    if (originalDepth == 1)
     {
-        memcpy(dstPtr, srcPtr, srcBytesPerRow);
+        int srcBytesPerRow = (width + 7) / 8;  // XBM: 1 bit per pixel, padded to byte
+        const unsigned char *srcPtr = reinterpret_cast<const unsigned char*>(bits);
 
-        srcPtr += srcBytesPerRow;
-        dstPtr += dstBytesPerRow;
+        for (int y = 0; y < height; y++)
+        {
+            unsigned char *dstPtr = data + y * dstBytesPerRow;
+
+            for (int x = 0; x < width; x++)
+            {
+                int byteIndex = x / 8;
+                int bitIndex = x % 8;
+                // XBM format: LSB first, 1 = foreground (black), 0 = background (white)
+                bool isSet = (srcPtr[y * srcBytesPerRow + byteIndex] >> bitIndex) & 1;
+
+                // Convert to RGBA: set = black (0,0,0,255), unset = white (255,255,255,255)
+                *dstPtr++ = isSet ? 0 : 255;    // R
+                *dstPtr++ = isSet ? 0 : 255;    // G
+                *dstPtr++ = isSet ? 0 : 255;    // B
+                *dstPtr++ = 255;                 // A (fully opaque)
+            }
+        }
+    }
+    else
+    {
+        // Original code path for 24/32-bit data
+        int srcBytesPerRow = static_cast<int>(ceil(width * originalDepth / 8.0));
+        const char *srcPtr = bits;
+        unsigned char *dstPtr = data;
+
+        for (int y = 0; y < height; y++)
+        {
+            memcpy(dstPtr, srcPtr, srcBytesPerRow);
+            srcPtr += srcBytesPerRow;
+            dstPtr += dstBytesPerRow;
+        }
     }
 
     EndRawAccess();
@@ -446,6 +477,13 @@ bool wxBitmap::CreateScaled(int width, int height, int depth, double scale)
     }
 
     UnRef();
+
+    // Convert unsupported depths to 32-bit
+    // 1-bit (monochrome/XBM) bitmaps are used by wxUniversal themes
+    if (depth == 1 || depth == 8 || depth == 16)
+    {
+        depth = 32;
+    }
 
     wxCHECK_MSG(depth == 32 || depth == 24, false,
                 wxString::Format("unsupported bitmap depth: %d", depth));
