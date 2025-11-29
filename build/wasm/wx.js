@@ -607,7 +607,6 @@ if (typeof navigator !== 'undefined') {
       var y = ctx.y;
       var scaleFactor = ctx.scaleFactor;
 
-
       ctx.setTransform(scaleFactor, 0, 0, scaleFactor, scaleFactor * x, scaleFactor * y);
 
       ctx.save();
@@ -712,6 +711,15 @@ if (typeof navigator !== 'undefined') {
   var clipRect = function (id, x, y, width, height) {
     //console.log('clipRect: ' + x + ' ' + y + ' ' + width + ' ' + height);
     var ctx = getContext(id);
+
+    // FIX: If clip region is empty (0,0,0,0), use full context dimensions
+    // This happens when wxWidgets hasn't properly initialized the clip region
+    if (width <= 0 || height <= 0) {
+      x = 0;
+      y = 0;
+      width = ctx.width;
+      height = ctx.height;
+    }
 
     resetClip(ctx);
 
@@ -951,7 +959,7 @@ if (typeof navigator !== 'undefined') {
   var drawText = function (id, text, x, y, textColor) {
     var ctx = getContext(id);
     //console.log('drawText: ' + text + ' ' + id + ' ' + ctx.width + ' ' + ctx.height);
-    
+
     var fillStyle = ctx.fillStyle;
 
     ctx.fillStyle = makeColorString(textColor);
