@@ -207,9 +207,9 @@ int wxDialog::ShowModal()
     m_isShowingModal = true;
     Show(true);
 
-    //int result = startModal();
+    int result = startModal();
 
-    return wxID_CANCEL;
+    return result;
 /*
     wxASSERT_MSG( !m_windowDisabler, wxT("disabling windows twice?") );
 
@@ -250,12 +250,10 @@ void wxDialog::EndModal(int retCode)
 
     //m_eventLoop->Exit();
 
-/*
     EM_ASM({
         clearTimeout(modalTimer);
         endModal($0);
     }, retCode);
-*/
 
     Show(false);
 

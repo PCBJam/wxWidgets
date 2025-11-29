@@ -213,7 +213,7 @@ if (typeof navigator !== 'undefined') {
 
     // Check z-index of all windows
     for (const windowId of windowMap.keys()) {
-      var windowData = windowMap[windowId];
+      var windowData = windowMap.get(windowId);
       if (windowId !== id && windowData) {
         var style = document.defaultView.getComputedStyle(windowData.window);
         var zIndex = parseInt(style.getPropertyValue('z-index'), 10);
@@ -241,7 +241,7 @@ if (typeof navigator !== 'undefined') {
     var minZ = 0;
 
     for (const windowId of windowMap.keys()) {
-      var windowData = windowMap[windowId];
+      var windowData = windowMap.get(windowId);
       if (windowId !== id && windowData) {
         var style = document.defaultView.getComputedStyle(windowData.window);
         var zIndex = parseInt(style.getPropertyValue('z-index'), 10);
