@@ -19,6 +19,10 @@
 #include "wx/nonownedwnd.h"
 #include "wx/wasm/private/display.h"
 
+#if wxUSE_COMBOBOX || wxUSE_COMBOCTRL
+#include "wx/combo.h"
+#endif
+
 #define TRACE_WINDOW wxT("window")
 #define TRACE_PAINT wxT("paint")
 
@@ -146,10 +150,54 @@ void wxWindowWasm::Lower()
     }
 }
 
+// Helper to dismiss any combo popups in a window's children when the window is hidden
+static void DismissChildPopups(wxWindowWasm* window)
+{
+#if wxUSE_COMBOBOX || wxUSE_COMBOCTRL
+    wxWindowList& children = window->GetChildren();
+    for (wxWindowList::iterator i = children.begin(); i != children.end(); ++i)
+    {
+        wxWindow* child = *i;
+        if (child)
+        {
+            // Check if this child is a wxComboCtrl with an open popup
+            wxComboCtrlBase* combo = dynamic_cast<wxComboCtrlBase*>(child);
+            if (combo && combo->IsPopupShown())
+            {
+                combo->HidePopup(true);
+            }
+
+            // Recursively check grandchildren
+            wxWindowWasm* wasmChild = dynamic_cast<wxWindowWasm*>(child);
+            if (wasmChild)
+            {
+                DismissChildPopups(wasmChild);
+            }
+        }
+    }
+#else
+    wxUnusedVar(window);
+#endif
+}
+
 bool wxWindowWasm::Show(bool show)
 {
     if (wxWindowBase::Show(show))
     {
+        // When hiding a window, dismiss any popup menus/combos in children
+        // before they become invisible. This fixes the issue where dropdown
+        // popups stay visible when switching notebook tabs.
+        if (!show)
+        {
+            DismissChildPopups(this);
+        }
+
+        // Notify children that parent visibility changed so they can update
+        // their platform-specific state (e.g., wxGLCanvas DOM visibility).
+        // We call Show() with the child's current state to trigger any overrides
+        // without changing the child's logical show state.
+        UpdateChildrenDOMVisibility();
+
         if (show)
         {
             Refresh();
@@ -168,6 +216,29 @@ bool wxWindowWasm::Show(bool show)
     else
     {
         return false;
+    }
+}
+
+void wxWindowWasm::UpdateChildrenDOMVisibility()
+{
+    wxWindowList& children = GetChildren();
+    for (wxWindowList::iterator i = children.begin(); i != children.end(); ++i)
+    {
+        wxWindow *child = *i;
+        if (child)
+        {
+            // Call Show() on child with its current state to trigger any
+            // platform-specific visibility updates (like wxGLCanvas DOM update).
+            // This doesn't change the child's logical state.
+            child->Show(child->IsShown());
+
+            // Recursively update grandchildren
+            wxWindowWasm* wasmChild = dynamic_cast<wxWindowWasm*>(child);
+            if (wasmChild)
+            {
+                wasmChild->UpdateChildrenDOMVisibility();
+            }
+        }
     }
 }
 

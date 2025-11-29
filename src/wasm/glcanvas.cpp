@@ -471,12 +471,16 @@ bool wxGLCanvas::Show(bool show)
 {
     bool result = wxWindow::Show(show);
 
-    // Update the GL canvas element visibility to match the window
+    // Update the GL canvas element visibility based on actual on-screen visibility.
+    // This accounts for parent visibility - if any parent is hidden, the GL canvas
+    // DOM element should be hidden too, even if this window's Show() is set to true.
     if ( m_cssId != wxID_NONE )
     {
+        // Use IsShownOnScreen() to check both this window AND parent visibility
+        bool actuallyVisible = IsShownOnScreen();
         EM_ASM({
             setGLCanvasVisibility($0, $1);
-        }, m_cssId, show);
+        }, m_cssId, actuallyVisible);
     }
 
     return result;

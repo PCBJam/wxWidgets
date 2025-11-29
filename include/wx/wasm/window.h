@@ -109,6 +109,10 @@ protected:
     void PaintChildren(bool selfWasPainted);
     void DoPaint(bool parentWasPainted);
 
+    // Notify child windows to update their platform-specific DOM visibility
+    // based on IsShownOnScreen() (used when parent visibility changes)
+    void UpdateChildrenDOMVisibility();
+
 private:
     void Init();
 

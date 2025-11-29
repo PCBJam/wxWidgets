@@ -103,6 +103,13 @@ bool wxNonOwnedWindow::Show(bool show)
         EM_ASM({
             setWindowVisibility($0, $1);
         }, GetCSSId(), show);
+
+        // When showing a popup window, raise it to ensure it appears above
+        // other windows including GL canvases
+        if (show)
+        {
+            Raise();
+        }
     }
 
     return ret;

@@ -211,10 +211,22 @@ if (typeof navigator !== 'undefined') {
   var raiseWindow = function (id) {
     var maxZ = 0;
 
+    // Check z-index of all windows
     for (const windowId of windowMap.keys()) {
       var windowData = windowMap[windowId];
       if (windowId !== id && windowData) {
         var style = document.defaultView.getComputedStyle(windowData.window);
+        var zIndex = parseInt(style.getPropertyValue('z-index'), 10);
+        if (!isNaN(zIndex)) {
+          maxZ = Math.max(maxZ, zIndex);
+        }
+      }
+    }
+
+    // Also check z-index of GL canvases so popups can appear above them
+    for (const [glId, canvas] of glCanvasMap.entries()) {
+      if (canvas && canvas.style.display !== 'none') {
+        var style = document.defaultView.getComputedStyle(canvas);
         var zIndex = parseInt(style.getPropertyValue('z-index'), 10);
         if (!isNaN(zIndex)) {
           maxZ = Math.max(maxZ, zIndex);
