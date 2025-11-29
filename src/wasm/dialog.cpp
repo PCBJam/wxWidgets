@@ -1,9 +1,21 @@
 /////////////////////////////////////////////////////////////////////////////
-// Name:        src/univ/dialog.cpp
-// Author:      Robert Roebling, Vaclav Slavik
+// Name:        src/wasm/dialog.cpp
+// Purpose:     wxDialog implementation for WASM using Asyncify for modal dialogs
+// Author:      Robert Roebling, Vaclav Slavik (original univ)
+//              Adam Hilss (WASM port), extended for Asyncify
 // Copyright:   (c) 2001 SciTech Software, Inc. (www.scitechsoft.com)
+//              (c) 2022 Adam Hilss
 // Licence:     wxWindows licence
 /////////////////////////////////////////////////////////////////////////////
+
+// This file provides the complete wxDialog implementation for WASM builds.
+// It replaces src/univ/dialog.cpp entirely for WASM because the standard
+// wxWidgets event loop approach doesn't work in WASM (JavaScript is
+// single-threaded and cannot truly block).
+//
+// ShowModal() and EndModal() use Emscripten Asyncify to suspend the C++ stack,
+// run a JavaScript event loop that processes wxWidgets events via setTimeout,
+// and resume when the dialog is closed.
 
 // ============================================================================
 // declarations
@@ -27,6 +39,8 @@
 #include "wx/evtloop.h"
 #include "wx/modalhook.h"
 
+#include <emscripten.h>
+
 //-----------------------------------------------------------------------------
 // wxDialog
 //-----------------------------------------------------------------------------
@@ -44,6 +58,7 @@ void wxDialog::Init()
     m_windowDisabler = NULL;
     m_eventLoop = NULL;
     m_isShowingModal = false;
+    m_modalCallback = NULL;
 }
 
 wxDialog::~wxDialog()
@@ -96,12 +111,8 @@ void wxDialog::OnOK(wxCommandEvent &WXUNUSED(event))
         }
         else
         {
-            // don't change return code from event char if it was set earlier
-            if (GetReturnCode() == 0)
-            {
-                SetReturnCode(wxID_OK);
-                Show(false);
-            }
+            SetReturnCode(wxID_OK);
+            Show(false);
         }
     }
 }
@@ -164,44 +175,73 @@ bool wxDialog::IsModal() const
     return m_isShowingModal;
 }
 
+// ----------------------------------------------------------------------------
+// WASM-specific modal implementation using Asyncify
+// ----------------------------------------------------------------------------
+
+// JavaScript function that implements the modal event loop using Asyncify.
+// This function:
+// 1. Starts a setTimeout-based event loop that calls ProcessEvents
+// 2. Returns a Promise that resolves when endModal() is called
+// 3. Asyncify suspends the C++ stack until the Promise resolves
+EM_JS(int, startModal, (), {
+    return Asyncify.handleAsync(async () => {
+        console.log('startModal');
+
+        var runEventLoop = function () {
+            modalTimer = setTimeout(function () {
+                ccall('ProcessEvents', 'void', [], []);
+                runEventLoop();
+            }, 17);  // ~60fps
+        };
+
+        const result = await new Promise((resolve, reject) => {
+            runEventLoop();
+            endModal = resolve;
+        });
+        console.log('modal result: ' + result);
+        return result;
+    });
+});
+
 int wxDialog::ShowModal()
 {
     WX_HOOK_MODAL_DIALOG();
 
     if ( IsModal() )
     {
-       wxFAIL_MSG( wxT("wxDialog:ShowModal called twice") );
-       return GetReturnCode();
+        wxFAIL_MSG( wxT("wxDialog:ShowModal called twice") );
+        return GetReturnCode();
     }
 
-    // use the apps top level window as parent if none given unless explicitly
+    // Use the app's top level window as parent if none given unless explicitly
     // forbidden
     wxWindow * const parent = GetParentForModalDialog();
     if ( parent && parent != this )
     {
         m_parent = parent;
     }
+
     m_isShowingModal = true;
     Show(true);
 
-    wxASSERT_MSG( !m_windowDisabler, wxT("disabling windows twice?") );
+    // Call the Asyncify-based modal event loop
+    // This suspends the C++ stack until endModal() is called from EndModal()
+    int result = startModal();
 
-#if defined(__WXGTK__)
-    wxBusyCursorSuspender suspender;
-#endif
+    return result;
+}
 
-    m_windowDisabler = new wxWindowDisabler(this);
-    if ( !m_eventLoop )
-        m_eventLoop = new wxEventLoop;
+void wxDialog::ShowModal(std::function<void (int)> callback)
+{
+    ShowModal();
 
-    m_eventLoop->Run();
-
-    return GetReturnCode();
+    m_modalCallback = callback;
 }
 
 void wxDialog::EndModal(int retCode)
 {
-    wxASSERT_MSG( m_eventLoop, wxT("wxDialog is not modal") );
+    wxLogDebug(wxT("EndModal: %d"), retCode);
 
     SetReturnCode(retCode);
 
@@ -213,7 +253,19 @@ void wxDialog::EndModal(int retCode)
 
     m_isShowingModal = false;
 
-    m_eventLoop->Exit();
+    // Stop the JavaScript modal event loop and resolve the Promise
+    // This causes startModal() to return with the result code
+    EM_ASM({
+        clearTimeout(modalTimer);
+        endModal($0);
+    }, retCode);
 
     Show(false);
+
+    if (m_modalCallback)
+    {
+        auto callback = m_modalCallback;
+        m_modalCallback = NULL;
+        callback(retCode);
+    }
 }

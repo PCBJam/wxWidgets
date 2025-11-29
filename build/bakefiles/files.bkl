@@ -2043,6 +2043,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     src/wasm/dcclient.cpp
     src/wasm/dcmemory.cpp
     src/wasm/dcscreen.cpp
+    src/wasm/dialog.cpp
     src/wasm/display.cpp
     src/wasm/dnd.cpp
     src/wasm/evtloop.cpp
@@ -2836,7 +2837,6 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     src/univ/combobox.cpp
     src/univ/control.cpp
     src/univ/ctrlrend.cpp
-    src/univ/dialog.cpp
     src/univ/framuniv.cpp
     src/univ/gauge.cpp
     src/univ/inpcons.cpp
@@ -2865,6 +2865,12 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     src/univ/topluniv.cpp
     src/univ/winuniv.cpp
     src/generic/activityindicator.cpp
+</set>
+<!-- Platform-specific univ sources: WASM has its own dialog.cpp in WASM_LOWLEVEL_SRC -->
+<!-- wxUniversal is used with X11, DFB, and WASM toolkits -->
+<set var="UNIV_PLATFORM_SRC" hints="files">
+    <if cond="TOOLKIT=='X11'">src/univ/dialog.cpp</if>
+    <if cond="TOOLKIT=='DFB'">src/univ/dialog.cpp</if>
 </set>
 <set var="UNIV_HDR" hints="files">
     wx/generic/accel.h
@@ -3682,7 +3688,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
             $(LOWLEVEL_SRC) $(PLATFORM_SRC) $(GUI_SRC) $(GUI_CMN_SRC)
         </if>
         <if cond="USE_GUI=='1' and WXUNIV=='1'">
-            $(LOWLEVEL_SRC) $(PLATFORM_SRC) $(UNIV_SRC) $(UNIV_THEMES_SRC) $(GUI_CMN_SRC)
+            $(LOWLEVEL_SRC) $(PLATFORM_SRC) $(UNIV_SRC) $(UNIV_PLATFORM_SRC) $(UNIV_THEMES_SRC) $(GUI_CMN_SRC)
         </if>
     </set>
 

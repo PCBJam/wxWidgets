@@ -4793,7 +4793,6 @@ COND_USE_GUI_1_WXUNIV_1___CORE_SRC_OBJECTS =  \
 	monodll_univ_combobox.o \
 	monodll_univ_control.o \
 	monodll_ctrlrend.o \
-	monodll_univ_dialog.o \
 	monodll_framuniv.o \
 	monodll_univ_gauge.o \
 	monodll_inpcons.o \
@@ -4822,6 +4821,7 @@ COND_USE_GUI_1_WXUNIV_1___CORE_SRC_OBJECTS =  \
 	monodll_topluniv.o \
 	monodll_winuniv.o \
 	monodll_generic_activityindicator.o \
+	$(__UNIV_PLATFORM_SRC_OBJECTS) \
 	monodll_gtk.o \
 	monodll_metal.o \
 	monodll_mono.o \
@@ -5342,6 +5342,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS =  \
 	monodll_wasm_dcclient.o \
 	monodll_wasm_dcmemory.o \
 	monodll_wasm_dcscreen.o \
+	monodll_wasm_dialog.o \
 	monodll_wasm_display.o \
 	monodll_wasm_dnd.o \
 	monodll_wasm_evtloop.o \
@@ -6290,6 +6291,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_1 =  \
 	monodll_wasm_dcclient.o \
 	monodll_wasm_dcmemory.o \
 	monodll_wasm_dcscreen.o \
+	monodll_wasm_dialog.o \
 	monodll_wasm_display.o \
 	monodll_wasm_dnd.o \
 	monodll_wasm_evtloop.o \
@@ -6351,6 +6353,8 @@ COND_TOOLKIT_X11___LOWLEVEL_SRC_OBJECTS_1 =  \
 	monodll_x11_window.o \
 	monodll_displayx11.o
 @COND_TOOLKIT_X11@__LOWLEVEL_SRC_OBJECTS_1 = $(COND_TOOLKIT_X11___LOWLEVEL_SRC_OBJECTS_1)
+@COND_TOOLKIT_DFB@__UNIV_PLATFORM_SRC_OBJECTS = monodll_univ_dialog.o
+@COND_TOOLKIT_X11@__UNIV_PLATFORM_SRC_OBJECTS = monodll_univ_dialog.o
 @COND_TOOLKIT_COCOA@__MEDIA_PLATFORM_SRC_OBJECTS = \
 @COND_TOOLKIT_COCOA@	monodll_src_cocoa_mediactrl.o
 @COND_TOOLKIT_GTK@__MEDIA_PLATFORM_SRC_OBJECTS = \
@@ -6878,7 +6882,6 @@ COND_USE_GUI_1_WXUNIV_1___CORE_SRC_OBJECTS_1 =  \
 	monolib_univ_combobox.o \
 	monolib_univ_control.o \
 	monolib_ctrlrend.o \
-	monolib_univ_dialog.o \
 	monolib_framuniv.o \
 	monolib_univ_gauge.o \
 	monolib_inpcons.o \
@@ -6907,6 +6910,7 @@ COND_USE_GUI_1_WXUNIV_1___CORE_SRC_OBJECTS_1 =  \
 	monolib_topluniv.o \
 	monolib_winuniv.o \
 	monolib_generic_activityindicator.o \
+	$(__UNIV_PLATFORM_SRC_OBJECTS_1) \
 	monolib_gtk.o \
 	monolib_metal.o \
 	monolib_mono.o \
@@ -7427,6 +7431,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_2 =  \
 	monolib_wasm_dcclient.o \
 	monolib_wasm_dcmemory.o \
 	monolib_wasm_dcscreen.o \
+	monolib_wasm_dialog.o \
 	monolib_wasm_display.o \
 	monolib_wasm_dnd.o \
 	monolib_wasm_evtloop.o \
@@ -8375,6 +8380,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_3 =  \
 	monolib_wasm_dcclient.o \
 	monolib_wasm_dcmemory.o \
 	monolib_wasm_dcscreen.o \
+	monolib_wasm_dialog.o \
 	monolib_wasm_display.o \
 	monolib_wasm_dnd.o \
 	monolib_wasm_evtloop.o \
@@ -8436,6 +8442,8 @@ COND_TOOLKIT_X11___LOWLEVEL_SRC_OBJECTS_3 =  \
 	monolib_x11_window.o \
 	monolib_displayx11.o
 @COND_TOOLKIT_X11@__LOWLEVEL_SRC_OBJECTS_3 = $(COND_TOOLKIT_X11___LOWLEVEL_SRC_OBJECTS_3)
+@COND_TOOLKIT_DFB@__UNIV_PLATFORM_SRC_OBJECTS_1 = monolib_univ_dialog.o
+@COND_TOOLKIT_X11@__UNIV_PLATFORM_SRC_OBJECTS_1 = monolib_univ_dialog.o
 @COND_TOOLKIT_COCOA@__MEDIA_PLATFORM_SRC_OBJECTS_1 = \
 @COND_TOOLKIT_COCOA@	monolib_src_cocoa_mediactrl.o
 @COND_TOOLKIT_GTK@__MEDIA_PLATFORM_SRC_OBJECTS_1 = \
@@ -9117,7 +9125,6 @@ COND_USE_GUI_1_WXUNIV_1___CORE_SRC_OBJECTS_2 =  \
 	coredll_univ_combobox.o \
 	coredll_univ_control.o \
 	coredll_ctrlrend.o \
-	coredll_univ_dialog.o \
 	coredll_framuniv.o \
 	coredll_univ_gauge.o \
 	coredll_inpcons.o \
@@ -9146,6 +9153,7 @@ COND_USE_GUI_1_WXUNIV_1___CORE_SRC_OBJECTS_2 =  \
 	coredll_topluniv.o \
 	coredll_winuniv.o \
 	coredll_generic_activityindicator.o \
+	$(__UNIV_PLATFORM_SRC_OBJECTS_2) \
 	coredll_gtk.o \
 	coredll_metal.o \
 	coredll_mono.o \
@@ -9666,6 +9674,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_4 =  \
 	coredll_wasm_dcclient.o \
 	coredll_wasm_dcmemory.o \
 	coredll_wasm_dcscreen.o \
+	coredll_wasm_dialog.o \
 	coredll_wasm_display.o \
 	coredll_wasm_dnd.o \
 	coredll_wasm_evtloop.o \
@@ -10614,6 +10623,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_5 =  \
 	coredll_wasm_dcclient.o \
 	coredll_wasm_dcmemory.o \
 	coredll_wasm_dcscreen.o \
+	coredll_wasm_dialog.o \
 	coredll_wasm_display.o \
 	coredll_wasm_dnd.o \
 	coredll_wasm_evtloop.o \
@@ -10675,6 +10685,8 @@ COND_TOOLKIT_X11___LOWLEVEL_SRC_OBJECTS_5 =  \
 	coredll_x11_window.o \
 	coredll_displayx11.o
 @COND_TOOLKIT_X11@__LOWLEVEL_SRC_OBJECTS_5 = $(COND_TOOLKIT_X11___LOWLEVEL_SRC_OBJECTS_5)
+@COND_TOOLKIT_DFB@__UNIV_PLATFORM_SRC_OBJECTS_2 = coredll_univ_dialog.o
+@COND_TOOLKIT_X11@__UNIV_PLATFORM_SRC_OBJECTS_2 = coredll_univ_dialog.o
 @COND_PLATFORM_UNIX_1_USE_PLUGINS_0@__PLUGIN_SRC_OBJECTS_2 \
 @COND_PLATFORM_UNIX_1_USE_PLUGINS_0@	= coredll_sound_sdl.o
 COND_MONOLITHIC_0_SHARED_0_USE_GUI_1___corelib___depname = \
@@ -10929,7 +10941,6 @@ COND_USE_GUI_1_WXUNIV_1___CORE_SRC_OBJECTS_3 =  \
 	corelib_univ_combobox.o \
 	corelib_univ_control.o \
 	corelib_ctrlrend.o \
-	corelib_univ_dialog.o \
 	corelib_framuniv.o \
 	corelib_univ_gauge.o \
 	corelib_inpcons.o \
@@ -10958,6 +10969,7 @@ COND_USE_GUI_1_WXUNIV_1___CORE_SRC_OBJECTS_3 =  \
 	corelib_topluniv.o \
 	corelib_winuniv.o \
 	corelib_generic_activityindicator.o \
+	$(__UNIV_PLATFORM_SRC_OBJECTS_3) \
 	corelib_gtk.o \
 	corelib_metal.o \
 	corelib_mono.o \
@@ -11478,6 +11490,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_6 =  \
 	corelib_wasm_dcclient.o \
 	corelib_wasm_dcmemory.o \
 	corelib_wasm_dcscreen.o \
+	corelib_wasm_dialog.o \
 	corelib_wasm_display.o \
 	corelib_wasm_dnd.o \
 	corelib_wasm_evtloop.o \
@@ -12426,6 +12439,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_7 =  \
 	corelib_wasm_dcclient.o \
 	corelib_wasm_dcmemory.o \
 	corelib_wasm_dcscreen.o \
+	corelib_wasm_dialog.o \
 	corelib_wasm_display.o \
 	corelib_wasm_dnd.o \
 	corelib_wasm_evtloop.o \
@@ -12487,6 +12501,8 @@ COND_TOOLKIT_X11___LOWLEVEL_SRC_OBJECTS_7 =  \
 	corelib_x11_window.o \
 	corelib_displayx11.o
 @COND_TOOLKIT_X11@__LOWLEVEL_SRC_OBJECTS_7 = $(COND_TOOLKIT_X11___LOWLEVEL_SRC_OBJECTS_7)
+@COND_TOOLKIT_DFB@__UNIV_PLATFORM_SRC_OBJECTS_3 = corelib_univ_dialog.o
+@COND_TOOLKIT_X11@__UNIV_PLATFORM_SRC_OBJECTS_3 = corelib_univ_dialog.o
 @COND_PLATFORM_UNIX_1_USE_PLUGINS_0@__PLUGIN_SRC_OBJECTS_3 \
 @COND_PLATFORM_UNIX_1_USE_PLUGINS_0@	= corelib_sound_sdl.o
 @COND_SHARED_1@____wxcore_namedll_DEP = $(__coredll___depname)
@@ -17580,9 +17596,6 @@ monodll_univ_control.o: $(srcdir)/src/univ/control.cpp $(MONODLL_ODEP)
 monodll_ctrlrend.o: $(srcdir)/src/univ/ctrlrend.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/univ/ctrlrend.cpp
 
-monodll_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(MONODLL_ODEP)
-	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
-
 monodll_framuniv.o: $(srcdir)/src/univ/framuniv.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/univ/framuniv.cpp
 
@@ -19788,6 +19801,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_dcscreen.o: $(srcdir)/src/wasm/dcscreen.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/dcscreen.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_dialog.o: $(srcdir)/src/wasm/dialog.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/dialog.cpp
+
 @COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_display.o: $(srcdir)/src/wasm/display.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/display.cpp
 
@@ -21579,6 +21595,12 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1@monodll_bmpsvg.o: $(srcdir)/src/generic/bmpsvg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/bmpsvg.cpp
 
+@COND_TOOLKIT_X11_USE_GUI_1_WXUNIV_1@monodll_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_X11_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
+
+@COND_TOOLKIT_DFB_USE_GUI_1_WXUNIV_1@monodll_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_DFB_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
+
 @COND_TOOLKIT_OSX_COCOA_USE_GUI_1@monodll_osx_cocoa_mediactrl.o: $(srcdir)/src/osx/cocoa/mediactrl.mm $(MONODLL_ODEP)
 @COND_TOOLKIT_OSX_COCOA_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_OBJCXXFLAGS) $(srcdir)/src/osx/cocoa/mediactrl.mm
 
@@ -23006,9 +23028,6 @@ monolib_univ_control.o: $(srcdir)/src/univ/control.cpp $(MONOLIB_ODEP)
 
 monolib_ctrlrend.o: $(srcdir)/src/univ/ctrlrend.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/univ/ctrlrend.cpp
-
-monolib_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(MONOLIB_ODEP)
-	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
 
 monolib_framuniv.o: $(srcdir)/src/univ/framuniv.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/univ/framuniv.cpp
@@ -25215,6 +25234,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_dcscreen.o: $(srcdir)/src/wasm/dcscreen.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/dcscreen.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_dialog.o: $(srcdir)/src/wasm/dialog.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/dialog.cpp
+
 @COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_display.o: $(srcdir)/src/wasm/display.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/display.cpp
 
@@ -27005,6 +27027,12 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_USE_GUI_1@monolib_bmpsvg.o: $(srcdir)/src/generic/bmpsvg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/bmpsvg.cpp
+
+@COND_TOOLKIT_X11_USE_GUI_1_WXUNIV_1@monolib_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_X11_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
+
+@COND_TOOLKIT_DFB_USE_GUI_1_WXUNIV_1@monolib_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_DFB_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
 
 @COND_TOOLKIT_OSX_COCOA_USE_GUI_1@monolib_osx_cocoa_mediactrl.o: $(srcdir)/src/osx/cocoa/mediactrl.mm $(MONOLIB_ODEP)
 @COND_TOOLKIT_OSX_COCOA_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_OBJCXXFLAGS) $(srcdir)/src/osx/cocoa/mediactrl.mm
@@ -29121,9 +29149,6 @@ coredll_univ_control.o: $(srcdir)/src/univ/control.cpp $(COREDLL_ODEP)
 coredll_ctrlrend.o: $(srcdir)/src/univ/ctrlrend.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/univ/ctrlrend.cpp
 
-coredll_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(COREDLL_ODEP)
-	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
-
 coredll_framuniv.o: $(srcdir)/src/univ/framuniv.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/univ/framuniv.cpp
 
@@ -30746,6 +30771,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 
 @COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_dcscreen.o: $(srcdir)/src/wasm/dcscreen.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/dcscreen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_dialog.o: $(srcdir)/src/wasm/dialog.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/dialog.cpp
 
 @COND_TOOLKIT_WASM_USE_GUI_1@coredll_wasm_display.o: $(srcdir)/src/wasm/display.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/display.cpp
@@ -32538,6 +32566,12 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1@coredll_bmpsvg.o: $(srcdir)/src/generic/bmpsvg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/bmpsvg.cpp
 
+@COND_TOOLKIT_X11_USE_GUI_1_WXUNIV_1@coredll_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_X11_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
+
+@COND_TOOLKIT_DFB_USE_GUI_1_WXUNIV_1@coredll_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_DFB_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
+
 corelib_event.o: $(srcdir)/src/common/event.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/common/event.cpp
 
@@ -33506,9 +33540,6 @@ corelib_univ_control.o: $(srcdir)/src/univ/control.cpp $(CORELIB_ODEP)
 
 corelib_ctrlrend.o: $(srcdir)/src/univ/ctrlrend.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/univ/ctrlrend.cpp
-
-corelib_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(CORELIB_ODEP)
-	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
 
 corelib_framuniv.o: $(srcdir)/src/univ/framuniv.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/univ/framuniv.cpp
@@ -35132,6 +35163,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_dcscreen.o: $(srcdir)/src/wasm/dcscreen.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/dcscreen.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_dialog.o: $(srcdir)/src/wasm/dialog.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/dialog.cpp
 
 @COND_TOOLKIT_WASM_USE_GUI_1@corelib_wasm_display.o: $(srcdir)/src/wasm/display.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/display.cpp
@@ -36923,6 +36957,12 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_USE_GUI_1@corelib_bmpsvg.o: $(srcdir)/src/generic/bmpsvg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/bmpsvg.cpp
+
+@COND_TOOLKIT_X11_USE_GUI_1_WXUNIV_1@corelib_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_X11_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
+
+@COND_TOOLKIT_DFB_USE_GUI_1_WXUNIV_1@corelib_univ_dialog.o: $(srcdir)/src/univ/dialog.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_DFB_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/univ/dialog.cpp
 
 advdll_version_rc.o: $(srcdir)/src/msw/version.rc $(ADVDLL_ODEP)
 	$(WINDRES) -i$< -o$@  $(__INC_TIFF_BUILD_p_54) $(__INC_TIFF_p_54) $(__INC_JPEG_p_54) $(__INC_PNG_p_53) $(__INC_ZLIB_p_67) $(__INC_REGEX_p_65) $(__INC_EXPAT_p_65)   --define __WX$(TOOLKIT)__ $(__WXUNIV_DEFINE_p_66) $(__DEBUG_DEFINE_p_66)  $(__EXCEPTIONS_DEFINE_p_65) $(__RTTI_DEFINE_p_65) $(__THREAD_DEFINE_p_65)  --define WXBUILDING --define WXDLLNAME=$(WXDLLNAMEPREFIXGUI)$(WXUNICODEFLAG)$(WXDEBUGFLAG)$(WX_LIB_FLAVOUR)_adv$(WXCOMPILER)$(VENDORTAG)$(WXDLLVERSIONTAG) $(__RCDEFDIR_p) --include-dir $(top_srcdir)/include --define WXUSINGDLL --define WXMAKINGDLL_ADV
