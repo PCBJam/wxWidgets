@@ -1377,3 +1377,106 @@ if (typeof navigator !== 'undefined') {
 
   };
 
+  /* HTML5 Drag and Drop Support */
+
+  var pendingDropFiles = [];
+  var pendingDropX = 0;
+  var pendingDropY = 0;
+
+  var registerDragDropHandlers = function () {
+    var canvas = Module.canvas;
+    if (!canvas) {
+      console.error('[DND] Module.canvas not available');
+      return;
+    }
+
+    // Prevent default to enable drop
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function (eventName) {
+      canvas.addEventListener(eventName, function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }, false);
+    });
+
+    canvas.addEventListener('dragenter', function (e) {
+      console.log('[DND] dragenter');
+      ccall('OnDragEnter', 'void', ['number', 'number'], [e.clientX, e.clientY]);
+    });
+
+    canvas.addEventListener('dragleave', function (e) {
+      console.log('[DND] dragleave');
+      ccall('OnDragLeave', 'void', [], []);
+    });
+
+    canvas.addEventListener('drop', function (e) {
+      var files = e.dataTransfer.files;
+      console.log('[DND] drop: ' + files.length + ' files');
+
+      // Get canvas-relative coordinates
+      var rect = canvas.getBoundingClientRect();
+      var x = e.clientX - rect.left;
+      var y = e.clientY - rect.top;
+
+      pendingDropFiles = [];
+      pendingDropX = x;
+      pendingDropY = y;
+
+      if (files.length === 0) {
+        return;
+      }
+
+      // Process all files, then notify C++ when all are ready
+      var processedCount = 0;
+
+      for (var i = 0; i < files.length; i++) {
+        (function (file) {
+          file.arrayBuffer().then(function (arrayBuffer) {
+            var array = new Uint8Array(arrayBuffer);
+            var path = '/tmp/' + file.name;
+
+            // Write to WASM filesystem
+            var stream = FS.open(path, 'w+');
+            if (stream) {
+              FS.write(stream, array, 0, file.size);
+              FS.close(stream);
+              pendingDropFiles.push(path);
+              console.log('[DND] Wrote file: ' + path + ' (' + file.size + ' bytes)');
+            } else {
+              console.error('[DND] Failed to write file: ' + path);
+            }
+
+            processedCount++;
+            if (processedCount === files.length) {
+              // All files processed, notify C++
+              notifyDropComplete();
+            }
+          }).catch(function (error) {
+            console.error('[DND] Error reading file: ' + error);
+            processedCount++;
+            if (processedCount === files.length) {
+              notifyDropComplete();
+            }
+          });
+        })(files[i]);
+      }
+    });
+
+    console.log('[DND] Drag and drop handlers registered');
+  };
+
+  var notifyDropComplete = function () {
+    if (pendingDropFiles.length === 0) {
+      return;
+    }
+
+    // Notify C++ for each file
+    for (var i = 0; i < pendingDropFiles.length; i++) {
+      ccall('OnFileDropped', 'void',
+            ['string', 'number', 'number'],
+            [pendingDropFiles[i], pendingDropX, pendingDropY]);
+    }
+
+    // Clear pending files
+    pendingDropFiles = [];
+  };
+

@@ -682,4 +682,69 @@ void RegisterEmscriptenCallbacks(wxApp* app)
 
     result = emscripten_set_beforeunload_callback(app, UnloadCallback);
     wxASSERT(result == EMSCRIPTEN_RESULT_SUCCESS);
+
+    // Initialize HTML5 drag and drop handlers
+    EM_ASM({
+        if (typeof registerDragDropHandlers === 'function') {
+            registerDragDropHandlers();
+        }
+    });
 }
+
+// ============================================================================
+// HTML5 Drag and Drop Support
+// ============================================================================
+
+extern "C" {
+
+EMSCRIPTEN_KEEPALIVE
+void OnDragEnter(int x, int y)
+{
+    // Optional: could send a custom event for visual feedback
+    // printf("[DND] OnDragEnter: %d, %d\n", x, y);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void OnDragLeave()
+{
+    // Optional: could send a custom event to clear visual feedback
+    // printf("[DND] OnDragLeave\n");
+}
+
+EMSCRIPTEN_KEEPALIVE
+void OnFileDropped(const char* path, int x, int y)
+{
+    // printf("[DND] OnFileDropped: %s at (%d, %d)\n", path, x, y);
+
+    // Find the window that should receive the drop event
+    wxPoint dropPoint(x, y);
+    wxWindow* target = wxFindWindowAtPoint(dropPoint);
+
+    // Fall back to top window if no window found at point
+    if (target == nullptr && wxTheApp != nullptr)
+    {
+        target = wxTheApp->GetTopWindow();
+    }
+
+    if (target == nullptr)
+    {
+        // printf("[DND] No target window found\n");
+        return;
+    }
+
+    // Create file path array (wxDropFilesEvent takes ownership)
+    wxString* files = new wxString[1];
+    files[0] = wxString::FromUTF8(path);
+
+    // Create and dispatch the drop files event
+    wxDropFilesEvent event(wxEVT_DROP_FILES, 1, files);
+    event.SetEventObject(target);
+
+    // Set drop position relative to target window
+    wxPoint clientPos = target->ScreenToClient(dropPoint);
+    event.m_pos = clientPos;
+
+    target->HandleWindowEvent(event);
+}
+
+} // extern "C"
