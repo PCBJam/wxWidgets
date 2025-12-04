@@ -248,12 +248,45 @@ void wxWasmDCImpl::SetTextBackground(const wxColour& colour)
 
 void wxWasmDCImpl::DoSetDeviceClippingRegion(const wxRegion& region)
 {
-    // TODO: implement for non-rectangular regions
-    wxRect rect = region.GetBox();
+    if (region.IsEmpty())
+    {
+        return;
+    }
 
-    EM_ASM({
-        clipRect($0, $1, $2, $3, $4);
-    }, GetJavascriptId(), rect.x, rect.y, rect.width, rect.height);
+    // Count rectangles in the region
+    int rectCount = 0;
+    for (wxRegionIterator ri(region); ri.HaveRects(); ++ri)
+    {
+        rectCount++;
+    }
+
+    if (rectCount == 1)
+    {
+        // Single rectangle - use simple clipRect
+        wxRect rect = region.GetBox();
+        EM_ASM({
+            clipRect($0, $1, $2, $3, $4);
+        }, GetJavascriptId(), rect.x, rect.y, rect.width, rect.height);
+    }
+    else if (rectCount > 1)
+    {
+        // Multiple rectangles - pass array to JavaScript
+        int* rectData = new int[rectCount * 4];
+        int i = 0;
+        for (wxRegionIterator ri(region); ri.HaveRects(); ++ri)
+        {
+            rectData[i++] = ri.GetX();
+            rectData[i++] = ri.GetY();
+            rectData[i++] = ri.GetW();
+            rectData[i++] = ri.GetH();
+        }
+
+        EM_ASM({
+            clipRegion($0, $1, $2);
+        }, GetJavascriptId(), rectData, rectCount);
+
+        delete[] rectData;
+    }
 }
 
 void wxWasmDCImpl::DoSetClippingRegion(wxCoord x, wxCoord y,
@@ -516,7 +549,6 @@ void wxWasmDCImpl::DoDrawText(const wxString& text, wxCoord x, wxCoord y)
         wxString fontInfoDesc = m_font.GetNativeFontInfoDesc();
         const char *fontString = fontInfoDesc.utf8_str();
 
-        // TODO: set underline and strikethrough when context supports textDecoration attribute
         EM_ASM({
             setFont($0, UTF8ToString($1));
         }, GetJavascriptId(), fontString);
@@ -554,9 +586,14 @@ void wxWasmDCImpl::DoDrawText(const wxString& text, wxCoord x, wxCoord y)
 
     wxCoord textY = devY + textHeight * (5.0 / 6.0);
 
+    // Get text decoration flags from font
+    bool underline = m_font.IsOk() && m_font.GetUnderlined();
+    bool strikethrough = m_font.IsOk() && m_font.GetStrikethrough();
+
     EM_ASM({
-        drawText($0, UTF8ToString($1), $2, $3, $4);
-    }, GetJavascriptId(), s, devX, textY, m_textForegroundColour.GetRGBA());
+        drawText($0, UTF8ToString($1), $2, $3, $4, $5, $6);
+    }, GetJavascriptId(), s, devX, textY, m_textForegroundColour.GetRGBA(),
+       underline, strikethrough);
 }
 
 void wxWasmDCImpl::DoDrawRotatedText(const wxString& text,

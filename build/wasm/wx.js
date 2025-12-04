@@ -740,6 +740,26 @@ if (typeof navigator !== 'undefined') {
     ctx.clip();
   };
 
+  // Clip to a non-rectangular region composed of multiple rectangles
+  var clipRegion = function (id, rectDataPtr, rectCount) {
+    var ctx = getContext(id);
+    resetClip(ctx);
+
+    ctx.beginPath();
+
+    // Read rectangle data from WASM memory (4 ints per rect: x, y, w, h)
+    for (var i = 0; i < rectCount; i++) {
+      var offset = rectDataPtr / 4 + i * 4;  // Convert byte offset to int offset
+      var x = Module.HEAP32[offset];
+      var y = Module.HEAP32[offset + 1];
+      var w = Module.HEAP32[offset + 2];
+      var h = Module.HEAP32[offset + 3];
+      ctx.rect(x, y, w, h);
+    }
+
+    ctx.clip();
+  };
+
   var destroyClip = function (id) {
     var ctx = getContext(id);
 
@@ -968,7 +988,7 @@ if (typeof navigator !== 'undefined') {
     dstCtx.drawImage(srcCtx.canvas, sx * sf, sy * sf, width * sf, height * sf, dx, dy, width, height);
   };
 
-  var drawText = function (id, text, x, y, textColor) {
+  var drawText = function (id, text, x, y, textColor, underline, strikethrough) {
     var ctx = getContext(id);
     //console.log('drawText: ' + text + ' ' + id + ' ' + ctx.width + ' ' + ctx.height);
 
@@ -976,6 +996,45 @@ if (typeof navigator !== 'undefined') {
 
     ctx.fillStyle = makeColorString(textColor);
     ctx.fillText(text, x, y);
+
+    // Draw text decorations (underline and/or strikethrough)
+    if (underline || strikethrough) {
+      var metrics = ctx.measureText(text);
+      var textWidth = metrics.width;
+
+      // Save current state
+      var strokeStyle = ctx.strokeStyle;
+      var lineWidth = ctx.lineWidth;
+
+      ctx.strokeStyle = makeColorString(textColor);
+      ctx.lineWidth = 1;
+
+      if (underline) {
+        // Draw underline below the baseline
+        // Use fontBoundingBoxDescent if available, otherwise estimate
+        var descent = metrics.fontBoundingBoxDescent || 3;
+        var underlineY = y + descent;
+        ctx.beginPath();
+        ctx.moveTo(x, underlineY);
+        ctx.lineTo(x + textWidth, underlineY);
+        ctx.stroke();
+      }
+
+      if (strikethrough) {
+        // Draw strikethrough at middle of text
+        // Use fontBoundingBoxAscent if available, otherwise estimate
+        var ascent = metrics.fontBoundingBoxAscent || 10;
+        var strikeY = y - ascent * 0.35;  // ~35% up from baseline
+        ctx.beginPath();
+        ctx.moveTo(x, strikeY);
+        ctx.lineTo(x + textWidth, strikeY);
+        ctx.stroke();
+      }
+
+      // Restore state
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = lineWidth;
+    }
 
     ctx.fillStyle = fillStyle;
   };
