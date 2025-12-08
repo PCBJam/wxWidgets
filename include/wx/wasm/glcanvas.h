@@ -101,16 +101,18 @@ public:
     // Get the WebGL context handle (for use by wxGLContext)
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE GetWebGLContext() const { return m_webglContext; }
 
+    // Override size and visibility handling to update the canvas element
+    virtual bool Show(bool show = true) wxOVERRIDE;
+
 protected:
     void Init();
 
     // Create the WebGL context
     bool CreateWebGLContext(const wxGLAttributes& dispAttrs);
 
-    // Override size and visibility handling to update the canvas element
+    // DoSetSize is protected in wxWindow, so we keep it protected here
     virtual void DoSetSize(int x, int y, int width, int height,
                            int sizeFlags = wxSIZE_AUTO) wxOVERRIDE;
-    virtual bool Show(bool show = true) wxOVERRIDE;
 
     // Convert wxGL attributes to Emscripten WebGL context attributes
     static void ConvertWXAttrsToWebGL(const wxGLAttributes& dispAttrs,

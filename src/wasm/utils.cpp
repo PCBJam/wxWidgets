@@ -10,6 +10,7 @@
 
 #ifndef WX_PRECOMP
 #include "wx/app.h"
+#include "wx/window.h"
 #endif // WX_PRECOMP
 
 #include "wx/wasm/private.h"
@@ -168,5 +169,11 @@ bool wxDoLaunchDefaultBrowser(const wxLaunchBrowserParams& params)
 
 void wxBell()
 {
+}
+
+wxWindow* wxFindWindowAtPointer(wxPoint& pt)
+{
+    pt = wxGetMousePosition();
+    return wxFindWindowAtPoint(pt);
 }
 
