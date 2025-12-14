@@ -21,7 +21,7 @@ public:
     wxWasmDisplay();
     virtual ~wxWasmDisplay() { }
     
-    inline wxSize GetScreenSize() const { return m_screenSize; }
+    wxSize GetScreenSize() const;  // Queries DOM dynamically each time
     void SetScreenSize(const wxSize& screenSize) { m_screenSize = screenSize; }
 
     inline double GetDeviceScaleFactor() const { return m_deviceScaleFactor; }

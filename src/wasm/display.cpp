@@ -27,14 +27,22 @@ double GetDevicePixelRatio()
 int GetScreenWidth()
 {
     return EM_ASM_INT({
-        return mainWindow.offsetWidth;
+        // Query DOM dynamically with fallback if mainWindow not ready
+        if (typeof mainWindow !== 'undefined' && mainWindow) {
+            return mainWindow.offsetWidth;
+        }
+        return 1280;  // Reasonable default fallback
     });
 }
 
 int GetScreenHeight()
 {
     return EM_ASM_INT({
-        return mainWindow.offsetHeight;
+        // Query DOM dynamically with fallback if mainWindow not ready
+        if (typeof mainWindow !== 'undefined' && mainWindow) {
+            return mainWindow.offsetHeight;
+        }
+        return 720;  // Reasonable default fallback
     });
 }
 
@@ -47,6 +55,14 @@ wxWasmDisplay::wxWasmDisplay()
       m_deviceScaleFactor(GetDevicePixelRatio()),
       m_contentScaleFactor(m_deviceScaleFactor >= 1.5 ? 2.0 : 1.0)
 {
+}
+
+wxSize wxWasmDisplay::GetScreenSize() const
+{
+    // Query DOM fresh each time instead of returning cached value.
+    // This matches how GTK/MSW ports work - they always query native APIs.
+    // Fixes the bug where GetClientSize() returns 20x20 if called before Show().
+    return wxSize(GetScreenWidth(), GetScreenHeight());
 }
 
 void wxWasmDisplay::UpdateScaleFactor()

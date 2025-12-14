@@ -42,11 +42,28 @@ bool wxTopLevelWindowWasm::Create(wxWindow *parent,
                                   wxWindowID id,
                                   const wxString& title,
                                   const wxPoint& pos,
-                                  const wxSize& size,
+                                  const wxSize& sizeOrig,
                                   long style,
                                   const wxString& name)
 {
     //wxLogDebug(wxT("creating toplevel window"));
+
+    // Handle default size like GTK/MSW ports do - resolve to display size
+    // before passing to base class. This ensures GetClientSize() returns
+    // reasonable values even before Show() is called.
+    wxSize size(sizeOrig);
+    if (!size.IsFullySpecified())
+    {
+        // Query display size directly from wxTheApp if available.
+        // This is safer than calling GetDefaultSize() which goes through
+        // wxDisplay and can crash if the display system isn't initialized yet.
+        wxSize defaultSize(1280, 720);  // Reasonable fallback
+        if (wxTheApp && wxTheApp->GetDisplay())
+        {
+            defaultSize = wxTheApp->GetDisplay()->GetScreenSize();
+        }
+        size.SetDefaults(defaultSize);
+    }
 
     if (!wxTopLevelWindowBase::Create(parent, id, pos, size, style, name))
     {
