@@ -35,143 +35,135 @@ EM_JS(bool, js_isClipboardAPIAvailable, (), {
 // Helper to create a timeout promise
 // Write text to clipboard using Asyncify
 // Returns: 0 = success, 1 = no API, 2 = permission denied, 3 = other error, 4 = timeout
-EM_JS(int, js_writeTextToClipboard, (const char* text), {
-    return Asyncify.handleAsync(async () => {
-        if (typeof navigator === 'undefined' ||
-            typeof navigator.clipboard === 'undefined') {
-            console.warn('[wxClipboard] Clipboard API not available');
-            return 1;
+EM_ASYNC_JS(int, js_writeTextToClipboard, (const char* text), {
+    if (typeof navigator === 'undefined' ||
+        typeof navigator.clipboard === 'undefined') {
+        console.warn('[wxClipboard] Clipboard API not available');
+        return 1;
+    }
+
+    try {
+        const textStr = UTF8ToString(text);
+
+        // Add timeout to prevent hanging - clipboard should be fast
+        const timeoutMs = 2000;
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Clipboard operation timed out')), timeoutMs);
+        });
+
+        await Promise.race([
+            navigator.clipboard.writeText(textStr),
+            timeoutPromise
+        ]);
+
+        return 0;
+    } catch (err) {
+        if (err.name === 'NotAllowedError') {
+            console.warn('[wxClipboard] Clipboard write permission denied: ' + err.message);
+            return 2;
         }
-
-        try {
-            const textStr = UTF8ToString(text);
-
-            // Add timeout to prevent hanging - clipboard should be fast
-            const timeoutMs = 2000;
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Clipboard operation timed out')), timeoutMs);
-            });
-
-            await Promise.race([
-                navigator.clipboard.writeText(textStr),
-                timeoutPromise
-            ]);
-
-            return 0;
-        } catch (err) {
-            if (err.name === 'NotAllowedError') {
-                console.warn('[wxClipboard] Clipboard write permission denied: ' + err.message);
-                return 2;
-            }
-            if (err.message && err.message.includes('timed out')) {
-                console.warn('[wxClipboard] Clipboard write timed out');
-                return 4;
-            }
-            console.error('[wxClipboard] Clipboard write error: ' + err.message);
-            return 3;
+        if (err.message && err.message.includes('timed out')) {
+            console.warn('[wxClipboard] Clipboard write timed out');
+            return 4;
         }
-    });
+        console.error('[wxClipboard] Clipboard write error: ' + err.message);
+        return 3;
+    }
 });
 
 // Read text from clipboard using Asyncify
 // Returns the text or NULL on failure. Caller must free with free().
-EM_JS(char*, js_readTextFromClipboard, (), {
-    return Asyncify.handleAsync(async () => {
-        if (typeof navigator === 'undefined' ||
-            typeof navigator.clipboard === 'undefined') {
-            console.warn('[wxClipboard] Clipboard API not available');
-            return 0;  // NULL
+EM_ASYNC_JS(char*, js_readTextFromClipboard, (), {
+    if (typeof navigator === 'undefined' ||
+        typeof navigator.clipboard === 'undefined') {
+        console.warn('[wxClipboard] Clipboard API not available');
+        return 0;  // NULL
+    }
+
+    try {
+        // Add timeout to prevent hanging
+        const timeoutMs = 2000;
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Clipboard operation timed out')), timeoutMs);
+        });
+
+        const text = await Promise.race([
+            navigator.clipboard.readText(),
+            timeoutPromise
+        ]);
+
+        // Allocate memory for the string and copy it
+        const len = lengthBytesUTF8(text) + 1;
+        const ptr = _malloc(len);
+        if (ptr === 0) {
+            console.error('[wxClipboard] Failed to allocate memory for clipboard text');
+            return 0;
         }
-
-        try {
-            // Add timeout to prevent hanging
-            const timeoutMs = 2000;
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Clipboard operation timed out')), timeoutMs);
-            });
-
-            const text = await Promise.race([
-                navigator.clipboard.readText(),
-                timeoutPromise
-            ]);
-
-            // Allocate memory for the string and copy it
-            const len = lengthBytesUTF8(text) + 1;
-            const ptr = _malloc(len);
-            if (ptr === 0) {
-                console.error('[wxClipboard] Failed to allocate memory for clipboard text');
-                return 0;
-            }
-            stringToUTF8(text, ptr, len);
-            return ptr;
-        } catch (err) {
-            if (err.name === 'NotAllowedError') {
-                console.warn('[wxClipboard] Clipboard read permission denied: ' + err.message);
-            } else if (err.message && err.message.includes('timed out')) {
-                console.warn('[wxClipboard] Clipboard read timed out');
-            } else {
-                console.error('[wxClipboard] Clipboard read error: ' + err.message);
-            }
-            return 0;  // NULL
+        stringToUTF8(text, ptr, len);
+        return ptr;
+    } catch (err) {
+        if (err.name === 'NotAllowedError') {
+            console.warn('[wxClipboard] Clipboard read permission denied: ' + err.message);
+        } else if (err.message && err.message.includes('timed out')) {
+            console.warn('[wxClipboard] Clipboard read timed out');
+        } else {
+            console.error('[wxClipboard] Clipboard read error: ' + err.message);
         }
-    });
+        return 0;  // NULL
+    }
 });
 
 // Check if clipboard has text content using Asyncify
 // Returns: 0 = no text, 1 = has text, -1 = error/unavailable
-EM_JS(int, js_clipboardHasText, (), {
-    return Asyncify.handleAsync(async () => {
-        if (typeof navigator === 'undefined' ||
-            typeof navigator.clipboard === 'undefined') {
-            return -1;
-        }
+EM_ASYNC_JS(int, js_clipboardHasText, (), {
+    if (typeof navigator === 'undefined' ||
+        typeof navigator.clipboard === 'undefined') {
+        return -1;
+    }
 
-        try {
-            // Add timeout to prevent hanging
-            const timeoutMs = 2000;
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Clipboard operation timed out')), timeoutMs);
-            });
+    try {
+        // Add timeout to prevent hanging
+        const timeoutMs = 2000;
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Clipboard operation timed out')), timeoutMs);
+        });
 
-            // Try to read to check availability
-            const text = await Promise.race([
-                navigator.clipboard.readText(),
-                timeoutPromise
-            ]);
-            return (text && text.length > 0) ? 1 : 0;
-        } catch (err) {
-            // Permission denied or other error - we can't determine
-            console.warn('[wxClipboard] Cannot check clipboard content: ' + err.message);
-            return -1;
-        }
-    });
+        // Try to read to check availability
+        const text = await Promise.race([
+            navigator.clipboard.readText(),
+            timeoutPromise
+        ]);
+        return (text && text.length > 0) ? 1 : 0;
+    } catch (err) {
+        // Permission denied or other error - we can't determine
+        console.warn('[wxClipboard] Cannot check clipboard content: ' + err.message);
+        return -1;
+    }
 });
 
 // Clear the clipboard by writing empty text
-EM_JS(int, js_clearClipboard, (), {
-    return Asyncify.handleAsync(async () => {
-        if (typeof navigator === 'undefined' ||
-            typeof navigator.clipboard === 'undefined') {
-            return 1;
-        }
+EM_ASYNC_JS(int, js_clearClipboard, (), {
+    if (typeof navigator === 'undefined' ||
+        typeof navigator.clipboard === 'undefined') {
+        return 1;
+    }
 
-        try {
-            // Add timeout to prevent hanging
-            const timeoutMs = 2000;
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Clipboard operation timed out')), timeoutMs);
-            });
+    try {
+        // Add timeout to prevent hanging
+        const timeoutMs = 2000;
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Clipboard operation timed out')), timeoutMs);
+        });
 
-            await Promise.race([
-                navigator.clipboard.writeText(''),
-                timeoutPromise
-            ]);
-            return 0;
-        } catch (err) {
-            console.warn('[wxClipboard] Failed to clear clipboard: ' + err.message);
-            return 1;
-        }
-    });
+        await Promise.race([
+            navigator.clipboard.writeText(''),
+            timeoutPromise
+        ]);
+        return 0;
+    } catch (err) {
+        console.warn('[wxClipboard] Failed to clear clipboard: ' + err.message);
+        return 1;
+    }
 });
 
 //-----------------------------------------------------------------------------

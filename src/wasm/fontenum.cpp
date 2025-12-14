@@ -30,67 +30,65 @@ EM_JS(bool, js_isFontAccessAPIAvailable, (), {
 // Enumerate font face names using Local Font Access API
 // Returns: number of fonts found, -1 on error/permission denied
 // Font names are stored in the provided array (caller allocates pointers, we allocate strings)
-EM_JS(int, js_enumerateFonts, (char** fontNames, int maxFonts, bool fixedWidthOnly), {
-    return Asyncify.handleAsync(async () => {
-        if (typeof window === 'undefined' ||
-            typeof window.queryLocalFonts !== 'function') {
-            console.warn('[wxFontEnumerator] Local Font Access API not available');
-            return -1;
+EM_ASYNC_JS(int, js_enumerateFonts, (char** fontNames, int maxFonts, bool fixedWidthOnly), {
+    if (typeof window === 'undefined' ||
+        typeof window.queryLocalFonts !== 'function') {
+        console.warn('[wxFontEnumerator] Local Font Access API not available');
+        return -1;
+    }
+
+    try {
+        // Add timeout to prevent hanging
+        const timeoutMs = 5000;
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Font enumeration timed out')), timeoutMs);
+        });
+
+        const fonts = await Promise.race([
+            window.queryLocalFonts(),
+            timeoutPromise
+        ]);
+
+        // Get unique family names
+        const familySet = new Set();
+        for (const font of fonts) {
+            familySet.add(font.family);
         }
 
-        try {
-            // Add timeout to prevent hanging
-            const timeoutMs = 5000;
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Font enumeration timed out')), timeoutMs);
-            });
+        // TODO: Filter by fixedWidthOnly if needed
+        // This would require checking font metrics which is complex
 
-            const fonts = await Promise.race([
-                window.queryLocalFonts(),
-                timeoutPromise
-            ]);
+        const families = Array.from(familySet).sort();
+        const count = Math.min(families.length, maxFonts);
 
-            // Get unique family names
-            const familySet = new Set();
-            for (const font of fonts) {
-                familySet.add(font.family);
-            }
-
-            // TODO: Filter by fixedWidthOnly if needed
-            // This would require checking font metrics which is complex
-
-            const families = Array.from(familySet).sort();
-            const count = Math.min(families.length, maxFonts);
-
-            // Allocate and copy font names
-            for (let i = 0; i < count; i++) {
-                const name = families[i];
-                const len = lengthBytesUTF8(name) + 1;
-                const ptr = _malloc(len);
-                if (ptr === 0) {
-                    console.error('[wxFontEnumerator] Failed to allocate memory for font name');
-                    // Clean up already allocated names
-                    for (let j = 0; j < i; j++) {
-                        _free(HEAPU32[fontNames/4 + j]);
-                    }
-                    return -1;
+        // Allocate and copy font names
+        for (let i = 0; i < count; i++) {
+            const name = families[i];
+            const len = lengthBytesUTF8(name) + 1;
+            const ptr = _malloc(len);
+            if (ptr === 0) {
+                console.error('[wxFontEnumerator] Failed to allocate memory for font name');
+                // Clean up already allocated names
+                for (let j = 0; j < i; j++) {
+                    _free(HEAPU32[fontNames/4 + j]);
                 }
-                stringToUTF8(name, ptr, len);
-                HEAPU32[fontNames/4 + i] = ptr;
+                return -1;
             }
-
-            return count;
-        } catch (err) {
-            if (err.name === 'NotAllowedError') {
-                console.warn('[wxFontEnumerator] Font access permission denied');
-            } else if (err.message && err.message.includes('timed out')) {
-                console.warn('[wxFontEnumerator] Font enumeration timed out');
-            } else {
-                console.error('[wxFontEnumerator] Font enumeration error: ' + err.message);
-            }
-            return -1;
+            stringToUTF8(name, ptr, len);
+            HEAPU32[fontNames/4 + i] = ptr;
         }
-    });
+
+        return count;
+    } catch (err) {
+        if (err.name === 'NotAllowedError') {
+            console.warn('[wxFontEnumerator] Font access permission denied');
+        } else if (err.message && err.message.includes('timed out')) {
+            console.warn('[wxFontEnumerator] Font enumeration timed out');
+        } else {
+            console.error('[wxFontEnumerator] Font enumeration error: ' + err.message);
+        }
+        return -1;
+    }
 });
 
 //-----------------------------------------------------------------------------

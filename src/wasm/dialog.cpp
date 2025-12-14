@@ -184,24 +184,22 @@ bool wxDialog::IsModal() const
 // 1. Starts a setTimeout-based event loop that calls ProcessEvents
 // 2. Returns a Promise that resolves when endModal() is called
 // 3. Asyncify suspends the C++ stack until the Promise resolves
-EM_JS(int, startModal, (), {
-    return Asyncify.handleAsync(async () => {
-        console.log('startModal');
+EM_ASYNC_JS(int, startModal, (), {
+    console.log('startModal');
 
-        var runEventLoop = function () {
-            modalTimer = setTimeout(function () {
-                ccall('ProcessEvents', 'void', [], []);
-                runEventLoop();
-            }, 17);  // ~60fps
-        };
-
-        const result = await new Promise((resolve, reject) => {
+    var runEventLoop = function () {
+        modalTimer = setTimeout(function () {
+            ccall('ProcessEvents', 'void', [], []);
             runEventLoop();
-            endModal = resolve;
-        });
-        console.log('modal result: ' + result);
-        return result;
+        }, 17);  // ~60fps
+    };
+
+    const result = await new Promise((resolve, reject) => {
+        runEventLoop();
+        endModal = resolve;
     });
+    console.log('modal result: ' + result);
+    return result;
 });
 
 int wxDialog::ShowModal()
