@@ -12,6 +12,7 @@
 
 #include "wx/apptrait.h"
 #include "wx/dnd.h"
+#include "wx/log.h"
 #include "wx/nonownedwnd.h"
 #include "wx/toplevel.h"
 #include "wx/window.h"
@@ -27,6 +28,9 @@
 
 void RegisterEmscriptenCallbacks(wxApp* app);
 
+// WASM-specific logger that outputs to browser console
+extern wxLog* wxCreateLogWasm();
+
 // ----------------------------------------------------------------------------
 // wxApp
 // ----------------------------------------------------------------------------
@@ -37,7 +41,6 @@ wxApp::wxApp()
     : m_display(new wxWasmDisplay())
 {
     printf("Creating app\n");
-
     RegisterEmscriptenCallbacks(this);
 }
 
@@ -389,6 +392,14 @@ bool wxGUIAppTraits::ShowAssertDialog(const wxString& WXUNUSED(msg))
 {
     return false;
 }
+
+#if wxUSE_LOG
+wxLog* wxGUIAppTraits::CreateLogTarget()
+{
+    // Use WASM-specific logger that outputs to browser console
+    return wxCreateLogWasm();
+}
+#endif
 
 namespace
 {

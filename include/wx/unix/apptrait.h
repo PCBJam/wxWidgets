@@ -70,6 +70,11 @@ public:
     virtual bool ShowAssertDialog(const wxString& msg) wxOVERRIDE;
 #endif
 
+#if defined(__WXWASM__) && wxUSE_LOG
+    // WASM-specific logger that outputs to browser console
+    virtual wxLog *CreateLogTarget() wxOVERRIDE;
+#endif
+
 #if wxUSE_SOCKETS
 
 #ifdef wxHAS_GUI_SOCKET_MANAGER

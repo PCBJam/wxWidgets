@@ -2051,6 +2051,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     src/wasm/fontenum.cpp
     src/wasm/fontutil.cpp
     src/wasm/keyboard.cpp
+    src/wasm/log.cpp
     src/wasm/mouse.cpp
     src/wasm/nonownedwnd.cpp
     src/wasm/pen.cpp

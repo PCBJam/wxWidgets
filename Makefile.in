@@ -1053,7 +1053,7 @@ MONODLL_OBJECTS =  \
 	monodll_ipcbase.o \
 	monodll_languageinfo.o \
 	monodll_list.o \
-	monodll_log.o \
+	monodll_common_log.o \
 	monodll_longlong.o \
 	monodll_memory.o \
 	monodll_mimecmn.o \
@@ -1201,7 +1201,7 @@ MONOLIB_OBJECTS =  \
 	monolib_ipcbase.o \
 	monolib_languageinfo.o \
 	monolib_list.o \
-	monolib_log.o \
+	monolib_common_log.o \
 	monolib_longlong.o \
 	monolib_memory.o \
 	monolib_mimecmn.o \
@@ -5350,6 +5350,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS =  \
 	monodll_wasm_fontenum.o \
 	monodll_wasm_fontutil.o \
 	monodll_keyboard.o \
+	monodll_wasm_log.o \
 	monodll_mouse.o \
 	monodll_wasm_nonownedwnd.o \
 	monodll_wasm_pen.o \
@@ -6299,6 +6300,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_1 =  \
 	monodll_wasm_fontenum.o \
 	monodll_wasm_fontutil.o \
 	monodll_keyboard.o \
+	monodll_wasm_log.o \
 	monodll_mouse.o \
 	monodll_wasm_nonownedwnd.o \
 	monodll_wasm_pen.o \
@@ -7439,6 +7441,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_2 =  \
 	monolib_wasm_fontenum.o \
 	monolib_wasm_fontutil.o \
 	monolib_keyboard.o \
+	monolib_wasm_log.o \
 	monolib_mouse.o \
 	monolib_wasm_nonownedwnd.o \
 	monolib_wasm_pen.o \
@@ -8388,6 +8391,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_3 =  \
 	monolib_wasm_fontenum.o \
 	monolib_wasm_fontutil.o \
 	monolib_keyboard.o \
+	monolib_wasm_log.o \
 	monolib_mouse.o \
 	monolib_wasm_nonownedwnd.o \
 	monolib_wasm_pen.o \
@@ -9682,6 +9686,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_4 =  \
 	coredll_wasm_fontenum.o \
 	coredll_wasm_fontutil.o \
 	coredll_keyboard.o \
+	coredll_log.o \
 	coredll_mouse.o \
 	coredll_wasm_nonownedwnd.o \
 	coredll_wasm_pen.o \
@@ -10631,6 +10636,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_5 =  \
 	coredll_wasm_fontenum.o \
 	coredll_wasm_fontutil.o \
 	coredll_keyboard.o \
+	coredll_log.o \
 	coredll_mouse.o \
 	coredll_wasm_nonownedwnd.o \
 	coredll_wasm_pen.o \
@@ -11498,6 +11504,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_6 =  \
 	corelib_wasm_fontenum.o \
 	corelib_wasm_fontutil.o \
 	corelib_keyboard.o \
+	corelib_log.o \
 	corelib_mouse.o \
 	corelib_wasm_nonownedwnd.o \
 	corelib_wasm_pen.o \
@@ -12447,6 +12454,7 @@ COND_TOOLKIT_WASM___LOWLEVEL_SRC_OBJECTS_7 =  \
 	corelib_wasm_fontenum.o \
 	corelib_wasm_fontutil.o \
 	corelib_keyboard.o \
+	corelib_log.o \
 	corelib_mouse.o \
 	corelib_wasm_nonownedwnd.o \
 	corelib_wasm_pen.o \
@@ -16321,7 +16329,7 @@ monodll_languageinfo.o: $(srcdir)/src/common/languageinfo.cpp $(MONODLL_ODEP)
 monodll_list.o: $(srcdir)/src/common/list.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/common/list.cpp
 
-monodll_log.o: $(srcdir)/src/common/log.cpp $(MONODLL_ODEP)
+monodll_common_log.o: $(srcdir)/src/common/log.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/common/log.cpp
 
 monodll_longlong.o: $(srcdir)/src/common/longlong.cpp $(MONODLL_ODEP)
@@ -19825,6 +19833,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@monodll_keyboard.o: $(srcdir)/src/wasm/keyboard.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/keyboard.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@monodll_wasm_log.o: $(srcdir)/src/wasm/log.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/log.cpp
+
 @COND_TOOLKIT_WASM_USE_GUI_1@monodll_mouse.o: $(srcdir)/src/wasm/mouse.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/mouse.cpp
 
@@ -21754,7 +21765,7 @@ monolib_languageinfo.o: $(srcdir)/src/common/languageinfo.cpp $(MONOLIB_ODEP)
 monolib_list.o: $(srcdir)/src/common/list.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/common/list.cpp
 
-monolib_log.o: $(srcdir)/src/common/log.cpp $(MONOLIB_ODEP)
+monolib_common_log.o: $(srcdir)/src/common/log.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/common/log.cpp
 
 monolib_longlong.o: $(srcdir)/src/common/longlong.cpp $(MONOLIB_ODEP)
@@ -25257,6 +25268,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_TOOLKIT_WASM_USE_GUI_1@monolib_keyboard.o: $(srcdir)/src/wasm/keyboard.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/keyboard.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@monolib_wasm_log.o: $(srcdir)/src/wasm/log.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/log.cpp
 
 @COND_TOOLKIT_WASM_USE_GUI_1@monolib_mouse.o: $(srcdir)/src/wasm/mouse.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/mouse.cpp
@@ -30796,6 +30810,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@coredll_keyboard.o: $(srcdir)/src/wasm/keyboard.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/keyboard.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1@coredll_log.o: $(srcdir)/src/wasm/log.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/log.cpp
+
 @COND_TOOLKIT_WASM_USE_GUI_1@coredll_mouse.o: $(srcdir)/src/wasm/mouse.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/mouse.cpp
 
@@ -35187,6 +35204,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_TOOLKIT_WASM_USE_GUI_1@corelib_keyboard.o: $(srcdir)/src/wasm/keyboard.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/keyboard.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1@corelib_log.o: $(srcdir)/src/wasm/log.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/log.cpp
 
 @COND_TOOLKIT_WASM_USE_GUI_1@corelib_mouse.o: $(srcdir)/src/wasm/mouse.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_WASM_USE_GUI_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/mouse.cpp
