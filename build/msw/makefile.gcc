@@ -1958,7 +1958,7 @@ ____CORE_SRC_FILENAMES_OBJECTS =  \
 	$(OBJS)\monodll_combo.o \
 	$(OBJS)\monodll_msw_combobox.o \
 	$(OBJS)\monodll_msw_control.o \
-	$(OBJS)\monodll_msw_dialog.o \
+	$(OBJS)\monodll_dialog.o \
 	$(OBJS)\monodll_dirdlg.o \
 	$(OBJS)\monodll_dragimag.o \
 	$(OBJS)\monodll_filedlg.o \
@@ -2310,7 +2310,6 @@ ____CORE_SRC_FILENAMES_OBJECTS =  \
 	$(OBJS)\monodll_univ_combobox.o \
 	$(OBJS)\monodll_univ_control.o \
 	$(OBJS)\monodll_ctrlrend.o \
-	$(OBJS)\monodll_univ_dialog.o \
 	$(OBJS)\monodll_framuniv.o \
 	$(OBJS)\monodll_univ_gauge.o \
 	$(OBJS)\monodll_inpcons.o \
@@ -2808,7 +2807,7 @@ ____CORE_SRC_FILENAMES_1_OBJECTS =  \
 	$(OBJS)\monolib_combo.o \
 	$(OBJS)\monolib_msw_combobox.o \
 	$(OBJS)\monolib_msw_control.o \
-	$(OBJS)\monolib_msw_dialog.o \
+	$(OBJS)\monolib_dialog.o \
 	$(OBJS)\monolib_dirdlg.o \
 	$(OBJS)\monolib_dragimag.o \
 	$(OBJS)\monolib_filedlg.o \
@@ -3160,7 +3159,6 @@ ____CORE_SRC_FILENAMES_1_OBJECTS =  \
 	$(OBJS)\monolib_univ_combobox.o \
 	$(OBJS)\monolib_univ_control.o \
 	$(OBJS)\monolib_ctrlrend.o \
-	$(OBJS)\monolib_univ_dialog.o \
 	$(OBJS)\monolib_framuniv.o \
 	$(OBJS)\monolib_univ_gauge.o \
 	$(OBJS)\monolib_inpcons.o \
@@ -3540,7 +3538,7 @@ ____CORE_SRC_FILENAMES_2_OBJECTS =  \
 	$(OBJS)\coredll_combo.o \
 	$(OBJS)\coredll_msw_combobox.o \
 	$(OBJS)\coredll_msw_control.o \
-	$(OBJS)\coredll_msw_dialog.o \
+	$(OBJS)\coredll_dialog.o \
 	$(OBJS)\coredll_dirdlg.o \
 	$(OBJS)\coredll_dragimag.o \
 	$(OBJS)\coredll_filedlg.o \
@@ -3892,7 +3890,6 @@ ____CORE_SRC_FILENAMES_2_OBJECTS =  \
 	$(OBJS)\coredll_univ_combobox.o \
 	$(OBJS)\coredll_univ_control.o \
 	$(OBJS)\coredll_ctrlrend.o \
-	$(OBJS)\coredll_univ_dialog.o \
 	$(OBJS)\coredll_framuniv.o \
 	$(OBJS)\coredll_univ_gauge.o \
 	$(OBJS)\coredll_inpcons.o \
@@ -4229,7 +4226,7 @@ ____CORE_SRC_FILENAMES_3_OBJECTS =  \
 	$(OBJS)\corelib_combo.o \
 	$(OBJS)\corelib_msw_combobox.o \
 	$(OBJS)\corelib_msw_control.o \
-	$(OBJS)\corelib_msw_dialog.o \
+	$(OBJS)\corelib_dialog.o \
 	$(OBJS)\corelib_dirdlg.o \
 	$(OBJS)\corelib_dragimag.o \
 	$(OBJS)\corelib_filedlg.o \
@@ -4581,7 +4578,6 @@ ____CORE_SRC_FILENAMES_3_OBJECTS =  \
 	$(OBJS)\corelib_univ_combobox.o \
 	$(OBJS)\corelib_univ_control.o \
 	$(OBJS)\corelib_ctrlrend.o \
-	$(OBJS)\corelib_univ_dialog.o \
 	$(OBJS)\corelib_framuniv.o \
 	$(OBJS)\corelib_univ_gauge.o \
 	$(OBJS)\corelib_inpcons.o \
@@ -7354,7 +7350,7 @@ $(OBJS)\monodll_msw_combobox.o: ../../src/msw/combobox.cpp
 $(OBJS)\monodll_msw_control.o: ../../src/msw/control.cpp
 	$(CXX) -c -o $@ $(MONODLL_CXXFLAGS) $(CPPDEPS) $<
 
-$(OBJS)\monodll_msw_dialog.o: ../../src/msw/dialog.cpp
+$(OBJS)\monodll_dialog.o: ../../src/msw/dialog.cpp
 	$(CXX) -c -o $@ $(MONODLL_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\monodll_dirdlg.o: ../../src/msw/dirdlg.cpp
@@ -7556,9 +7552,6 @@ $(OBJS)\monodll_univ_control.o: ../../src/univ/control.cpp
 	$(CXX) -c -o $@ $(MONODLL_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\monodll_ctrlrend.o: ../../src/univ/ctrlrend.cpp
-	$(CXX) -c -o $@ $(MONODLL_CXXFLAGS) $(CPPDEPS) $<
-
-$(OBJS)\monodll_univ_dialog.o: ../../src/univ/dialog.cpp
 	$(CXX) -c -o $@ $(MONODLL_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\monodll_framuniv.o: ../../src/univ/framuniv.cpp
@@ -9949,7 +9942,7 @@ $(OBJS)\monolib_msw_combobox.o: ../../src/msw/combobox.cpp
 $(OBJS)\monolib_msw_control.o: ../../src/msw/control.cpp
 	$(CXX) -c -o $@ $(MONOLIB_CXXFLAGS) $(CPPDEPS) $<
 
-$(OBJS)\monolib_msw_dialog.o: ../../src/msw/dialog.cpp
+$(OBJS)\monolib_dialog.o: ../../src/msw/dialog.cpp
 	$(CXX) -c -o $@ $(MONOLIB_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\monolib_dirdlg.o: ../../src/msw/dirdlg.cpp
@@ -10151,9 +10144,6 @@ $(OBJS)\monolib_univ_control.o: ../../src/univ/control.cpp
 	$(CXX) -c -o $@ $(MONOLIB_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\monolib_ctrlrend.o: ../../src/univ/ctrlrend.cpp
-	$(CXX) -c -o $@ $(MONOLIB_CXXFLAGS) $(CPPDEPS) $<
-
-$(OBJS)\monolib_univ_dialog.o: ../../src/univ/dialog.cpp
 	$(CXX) -c -o $@ $(MONOLIB_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\monolib_framuniv.o: ../../src/univ/framuniv.cpp
@@ -12973,7 +12963,7 @@ $(OBJS)\coredll_msw_combobox.o: ../../src/msw/combobox.cpp
 $(OBJS)\coredll_msw_control.o: ../../src/msw/control.cpp
 	$(CXX) -c -o $@ $(COREDLL_CXXFLAGS) $(CPPDEPS) $<
 
-$(OBJS)\coredll_msw_dialog.o: ../../src/msw/dialog.cpp
+$(OBJS)\coredll_dialog.o: ../../src/msw/dialog.cpp
 	$(CXX) -c -o $@ $(COREDLL_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\coredll_dirdlg.o: ../../src/msw/dirdlg.cpp
@@ -13175,9 +13165,6 @@ $(OBJS)\coredll_univ_control.o: ../../src/univ/control.cpp
 	$(CXX) -c -o $@ $(COREDLL_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\coredll_ctrlrend.o: ../../src/univ/ctrlrend.cpp
-	$(CXX) -c -o $@ $(COREDLL_CXXFLAGS) $(CPPDEPS) $<
-
-$(OBJS)\coredll_univ_dialog.o: ../../src/univ/dialog.cpp
 	$(CXX) -c -o $@ $(COREDLL_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\coredll_framuniv.o: ../../src/univ/framuniv.cpp
@@ -14728,7 +14715,7 @@ $(OBJS)\corelib_msw_combobox.o: ../../src/msw/combobox.cpp
 $(OBJS)\corelib_msw_control.o: ../../src/msw/control.cpp
 	$(CXX) -c -o $@ $(CORELIB_CXXFLAGS) $(CPPDEPS) $<
 
-$(OBJS)\corelib_msw_dialog.o: ../../src/msw/dialog.cpp
+$(OBJS)\corelib_dialog.o: ../../src/msw/dialog.cpp
 	$(CXX) -c -o $@ $(CORELIB_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\corelib_dirdlg.o: ../../src/msw/dirdlg.cpp
@@ -14930,9 +14917,6 @@ $(OBJS)\corelib_univ_control.o: ../../src/univ/control.cpp
 	$(CXX) -c -o $@ $(CORELIB_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\corelib_ctrlrend.o: ../../src/univ/ctrlrend.cpp
-	$(CXX) -c -o $@ $(CORELIB_CXXFLAGS) $(CPPDEPS) $<
-
-$(OBJS)\corelib_univ_dialog.o: ../../src/univ/dialog.cpp
 	$(CXX) -c -o $@ $(CORELIB_CXXFLAGS) $(CPPDEPS) $<
 
 $(OBJS)\corelib_framuniv.o: ../../src/univ/framuniv.cpp

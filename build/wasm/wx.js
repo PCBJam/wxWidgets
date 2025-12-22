@@ -18,11 +18,13 @@ if (typeof navigator !== 'undefined') {
     if (match[2] === 'Safari') {
       return {
         browser: match[2],
+        name: match[2],
         version: match[1]
       };
     } else {
       return {
         browser: match[1] || '',
+        name: match[1] || '',
         version: match[2] || '0'
       };
     }

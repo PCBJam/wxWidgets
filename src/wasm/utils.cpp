@@ -167,6 +167,31 @@ bool wxDoLaunchDefaultBrowser(const wxLaunchBrowserParams& params)
     return true;
 }
 
+bool wxLaunchDefaultApplication(const wxString& path, int WXUNUSED(flags))
+{
+    // In a browser context, we can only launch URLs
+    // Check if the path looks like a URL
+    if (path.StartsWith("http://") || path.StartsWith("https://") ||
+        path.StartsWith("mailto:") || path.StartsWith("file://"))
+    {
+        if (emscripten_is_main_runtime_thread())
+        {
+            EmscriptenDoLaunchBrowser(path);
+        }
+        else
+        {
+            emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_VI,
+                    &EmscriptenDoLaunchBrowserAsync,
+                    new wxString(path));
+        }
+        return true;
+    }
+
+    // For local file paths, we cannot launch external applications in a browser
+    // Return false to indicate the operation is not supported
+    return false;
+}
+
 void wxBell()
 {
 }
