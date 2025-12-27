@@ -85,7 +85,7 @@ public:
 
     static void InitStandardHandlers();
 
-    bool HasAlpha() const { return GetDepth() == 32; }
+    bool HasAlpha() const;
 
     void SyncToCpp() const;
     void SyncToJs() const;

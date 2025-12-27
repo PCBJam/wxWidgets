@@ -56,6 +56,8 @@ public:
     unsigned char *GetData() const { return m_bitmap; }
 
     inline bool HasMask() const { return m_mask != NULL; }
+    inline bool GetHasAlpha() const { return m_hasAlpha; }
+    inline void SetHasAlpha(bool hasAlpha) { m_hasAlpha = hasAlpha; }
 
     void SyncToCpp();
     void SyncToJs();
@@ -77,6 +79,7 @@ protected:
     int m_dataWidth;
     int m_dataHeight;
     mutable BitmapDataSource m_dataSource;
+    bool m_hasAlpha;
 
     wxDECLARE_NO_COPY_CLASS(wxBitmapRefData);
 };
@@ -93,6 +96,7 @@ wxBitmapRefData::wxBitmapRefData(int width, int height, int depth, double scale)
     m_dataWidth = width * m_scaleFactor;
     m_dataHeight = height * m_scaleFactor;
     m_dataSource = BITMAP_DATA_SOURCE_NONE;
+    m_hasAlpha = false;  // Default: no alpha until explicitly set
 }
 
 wxBitmapRefData::~wxBitmapRefData()
@@ -471,14 +475,18 @@ bool wxBitmap::Create(const char bits[], int width, int height, int depth)
 
 bool wxBitmap::CreateScaled(int width, int height, int depth, double scale)
 {
+    // Save original depth to determine alpha semantics
+    int originalDepth = depth;
+
     if (depth == wxBITMAP_SCREEN_DEPTH)
     {
         depth = wxDisplayDepth();
+        originalDepth = depth;
     }
 
     UnRef();
 
-    // Convert unsupported depths to 32-bit
+    // Convert unsupported depths to 32-bit for storage
     // 1-bit (monochrome/XBM) bitmaps are used by wxUniversal themes
     if (depth == 1 || depth == 8 || depth == 16)
     {
@@ -490,6 +498,10 @@ bool wxBitmap::CreateScaled(int width, int height, int depth, double scale)
     wxCHECK_MSG(width >= 0 && height >= 0, false, wxT("invalid bitmap size"));
 
     m_refData = new wxBitmapRefData(width, height, depth, scale);
+
+    // Set alpha based on original requested depth, not storage depth
+    // Only explicitly 32-bit bitmaps have alpha; converted 1/8/16-bit don't
+    M_BITMAPDATA->SetHasAlpha(originalDepth == 32);
 
     return true;
 }
@@ -518,6 +530,9 @@ bool wxBitmap::Create(const wxImage& image, int depth, double scale)
     {
         return false;
     }
+
+    // Override alpha flag based on source image, not depth
+    M_BITMAPDATA->SetHasAlpha(hasAlpha);
 
     int bytesPerRow = GetBytesPerRow();
     if (bytesPerRow < 0)
@@ -636,6 +651,12 @@ int wxBitmap::GetDepth() const
 {
     wxCHECK_MSG(IsOk(), -1, wxT("invalid bitmap"));
     return M_BITMAPDATA->m_depth;
+}
+
+bool wxBitmap::HasAlpha() const
+{
+    wxCHECK_MSG(IsOk(), false, wxT("invalid bitmap"));
+    return M_BITMAPDATA->GetHasAlpha();
 }
 
 double wxBitmap::GetScaleFactor() const
@@ -870,6 +891,9 @@ wxGDIRefData* wxBitmap::CloneGDIRefData(const wxGDIRefData* data) const
     {
         newRef->m_mask = new wxMask(*oldRef->m_mask);
     }
+
+    // Preserve alpha flag from original
+    newRef->m_hasAlpha = oldRef->m_hasAlpha;
 
     return newRef;
 }
