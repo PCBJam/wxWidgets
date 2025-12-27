@@ -587,7 +587,7 @@ wxImage wxBitmap::ConvertToImage() const
 
     wxImage image(width, height, false);
 
-    if (hasAlpha)
+    if (hasAlpha && !image.HasAlpha())
     {
         image.InitAlpha();
     }
