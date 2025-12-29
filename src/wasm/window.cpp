@@ -131,6 +131,64 @@ static void UnregisterElement(wxWindowWasm* window)
 }
 
 // ----------------------------------------------------------------------------
+// Rendered Element Tracking (toolbar tools, menu items, splitter sashes, etc.)
+// ----------------------------------------------------------------------------
+
+// Register a rendered element (not a wxWindow, but drawn by a parent control)
+void WasmRegisterRenderedElement(
+    wxWindow* parent,
+    const char* elementType,  // "tool", "menuitem", "sash", "auipart"
+    const char* subType,      // e.g., "button", "separator", "caption"
+    int index,
+    const wxString& label,
+    const wxString& tooltip,
+    int screenX, int screenY,
+    int width, int height,
+    bool enabled)
+{
+    if (!parent) return;
+
+    uintptr_t parentId = reinterpret_cast<uintptr_t>(parent);
+
+    // Create unique ID: parentId:elementType:index
+    EM_ASM({
+        var id = $0.toString() + ':' + UTF8ToString($1) + ':' + $2;
+        wxRenderedElementRegister(
+            id,
+            $0.toString(),
+            UTF8ToString($1),
+            UTF8ToString($3),
+            UTF8ToString($4),
+            UTF8ToString($5),
+            $6, $7, $8, $9,
+            $10 ? true : false,
+            $2
+        );
+    },
+    parentId,
+    elementType,
+    index,
+    subType,
+    label.utf8_str().data(),
+    tooltip.utf8_str().data(),
+    screenX, screenY,
+    width, height,
+    enabled ? 1 : 0);
+}
+
+// Unregister all rendered elements for a parent
+void WasmUnregisterRenderedElementsByParent(wxWindow* parent)
+{
+    if (!parent) return;
+
+    uintptr_t parentId = reinterpret_cast<uintptr_t>(parent);
+
+    EM_ASM({
+        wxRenderedElementUnregisterByParent($0.toString());
+    }, parentId);
+}
+
+// ----------------------------------------------------------------------------
 // wxWindowWasm
 // ----------------------------------------------------------------------------
 

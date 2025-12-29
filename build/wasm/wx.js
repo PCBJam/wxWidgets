@@ -114,6 +114,130 @@
           stats.byType[elem.typeName] = (stats.byType[elem.typeName] || 0) + 1;
         });
         return stats;
+      },
+
+      // ========== Rendered Elements (toolbar tools, menu items, etc.) ==========
+      renderedElements: new Map(),
+      renderedVersion: 0,
+
+      registerRendered: function(id, info) {
+        this.renderedElements.set(id, info);
+        this.renderedVersion++;
+      },
+
+      updateRendered: function(id, updates) {
+        var elem = this.renderedElements.get(id);
+        if (elem) {
+          Object.assign(elem, updates);
+          elem.lastUpdated = Date.now();
+          this.renderedVersion++;
+        }
+      },
+
+      unregisterRendered: function(id) {
+        this.renderedElements.delete(id);
+        this.renderedVersion++;
+      },
+
+      unregisterRenderedByParent: function(parentId) {
+        var toDelete = [];
+        var self = this;
+        this.renderedElements.forEach(function(elem, key) {
+          if (elem.parentId === parentId) {
+            toDelete.push(key);
+          }
+        });
+        toDelete.forEach(function(key) {
+          self.renderedElements.delete(key);
+        });
+        if (toDelete.length > 0) this.renderedVersion++;
+      },
+
+      findRenderedByLabel: function(label, options) {
+        options = options || {};
+        var results = [];
+        var exact = options.exact || false;
+
+        this.renderedElements.forEach(function(elem) {
+          if (options.enabled !== undefined && elem.enabled !== options.enabled) return;
+          if (options.elementType && elem.elementType !== options.elementType) return;
+          if (options.subType && elem.subType !== options.subType) return;
+          if (options.parentId && elem.parentId !== options.parentId) return;
+
+          var elemLabel = elem.label || elem.tooltip || '';
+          var matches = exact
+            ? elemLabel === label
+            : elemLabel.indexOf(label) !== -1;
+          if (matches) results.push(elem);
+        });
+
+        return results;
+      },
+
+      findRenderedByType: function(elementType, options) {
+        options = options || {};
+        var results = [];
+
+        this.renderedElements.forEach(function(elem) {
+          if (elem.elementType !== elementType) return;
+          if (options.enabled !== undefined && elem.enabled !== options.enabled) return;
+          if (options.subType && elem.subType !== options.subType) return;
+          if (options.parentId && elem.parentId !== options.parentId) return;
+          results.push(elem);
+        });
+
+        return results;
+      },
+
+      findRenderedByParent: function(parentId, options) {
+        options = options || {};
+        var results = [];
+
+        this.renderedElements.forEach(function(elem) {
+          if (elem.parentId !== parentId) return;
+          if (options.enabled !== undefined && elem.enabled !== options.enabled) return;
+          if (options.elementType && elem.elementType !== options.elementType) return;
+          if (options.subType && elem.subType !== options.subType) return;
+          results.push(elem);
+        });
+
+        return results;
+      },
+
+      findAllRendered: function(filter) {
+        filter = filter || {};
+        var results = [];
+
+        this.renderedElements.forEach(function(elem) {
+          if (filter.enabled !== undefined && elem.enabled !== filter.enabled) return;
+          if (filter.elementType && elem.elementType !== filter.elementType) return;
+          if (filter.subType && elem.subType !== filter.subType) return;
+          if (filter.parentId && elem.parentId !== filter.parentId) return;
+          if (filter.label) {
+            var elemLabel = elem.label || elem.tooltip || '';
+            if (elemLabel.indexOf(filter.label) === -1) return;
+          }
+          results.push(elem);
+        });
+
+        return results;
+      },
+
+      dumpRendered: function() {
+        console.log('[wxElementRegistry] Rendered Elements:', this.renderedElements.size);
+        this.renderedElements.forEach(function(elem) {
+          console.log('  ' + elem.id + ': ' + elem.elementType + '/' + elem.subType + ' "' + (elem.label || elem.tooltip || '') + '" at (' + elem.screenX + ',' + elem.screenY + ') ' + elem.width + 'x' + elem.height);
+        });
+      },
+
+      getRenderedStats: function() {
+        var stats = { total: 0, byType: {} };
+        this.renderedElements.forEach(function(elem) {
+          stats.total++;
+          var key = elem.elementType + '/' + elem.subType;
+          stats.byType[key] = (stats.byType[key] || 0) + 1;
+        });
+        return stats;
       }
     };
   }
@@ -166,6 +290,55 @@ function wxElementUpdate(id, label, name, typeName, screenX, screenY, width, hei
 function wxElementUnregister(id) {
   if (window.wxElementRegistry) {
     window.wxElementRegistry.unregister(id);
+  }
+}
+
+// Helper functions for rendered elements (called from C++ via EM_ASM)
+function wxRenderedElementRegister(id, parentId, elementType, subType, label, tooltip, screenX, screenY, width, height, enabled, index) {
+  if (window.wxElementRegistry) {
+    window.wxElementRegistry.registerRendered(id, {
+      id: id,
+      parentId: parentId,
+      elementType: elementType,
+      subType: subType,
+      label: label,
+      tooltip: tooltip,
+      screenX: screenX,
+      screenY: screenY,
+      width: width,
+      height: height,
+      centerX: screenX + Math.floor(width / 2),
+      centerY: screenY + Math.floor(height / 2),
+      enabled: enabled,
+      index: index,
+      lastUpdated: Date.now()
+    });
+  }
+}
+
+function wxRenderedElementUpdate(id, screenX, screenY, width, height, enabled) {
+  if (window.wxElementRegistry) {
+    window.wxElementRegistry.updateRendered(id, {
+      screenX: screenX,
+      screenY: screenY,
+      width: width,
+      height: height,
+      centerX: screenX + Math.floor(width / 2),
+      centerY: screenY + Math.floor(height / 2),
+      enabled: enabled
+    });
+  }
+}
+
+function wxRenderedElementUnregister(id) {
+  if (window.wxElementRegistry) {
+    window.wxElementRegistry.unregisterRendered(id);
+  }
+}
+
+function wxRenderedElementUnregisterByParent(parentId) {
+  if (window.wxElementRegistry) {
+    window.wxElementRegistry.unregisterRenderedByParent(parentId);
   }
 }
 

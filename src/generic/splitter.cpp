@@ -810,6 +810,59 @@ void wxSplitterWindow::SizeWindows()
 
     wxClientDC dc(this);
     DrawSash(dc);
+
+#ifdef __EMSCRIPTEN__
+    // Update element registry with splitter sash position
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+
+    // Clear existing sash for this splitter
+    WasmUnregisterRenderedElementsByParent(this);
+
+    // Only register if we have a sash (i.e., split mode)
+    if (IsSplit()) {
+        // Get splitter screen position
+        wxPoint screenPos = GetScreenPosition();
+        wxSize clientSize = GetClientSize();
+
+        int sashPos = GetSashPosition();
+        int sashSize = GetSashSize();
+
+        // Calculate sash rectangle based on split mode
+        int sashX, sashY, sashWidth, sashHeight;
+        if (GetSplitMode() == wxSPLIT_VERTICAL) {
+            sashX = sashPos;
+            sashY = 0;
+            sashWidth = sashSize;
+            sashHeight = clientSize.y;
+        } else {
+            sashX = 0;
+            sashY = sashPos;
+            sashWidth = clientSize.x;
+            sashHeight = sashSize;
+        }
+
+        // Calculate screen position
+        int sashScreenX = screenPos.x + sashX;
+        int sashScreenY = screenPos.y + sashY;
+
+        // Register the sash
+        WasmRegisterRenderedElement(
+            this,
+            "sash",
+            GetSplitMode() == wxSPLIT_VERTICAL ? "vertical" : "horizontal",
+            0,  // Only one sash per splitter
+            wxEmptyString,  // No label for sash
+            wxEmptyString,  // No tooltip
+            sashScreenX, sashScreenY,
+            sashWidth, sashHeight,
+            true  // Sash is always enabled if visible
+        );
+    }
+#endif
 }
 
 // Set pane for unsplit window

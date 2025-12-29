@@ -2682,6 +2682,106 @@ void wxAuiManager::Update()
 
     Repaint();
 
+#ifdef __EMSCRIPTEN__
+    // Update element registry with AUI parts
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+
+    // Clear existing parts for this manager (use frame as parent)
+    WasmUnregisterRenderedElementsByParent(m_frame);
+
+    // Get frame screen position for offset calculation
+    wxPoint frameScreenPos = m_frame->GetScreenPosition();
+
+    // Get dock art for caption height
+    int captionHeight = m_art ? m_art->GetMetric(wxAUI_DOCKART_CAPTION_SIZE) : 20;
+    int buttonSize = m_art ? m_art->GetMetric(wxAUI_DOCKART_PANE_BUTTON_SIZE) : 16;
+
+    // Register pane captions
+    int paneCount = m_panes.GetCount();
+    for (int i = 0; i < paneCount; i++) {
+        wxAuiPaneInfo& pane = m_panes.Item(i);
+
+        // Skip if not docked, not visible, or no caption
+        if (!pane.IsDocked() || !pane.IsShown() || !pane.HasCaption()) continue;
+
+        // Get pane rect (this is relative to the frame)
+        wxRect rect = pane.rect;
+
+        // Calculate screen position
+        int screenX = frameScreenPos.x + rect.x;
+        int screenY = frameScreenPos.y + rect.y;
+
+        // Register the pane caption area
+        WasmRegisterRenderedElement(
+            m_frame,
+            "auipart",
+            "caption",
+            i,
+            pane.caption,
+            wxEmptyString,
+            screenX, screenY,
+            rect.width, captionHeight,
+            true
+        );
+
+        // Register close button if present
+        if (pane.HasCloseButton()) {
+            int buttonX = screenX + rect.width - buttonSize - 4;
+            int buttonY = screenY + (captionHeight - buttonSize) / 2;
+            WasmRegisterRenderedElement(
+                m_frame,
+                "auipart",
+                "close",
+                i * 10 + 1,
+                wxT("Close"),
+                wxEmptyString,
+                buttonX, buttonY,
+                buttonSize, buttonSize,
+                true
+            );
+        }
+
+        // Register pin button if present
+        if (pane.HasPinButton()) {
+            int buttonX = screenX + rect.width - buttonSize * 2 - 8;
+            int buttonY = screenY + (captionHeight - buttonSize) / 2;
+            WasmRegisterRenderedElement(
+                m_frame,
+                "auipart",
+                "pin",
+                i * 10 + 2,
+                wxT("Pin"),
+                wxEmptyString,
+                buttonX, buttonY,
+                buttonSize, buttonSize,
+                true
+            );
+        }
+
+        // Register maximize button if present
+        if (pane.HasMaximizeButton()) {
+            int offset = (pane.HasCloseButton() ? 1 : 0) + (pane.HasPinButton() ? 1 : 0);
+            int buttonX = screenX + rect.width - buttonSize * (offset + 1) - 4 * (offset + 1);
+            int buttonY = screenY + (captionHeight - buttonSize) / 2;
+            WasmRegisterRenderedElement(
+                m_frame,
+                "auipart",
+                "maximize",
+                i * 10 + 3,
+                wxT("Maximize"),
+                wxEmptyString,
+                buttonX, buttonY,
+                buttonSize, buttonSize,
+                true
+            );
+        }
+    }
+#endif
+
     // set frame's minimum size
 
 /*

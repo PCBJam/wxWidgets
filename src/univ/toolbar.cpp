@@ -553,6 +553,58 @@ void wxToolBar::DoLayout()
 
     m_maxWidth = x < xMin ? xMin : x;
     m_maxHeight = y < yMin ? yMin : y;
+
+#ifdef __EMSCRIPTEN__
+    // Update element registry with toolbar tools
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+
+    // Clear existing tools for this toolbar
+    WasmUnregisterRenderedElementsByParent(this);
+
+    // Get toolbar screen position
+    wxPoint screenPos = GetScreenPosition();
+
+    // Iterate through all tools
+    int toolIndex = 0;
+    for (wxToolBarToolsList::compatibility_iterator node = m_tools.GetFirst();
+         node; node = node->GetNext()) {
+        wxToolBarTool *tool = (wxToolBarTool *)node->GetData();
+
+        // Skip separators - they're not interactive
+        if (tool->IsSeparator()) {
+            toolIndex++;
+            continue;
+        }
+
+        // Get tool rectangle
+        wxRect rect = GetToolRect(tool);
+
+        // Calculate screen position
+        int toolScreenX = screenPos.x + rect.x;
+        int toolScreenY = screenPos.y + rect.y;
+
+        // Determine subType
+        const char* subType = tool->IsControl() ? "control" : "button";
+
+        // Register the tool
+        WasmRegisterRenderedElement(
+            this,
+            "tool",
+            subType,
+            toolIndex,
+            tool->GetLabel(),
+            tool->GetShortHelp(),
+            toolScreenX, toolScreenY,
+            rect.width, rect.height,
+            tool->IsEnabled()
+        );
+        toolIndex++;
+    }
+#endif
 }
 
 wxSize wxToolBar::DoGetBestClientSize() const

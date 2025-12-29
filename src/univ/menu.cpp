@@ -747,6 +747,57 @@ void wxPopupMenuWindow::DoDraw(wxControlRenderer *renderer)
         wxRect rect = GetOverflowArrowDownRect(gi);
         rend->DrawMenuOverflowArrow(dc, rect, wxDOWN);
     }
+
+#ifdef __EMSCRIPTEN__
+    // Update element registry with popup menu items
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+
+    // Clear existing items for this popup
+    WasmUnregisterRenderedElementsByParent(this);
+
+    // Get popup window screen position
+    wxPoint screenPos = GetScreenPosition();
+
+    // Use existing gi from above - menu width for item bounds
+    int menuWidth = gi.GetSize().x;
+
+    // Iterate through all menu items
+    int index = 0;
+    wxCoord yPos = 0;
+    for (wxMenuItemIter node = m_menu->GetMenuItems().GetFirst();
+         node; node = node->GetNext()) {
+        wxMenuItem* item = node->GetData();
+
+        // Skip separators
+        if (!item->IsSeparator()) {
+            int height = item->GetHeight();
+
+            // Calculate screen position
+            int itemScreenX = screenPos.x;
+            int itemScreenY = screenPos.y + yPos;
+
+            // Register the menu item
+            WasmRegisterRenderedElement(
+                this,
+                "menuitem",
+                item->IsSubMenu() ? "submenu" : "item",
+                index,
+                item->GetItemLabelText(),
+                item->GetHelp(),
+                itemScreenX, itemScreenY,
+                menuWidth, height,
+                item->IsEnabled()
+            );
+        }
+
+        yPos += item->GetHeight();
+        index++;
+    }
+#endif
 }
 
 // ----------------------------------------------------------------------------
@@ -2277,6 +2328,45 @@ void wxMenuBar::DoDraw(wxControlRenderer *renderer)
                             m_menuInfos[n].GetAccelIndex()
                        );
     }
+
+#ifdef __EMSCRIPTEN__
+    // Update element registry with menu bar items
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+
+    // Clear existing items for this menubar
+    WasmUnregisterRenderedElementsByParent(this);
+
+    // Get menubar screen position
+    wxPoint screenPos = GetScreenPosition();
+
+    // Iterate through all menus
+    size_t menuCount = GetCount();
+    for (size_t i = 0; i < menuCount; i++) {
+        wxRect menuRect = GetItemRect(i);
+        wxString label = GetMenuLabel(i);
+
+        // Calculate screen position
+        int itemScreenX = screenPos.x + menuRect.x;
+        int itemScreenY = screenPos.y + menuRect.y;
+
+        // Register the menu bar item
+        WasmRegisterRenderedElement(
+            this,
+            "menuitem",
+            "menubar",
+            static_cast<int>(i),
+            label,
+            wxEmptyString,
+            itemScreenX, itemScreenY,
+            menuRect.width, menuRect.height,
+            IsEnabledTop(i)
+        );
+    }
+#endif
 }
 
 // ----------------------------------------------------------------------------
