@@ -1,3 +1,174 @@
+// Element Registry for E2E Tests
+// Tracks all wxWindow instances with their positions for automated testing
+(function() {
+  if (typeof window !== 'undefined' && typeof window.wxElementRegistry === 'undefined') {
+    window.wxElementRegistry = {
+      elements: new Map(),
+      version: 0,
+
+      register: function(id, info) {
+        this.elements.set(id, info);
+        this.version++;
+      },
+
+      update: function(id, updates) {
+        var elem = this.elements.get(id);
+        if (elem) {
+          Object.assign(elem, updates);
+          elem.lastUpdated = Date.now();
+          this.version++;
+        }
+      },
+
+      unregister: function(id) {
+        this.elements.delete(id);
+        this.version++;
+      },
+
+      findByLabel: function(label, options) {
+        options = options || {};
+        var results = [];
+        var exact = options.exact || false;
+        var visibleOnly = options.visible !== false;
+
+        this.elements.forEach(function(elem) {
+          if (visibleOnly && !elem.visible) return;
+          if (options.enabled && !elem.enabled) return;
+          if (options.type && elem.typeName !== options.type) return;
+
+          var matches = exact
+            ? elem.label === label
+            : elem.label.indexOf(label) !== -1;
+          if (matches) results.push(elem);
+        });
+
+        return results;
+      },
+
+      findByName: function(name, options) {
+        options = options || {};
+        var results = [];
+        var exact = options.exact || false;
+        var visibleOnly = options.visible !== false;
+
+        this.elements.forEach(function(elem) {
+          if (visibleOnly && !elem.visible) return;
+          if (options.enabled && !elem.enabled) return;
+          if (options.type && elem.typeName !== options.type) return;
+
+          var matches = exact
+            ? elem.name === name
+            : elem.name.indexOf(name) !== -1;
+          if (matches) results.push(elem);
+        });
+
+        return results;
+      },
+
+      findByType: function(typeName, options) {
+        options = options || {};
+        var results = [];
+        var visibleOnly = options.visible !== false;
+
+        this.elements.forEach(function(elem) {
+          if (visibleOnly && !elem.visible) return;
+          if (options.enabled && !elem.enabled) return;
+          if (elem.typeName === typeName) results.push(elem);
+        });
+
+        return results;
+      },
+
+      findAll: function(filter) {
+        filter = filter || {};
+        var results = [];
+        var visibleOnly = filter.visible !== false;
+
+        this.elements.forEach(function(elem) {
+          if (visibleOnly && !elem.visible) return;
+          if (filter.enabled && !elem.enabled) return;
+          if (filter.type && elem.typeName !== filter.type) return;
+          if (filter.label && elem.label.indexOf(filter.label) === -1) return;
+          if (filter.name && elem.name.indexOf(filter.name) === -1) return;
+          results.push(elem);
+        });
+
+        return results;
+      },
+
+      getElement: function(id) {
+        return this.elements.get(id) || null;
+      },
+
+      dump: function() {
+        console.log('[wxElementRegistry] Elements:', this.elements.size);
+        this.elements.forEach(function(elem) {
+          console.log('  ' + elem.id + ': ' + elem.typeName + ' "' + elem.label + '" at (' + elem.screenX + ',' + elem.screenY + ') ' + elem.width + 'x' + elem.height);
+        });
+      },
+
+      getStats: function() {
+        var stats = { total: 0, byType: {} };
+        this.elements.forEach(function(elem) {
+          stats.total++;
+          stats.byType[elem.typeName] = (stats.byType[elem.typeName] || 0) + 1;
+        });
+        return stats;
+      }
+    };
+  }
+})();
+
+// Helper functions called from C++ via EM_ASM
+function wxElementRegister(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled) {
+  if (window.wxElementRegistry) {
+    window.wxElementRegistry.register(id, {
+      id: id,
+      label: label,
+      name: name,
+      typeName: typeName,
+      screenX: screenX,
+      screenY: screenY,
+      width: width,
+      height: height,
+      centerX: screenX + Math.floor(width / 2),
+      centerY: screenY + Math.floor(height / 2),
+      parentId: parentId,
+      visible: visible,
+      enabled: enabled,
+      lastUpdated: Date.now()
+    });
+  }
+}
+
+function wxElementUpdate(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled) {
+  if (window.wxElementRegistry) {
+    var elem = window.wxElementRegistry.elements.get(id);
+    if (elem) {
+      elem.label = label;
+      elem.name = name;
+      elem.typeName = typeName;
+      elem.screenX = screenX;
+      elem.screenY = screenY;
+      elem.width = width;
+      elem.height = height;
+      elem.centerX = screenX + Math.floor(width / 2);
+      elem.centerY = screenY + Math.floor(height / 2);
+      elem.parentId = parentId;
+      elem.visible = visible;
+      elem.enabled = enabled;
+      elem.lastUpdated = Date.now();
+      window.wxElementRegistry.version++;
+    }
+  }
+}
+
+function wxElementUnregister(id) {
+  if (window.wxElementRegistry) {
+    window.wxElementRegistry.unregister(id);
+  }
+}
+
 if (typeof navigator !== 'undefined') {
   var browserInfo = (function () {
     var ua = navigator.userAgent;

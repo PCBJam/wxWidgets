@@ -19,6 +19,8 @@
 #include "wx/nonownedwnd.h"
 #include "wx/wasm/private/display.h"
 
+#include <emscripten.h>
+
 #if wxUSE_COMBOBOX || wxUSE_COMBOCTRL
 #include "wx/combo.h"
 #endif
@@ -31,6 +33,102 @@ wxWindow *g_mouseWindow = NULL;
 static wxWindowWasm *gs_focusWindow = NULL;
 static wxWindowWasm *gs_nextFocusWindow = NULL;
 static wxWindowWasm *gs_captureWindow = NULL;
+
+// ----------------------------------------------------------------------------
+// Element Tracking for E2E Tests
+// ----------------------------------------------------------------------------
+
+// Helper to update element in JS registry
+static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
+{
+    if (!window) return;
+
+    // Get element info
+    uintptr_t id = reinterpret_cast<uintptr_t>(window);
+
+    wxString label = window->GetLabel();
+    wxString name = window->GetName();
+    wxString typeName;
+
+    // Get class name from RTTI
+    wxClassInfo* classInfo = window->GetClassInfo();
+    if (classInfo) {
+        typeName = classInfo->GetClassName();
+    }
+
+    // Get screen position
+    wxPoint screenPos = window->GetScreenPosition();
+    wxSize size = window->GetSize();
+
+    // Check visibility and enabled state
+    bool visible = window->IsShownOnScreen();
+    bool enabled = window->IsEnabled();
+
+    // Get parent ID
+    uintptr_t parentId = 0;
+    if (window->GetParent()) {
+        parentId = reinterpret_cast<uintptr_t>(window->GetParent());
+    }
+
+    // Call the appropriate JavaScript helper function (defined in wx.js)
+    if (isNew) {
+        EM_ASM({
+            wxElementRegister(
+                $0.toString(),
+                UTF8ToString($1),
+                UTF8ToString($2),
+                UTF8ToString($3),
+                $4, $5, $6, $7,
+                $8 ? $8.toString() : null,
+                $9 ? true : false,
+                $10 ? true : false
+            );
+        },
+        id,
+        label.utf8_str().data(),
+        name.utf8_str().data(),
+        typeName.utf8_str().data(),
+        screenPos.x, screenPos.y,
+        size.GetWidth(), size.GetHeight(),
+        parentId,
+        visible ? 1 : 0,
+        enabled ? 1 : 0);
+    } else {
+        EM_ASM({
+            wxElementUpdate(
+                $0.toString(),
+                UTF8ToString($1),
+                UTF8ToString($2),
+                UTF8ToString($3),
+                $4, $5, $6, $7,
+                $8 ? $8.toString() : null,
+                $9 ? true : false,
+                $10 ? true : false
+            );
+        },
+        id,
+        label.utf8_str().data(),
+        name.utf8_str().data(),
+        typeName.utf8_str().data(),
+        screenPos.x, screenPos.y,
+        size.GetWidth(), size.GetHeight(),
+        parentId,
+        visible ? 1 : 0,
+        enabled ? 1 : 0);
+    }
+}
+
+// Helper to remove element from JS registry
+static void UnregisterElement(wxWindowWasm* window)
+{
+    if (!window) return;
+
+    uintptr_t id = reinterpret_cast<uintptr_t>(window);
+
+    EM_ASM({
+        wxElementUnregister($0.toString());
+    }, id);
+}
 
 // ----------------------------------------------------------------------------
 // wxWindowWasm
@@ -61,6 +159,9 @@ wxWindowWasm::wxWindowWasm(wxWindow *parent,
 
 wxWindowWasm::~wxWindowWasm()
 {
+    // Unregister from JS tracking system before destruction
+    UnregisterElement(this);
+
     SendDestroyEvent();
 
     if (g_mouseWindow == this)
@@ -126,6 +227,9 @@ bool wxWindowWasm::Create(wxWindow *parent,
     int w = WidthDefault(size.x);
     int h = HeightDefault(size.y);
     SetSize(x, y, w, h);
+
+    // Register element in JS tracking system
+    UpdateElementRegistry(this, true);
 
     return true;
 }
@@ -211,6 +315,9 @@ bool wxWindowWasm::Show(bool show)
         eventShow.SetEventObject(this);
         HandleWindowEvent(eventShow);
 
+        // Update visibility in element registry
+        UpdateElementRegistry(this, false);
+
         return true;
     }
     else
@@ -232,10 +339,14 @@ void wxWindowWasm::UpdateChildrenDOMVisibility()
             // This doesn't change the child's logical state.
             child->Show(child->IsShown());
 
-            // Recursively update grandchildren
+            // Update element registry for child - visibility may have changed
+            // when parent becomes visible, even if child's own state didn't change
             wxWindowWasm* wasmChild = dynamic_cast<wxWindowWasm*>(child);
             if (wasmChild)
             {
+                UpdateElementRegistry(wasmChild, false);
+
+                // Recursively update grandchildren
                 wasmChild->UpdateChildrenDOMVisibility();
             }
         }
@@ -693,6 +804,9 @@ void wxWindowWasm::DoMoveWindow(int x, int y, int width, int height)
             parent->RefreshRect(oldPos);
             parent->RefreshRect(newPos);
         }
+
+        // Update element position in JS registry
+        UpdateElementRegistry(this, false);
     }
 }
 
@@ -702,6 +816,9 @@ void wxWindowWasm::DoEnable(bool enable)
     {
         KillFocus();
     }
+
+    // Update enabled state in element registry
+    UpdateElementRegistry(this, false);
 }
 
 void wxWindowWasm::DoCaptureMouse()
