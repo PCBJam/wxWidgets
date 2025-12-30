@@ -46,15 +46,25 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
     // Get element info
     uintptr_t id = reinterpret_cast<uintptr_t>(window);
 
-    wxString label = window->GetLabel();
-    wxString name = window->GetName();
     wxString typeName;
 
-    // Get class name from RTTI
+    // Get class name from RTTI first - we need it to check for problematic widgets
     wxClassInfo* classInfo = window->GetClassInfo();
     if (classInfo) {
         typeName = classInfo->GetClassName();
     }
+
+    // Some widgets (e.g. wxCollapsiblePane) override GetLabel() to access child
+    // widgets that don't exist yet during base class construction. Skip GetLabel()
+    // for these widgets to avoid WASM memory access errors (NULL pointer dereference).
+    wxString label;
+    wxString name;
+    bool skipGetLabel = (typeName == wxT("wxGenericCollapsiblePane") ||
+                         typeName == wxT("wxCollapsiblePane"));
+    if (!skipGetLabel) {
+        label = window->GetLabel();
+    }
+    name = window->GetName();
 
     // Get screen position
     wxPoint screenPos = window->GetScreenPosition();
