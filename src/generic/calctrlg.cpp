@@ -791,6 +791,12 @@ void wxGenericCalendarCtrl::OnPaint(wxPaintEvent& WXUNUSED(event))
 {
     wxPaintDC dc(this);
 
+#ifdef __EMSCRIPTEN__
+    // Clear existing calendar date elements before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    WasmUnregisterRenderedElementsByParent(this);
+#endif
+
     dc.SetFont(GetFont());
 
     RecalcGeometry();
@@ -1019,6 +1025,34 @@ void wxGenericCalendarCtrl::OnPaint(wxPaintEvent& WXUNUSED(event))
 
                 wxCoord x = wd*m_widthCol + (m_widthCol - width) / 2 + x0;
                 dc.DrawText(dayStr, x, y + 1);
+
+#ifdef __EMSCRIPTEN__
+                // Register calendar date cell for element tracking
+                extern void WasmRegisterRenderedElement(
+                    wxWindow* parent, const char* elementType, const char* subType,
+                    int index, const wxString& label, const wxString& tooltip,
+                    int screenX, int screenY, int width, int height, bool enabled);
+
+                // Get screen position
+                wxPoint screenPos = GetScreenPosition();
+
+                // Calculate cell position (left edge of the cell column)
+                int cellX = screenPos.x + wd*m_widthCol + x0;
+                int cellY = screenPos.y + y;
+
+                // Register the calendar date
+                WasmRegisterRenderedElement(
+                    this,
+                    "datecell",
+                    isSel ? "selected" : "day",
+                    static_cast<int>((nWeek - 1) * 7 + wd),
+                    dayStr,
+                    date.FormatDate(),
+                    cellX, cellY,
+                    m_widthCol, m_heightRow,
+                    IsDateInRange(date)
+                );
+#endif
 
                 if ( !isSel && attr && attr->HasBorder() )
                 {

@@ -2056,6 +2056,12 @@ void wxListMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
     // done (a Windows requirement).
     wxPaintDC dc( this );
 
+#ifdef __EMSCRIPTEN__
+    // Clear existing list elements before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    WasmUnregisterRenderedElementsByParent(GetListCtrl());
+#endif
+
     if ( IsEmpty() )
     {
         // nothing to draw or not the moment to draw it
@@ -2155,6 +2161,39 @@ void wxListMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
                                              IsHighlighted(line),
                                              line == m_current,
                                              IsItemChecked(line) );
+
+#ifdef __EMSCRIPTEN__
+            // Register list item row for element tracking
+            extern void WasmRegisterRenderedElement(
+                wxWindow* parent, const char* elementType, const char* subType,
+                int index, const wxString& label, const wxString& tooltip,
+                int screenX, int screenY, int width, int height, bool enabled);
+
+            // Get screen position
+            wxPoint screenPos = GetListCtrl()->GetScreenPosition();
+
+            // Get item text from first column as label
+            wxString itemText = GetListCtrl()->GetItemText(line, 0);
+            if (itemText.IsEmpty())
+                itemText = wxString::Format("Item %zu", line);
+
+            // Calculate screen coordinates
+            int itemScreenX = screenPos.x + rectLine.x - dev_x;
+            int itemScreenY = screenPos.y + rectLine.y - dev_y;
+
+            // Register the list row
+            WasmRegisterRenderedElement(
+                GetListCtrl(),
+                "listitem",
+                "row",
+                static_cast<int>(line),
+                itemText,
+                wxString::Format("Row %zu", line),
+                itemScreenX, itemScreenY,
+                rectLine.width, rectLine.height,
+                true  // List items are always enabled
+            );
+#endif
         }
 
         if ( HasFlag(wxLC_HRULES) )

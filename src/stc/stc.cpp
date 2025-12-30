@@ -5196,6 +5196,32 @@ void wxStyledTextCtrl::StartStyling(int start, int unused)
 void wxStyledTextCtrl::OnPaint(wxPaintEvent& WXUNUSED(evt)) {
     wxPaintDC dc(this);
     m_swx->DoPaint(&dc, GetUpdateRegion().GetBox());
+
+#ifdef __EMSCRIPTEN__
+    // Register the STC control for element tracking
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+
+    WasmUnregisterRenderedElementsByParent(this);
+
+    wxPoint screenPos = GetScreenPosition();
+    wxSize size = GetClientSize();
+
+    WasmRegisterRenderedElement(
+        this,
+        "styledtext",
+        GetReadOnly() ? "readonly" : "editable",
+        0,
+        GetName().IsEmpty() ? wxT("Editor") : GetName(),
+        wxEmptyString,
+        screenPos.x, screenPos.y,
+        size.GetWidth(), size.GetHeight(),
+        IsEnabled() && !GetReadOnly()
+    );
+#endif
 }
 
 void wxStyledTextCtrl::OnScrollWin(wxScrollWinEvent& evt) {

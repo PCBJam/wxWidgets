@@ -354,6 +354,12 @@ void wxControlRenderer::DoDrawItems(const wxListBox *lbox,
 #endif
                                     )
 {
+#ifdef __EMSCRIPTEN__
+    // Clear existing listbox elements before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    WasmUnregisterRenderedElementsByParent(const_cast<wxListBox*>(lbox));
+#endif
+
     // prepare for the drawing: calc the initial position
     wxCoord lineHeight = lbox->GetLineHeight();
 
@@ -411,6 +417,43 @@ void wxControlRenderer::DoDrawItems(const wxListBox *lbox,
         {
             m_renderer->DrawItem(m_dc, lbox->GetString(n), rect, flags);
         }
+
+#ifdef __EMSCRIPTEN__
+        // Register listbox item for element tracking
+        extern void WasmRegisterRenderedElement(
+            wxWindow* parent, const char* elementType, const char* subType,
+            int index, const wxString& label, const wxString& tooltip,
+            int screenX, int screenY, int width, int height, bool enabled);
+
+        // Get screen position
+        wxPoint screenPos = const_cast<wxListBox*>(lbox)->GetScreenPosition();
+
+        // Determine subtype based on item state
+        const char* subType;
+        if (flags & wxCONTROL_SELECTED)
+            subType = "selected";
+        else if (flags & wxCONTROL_FOCUSED)
+            subType = "focused";
+        else
+            subType = "item";
+
+        // Calculate screen coordinates
+        int itemScreenX = screenPos.x + rect.x;
+        int itemScreenY = screenPos.y + rect.y;
+
+        // Register the listbox item
+        WasmRegisterRenderedElement(
+            const_cast<wxListBox*>(lbox),
+            "listboxitem",
+            subType,
+            static_cast<int>(n),
+            lbox->GetString(n),
+            wxEmptyString,
+            itemScreenX, itemScreenY,
+            rect.width, rect.height,
+            true  // Listbox items are always enabled
+        );
+#endif
 
         rect.y += lineHeight;
     }

@@ -2779,6 +2779,23 @@ void wxAuiManager::Update()
                 true
             );
         }
+
+        // Register the pane content area (below the caption)
+        int contentY = screenY + captionHeight;
+        int contentHeight = rect.height - captionHeight;
+        if (contentHeight > 0) {
+            WasmRegisterRenderedElement(
+                m_frame,
+                "auipart",
+                "content",
+                i * 10 + 4,
+                pane.caption,
+                wxEmptyString,
+                screenX, contentY,
+                rect.width, contentHeight,
+                true
+            );
+        }
     }
 #endif
 

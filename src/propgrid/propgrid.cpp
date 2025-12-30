@@ -2060,6 +2060,12 @@ int wxPropertyGrid::DoDrawItems( wxDC& dc,
                                  const wxRect* itemsRect ) const
 #endif
 {
+#ifdef __EMSCRIPTEN__
+    // Clear existing property grid elements before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    WasmUnregisterRenderedElementsByParent(const_cast<wxPropertyGrid*>(this));
+#endif
+
     const wxPGProperty* firstItem = DoGetItemAtY(itemsRect->y);
     if ( !firstItem ) // Signal a need to clear entire paint area if grid is empty
         return -1;
@@ -2497,6 +2503,49 @@ int wxPropertyGrid::DoDrawItems( wxDC& dc,
 
         if ( fontChanged )
             dc.SetFont(normalFont);
+
+#ifdef __EMSCRIPTEN__
+        // Register property row for element tracking
+        extern void WasmRegisterRenderedElement(
+            wxWindow* parent, const char* elementType, const char* subType,
+            int index, const wxString& label, const wxString& tooltip,
+            int screenX, int screenY, int width, int height, bool enabled);
+
+        // Get screen position
+        wxPoint screenPos = const_cast<wxPropertyGrid*>(this)->GetScreenPosition();
+
+        // Get property label and value
+        wxString propLabel = p->GetLabel();
+        wxString propValue = p->GetDisplayedString();
+
+        // Determine subtype based on property state
+        const char* subType;
+        if (p->IsCategory())
+            subType = "category";
+        else if (isSelected)
+            subType = "selected";
+        else if (!p->IsEnabled())
+            subType = "disabled";
+        else
+            subType = "property";
+
+        // Calculate screen coordinates
+        int propScreenX = screenPos.x + greyDepth;
+        int propScreenY = screenPos.y + y;
+
+        // Register the property row
+        WasmRegisterRenderedElement(
+            const_cast<wxPropertyGrid*>(this),
+            "proprow",
+            subType,
+            static_cast<int>(arrInd - 1),  // Use array index as unique id
+            propLabel,
+            propValue,
+            propScreenX, propScreenY,
+            cellX - greyDepth, lh,
+            p->IsEnabled()
+        );
+#endif
 
         y += lh;
     }

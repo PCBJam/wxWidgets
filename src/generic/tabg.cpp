@@ -74,6 +74,39 @@ void wxTabControl::OnDraw(wxDC& dc, bool lastInRow)
     tabY -= tabHeightInc;
   }
 
+#ifdef __EMSCRIPTEN__
+  // Register tab for element tracking
+  extern void WasmRegisterRenderedElement(
+      wxWindow* parent, const char* elementType, const char* subType,
+      int index, const wxString& label, const wxString& tooltip,
+      int screenX, int screenY, int width, int height, bool enabled);
+
+  wxWindow* parentWin = m_view->GetWindow();
+  if (parentWin)
+  {
+      // Get screen position of the parent window
+      wxPoint screenPos = parentWin->GetScreenPosition();
+
+      // Calculate screen coordinates for this tab
+      int tabScreenX = screenPos.x + tabX;
+      int tabScreenY = screenPos.y + tabY;
+      int tabHeight = GetHeight() + tabHeightInc;
+
+      // Register the tab
+      WasmRegisterRenderedElement(
+          parentWin,
+          "tab",
+          m_isSelected ? "selected" : "button",
+          GetId(),
+          GetLabel(),
+          GetLabel(),  // Use label as tooltip
+          tabScreenX, tabScreenY,
+          GetWidth(), tabHeight,
+          true  // Tabs are always enabled
+      );
+  }
+#endif
+
   dc.SetPen(*wxTRANSPARENT_PEN);
 
   // Draw grey background
@@ -787,6 +820,13 @@ void wxTabView::Draw(wxDC& dc)
         // Don't draw anything if there are no tabs.
         if (GetNumberOfTabs() == 0)
           return;
+
+#ifdef __EMSCRIPTEN__
+    // Clear existing tab elements before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    if (m_window)
+        WasmUnregisterRenderedElementsByParent(m_window);
+#endif
 
     // Draw top margin area (beneath tabs and above view area)
     if (GetTabStyle() & wxTAB_STYLE_COLOUR_INTERIOR)

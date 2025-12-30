@@ -282,9 +282,15 @@ void wxAuiGenericTabArt::DrawBorder(wxDC& dc, wxWindow* wnd, const wxRect& rect)
 }
 
 void wxAuiGenericTabArt::DrawBackground(wxDC& dc,
-                                        wxWindow* WXUNUSED(wnd),
+                                        wxWindow* wnd,
                                         const wxRect& rect)
 {
+#ifdef __EMSCRIPTEN__
+    // Unregister previous tab elements before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    if (wnd)
+        WasmUnregisterRenderedElementsByParent(wnd);
+#endif
     // draw background using arbitrary hard-coded, but at least adapted to dark
     // mode, gradient
     int topLightness, bottomLightness;
@@ -381,6 +387,38 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
     wxCoord tab_x = in_rect.x;
     wxCoord tab_y = in_rect.y + in_rect.height - tab_height;
 
+#ifdef __EMSCRIPTEN__
+    // Register AUI tab for element tracking
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+
+    if (wnd)
+    {
+        wxPoint screenPos = wnd->GetScreenPosition();
+        int tabScreenX = screenPos.x + tab_x;
+        int tabScreenY = screenPos.y + tab_y;
+
+        // Generate unique index from tab label (simple hash)
+        int tabIndex = 0;
+        for (size_t i = 0; i < page.caption.length(); i++)
+            tabIndex = tabIndex * 31 + static_cast<int>(page.caption[i]);
+        if (tabIndex < 0) tabIndex = -tabIndex;
+
+        WasmRegisterRenderedElement(
+            wnd,
+            "tab",
+            page.active ? "selected" : "button",
+            tabIndex,
+            page.caption,
+            page.caption,
+            tabScreenX, tabScreenY,
+            tab_width, tab_height,
+            true
+        );
+    }
+#endif
 
     caption = page.caption;
 
@@ -1027,9 +1065,15 @@ void wxAuiSimpleTabArt::DrawBorder(wxDC& dc, wxWindow* wnd, const wxRect& rect)
 }
 
 void wxAuiSimpleTabArt::DrawBackground(wxDC& dc,
-                                       wxWindow* WXUNUSED(wnd),
+                                       wxWindow* wnd,
                                        const wxRect& rect)
 {
+#ifdef __EMSCRIPTEN__
+    // Unregister previous tab elements before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    if (wnd)
+        WasmUnregisterRenderedElementsByParent(wnd);
+#endif
     // draw background
     dc.SetBrush(m_bkBrush);
     dc.SetPen(*wxTRANSPARENT_PEN);
@@ -1087,6 +1131,39 @@ void wxAuiSimpleTabArt::DrawTab(wxDC& dc,
     wxCoord tab_width = tab_size.x;
     wxCoord tab_x = in_rect.x;
     wxCoord tab_y = in_rect.y + in_rect.height - tab_height;
+
+#ifdef __EMSCRIPTEN__
+    // Register AUI tab for element tracking
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+
+    if (wnd)
+    {
+        wxPoint screenPos = wnd->GetScreenPosition();
+        int tabScreenX = screenPos.x + tab_x;
+        int tabScreenY = screenPos.y + tab_y;
+
+        // Generate unique index from tab label (simple hash)
+        int tabIndex = 0;
+        for (size_t i = 0; i < page.caption.length(); i++)
+            tabIndex = tabIndex * 31 + static_cast<int>(page.caption[i]);
+        if (tabIndex < 0) tabIndex = -tabIndex;
+
+        WasmRegisterRenderedElement(
+            wnd,
+            "tab",
+            page.active ? "selected" : "button",
+            tabIndex,
+            page.caption,
+            page.caption,
+            tabScreenX, tabScreenY,
+            tab_width, tab_height,
+            true
+        );
+    }
+#endif
 
     caption = page.caption;
 

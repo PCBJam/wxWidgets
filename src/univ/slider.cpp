@@ -731,6 +731,46 @@ void wxSlider::DoDraw(wxControlRenderer *renderer)
         rend->DrawSliderThumb(dc, rectThumb, orient, flags | m_thumbFlags, style);
     }
 
+#ifdef __EMSCRIPTEN__
+    // Register slider elements for element tracking
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+
+    // Clear previous elements
+    WasmUnregisterRenderedElementsByParent(this);
+
+    wxPoint screenPos = GetScreenPosition();
+
+    // Register the slider thumb
+    WasmRegisterRenderedElement(
+        this,
+        "slider",
+        IsVert() ? "vertical" : "horizontal",
+        0,
+        GetName(),
+        wxString::Format(wxT("Value: %d"), GetValue()),
+        screenPos.x + rectThumb.x, screenPos.y + rectThumb.y,
+        rectThumb.width, rectThumb.height,
+        IsEnabled()
+    );
+
+    // Register the full slider track for drag operations
+    WasmRegisterRenderedElement(
+        this,
+        "slidertrack",
+        IsVert() ? "vertical" : "horizontal",
+        1,
+        GetName(),
+        wxString::Format(wxT("Range: %d-%d"), GetMin(), GetMax()),
+        screenPos.x + rectShaft.x, screenPos.y + rectShaft.y,
+        rectShaft.width, rectShaft.height,
+        IsEnabled()
+    );
+#endif
+
     // finally, draw the label near the thumb
     if ( HasLabels() && rectUpdate.Intersects(rectLabel) )
     {

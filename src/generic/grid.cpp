@@ -6482,6 +6482,12 @@ void wxGrid::DrawGridCellArea( wxDC& dc, const wxGridCellCoordsArray& cells )
     if ( !m_numRows || !m_numCols )
         return;
 
+#ifdef __EMSCRIPTEN__
+    // Clear existing grid cells before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    WasmUnregisterRenderedElementsByParent(this);
+#endif
+
     int i, numCells = cells.GetCount();
     wxGridCellCoordsArray redrawCells;
 
@@ -6646,6 +6652,40 @@ void wxGrid::DrawCell( wxDC& dc, const wxGridCellCoords& coords )
     bool isCurrent = coords == m_currentCellCoords;
 
     wxRect rect = CellToRect( row, col );
+
+#ifdef __EMSCRIPTEN__
+    // Register grid cell for element tracking
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+
+    // Get screen position of the grid window
+    wxPoint screenPos = m_gridWin->GetScreenPosition();
+
+    // Calculate screen coordinates for this cell
+    int cellScreenX = screenPos.x + rect.x;
+    int cellScreenY = screenPos.y + rect.y;
+
+    // Get cell value as label
+    wxString cellValue = GetCellValue(row, col);
+    if (cellValue.IsEmpty()) {
+        cellValue = wxString::Format("%d,%d", row, col);
+    }
+
+    // Register the cell
+    WasmRegisterRenderedElement(
+        this,
+        "gridcell",
+        "cell",
+        row * GetNumberCols() + col,
+        cellValue,
+        wxString::Format("Row %d, Col %d", row, col),
+        cellScreenX, cellScreenY,
+        rect.width, rect.height,
+        IsEditable()
+    );
+#endif
 
     // if the editor is shown, we should use it and not the renderer
     // Note: However, only if it is really _shown_, i.e. not hidden!

@@ -284,6 +284,56 @@ void wxSpinButton::DoDraw(wxControlRenderer *renderer)
     wxDC& dc = renderer->GetDC();
     m_arrows.DrawArrow(wxScrollArrows::Arrow_First, dc, rectArrow1);
     m_arrows.DrawArrow(wxScrollArrows::Arrow_Second, dc, rectArrow2);
+
+#ifdef __EMSCRIPTEN__
+    // Register spin button arrows for element tracking
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+
+    // Clear existing elements
+    WasmUnregisterRenderedElementsByParent(this);
+
+    // Get screen position
+    wxPoint screenPos = GetScreenPosition();
+
+    // Determine which arrow is up/down based on orientation
+    bool isVertical = IsVertical();
+    const char* firstType = isVertical ? "up" : "left";
+    const char* secondType = isVertical ? "down" : "right";
+
+    // Check if arrows are disabled
+    bool firstEnabled = !(GetArrowState(wxScrollArrows::Arrow_First) & wxCONTROL_DISABLED);
+    bool secondEnabled = !(GetArrowState(wxScrollArrows::Arrow_Second) & wxCONTROL_DISABLED);
+
+    // Register the first arrow (up/left - increment)
+    WasmRegisterRenderedElement(
+        this,
+        "spinbutton",
+        firstType,
+        0,
+        isVertical ? wxT("+") : wxT("-"),
+        isVertical ? wxT("Increment") : wxT("Decrement"),
+        screenPos.x + rectArrow1.x, screenPos.y + rectArrow1.y,
+        rectArrow1.width, rectArrow1.height,
+        firstEnabled
+    );
+
+    // Register the second arrow (down/right - decrement)
+    WasmRegisterRenderedElement(
+        this,
+        "spinbutton",
+        secondType,
+        1,
+        isVertical ? wxT("-") : wxT("+"),
+        isVertical ? wxT("Decrement") : wxT("Increment"),
+        screenPos.x + rectArrow2.x, screenPos.y + rectArrow2.y,
+        rectArrow2.width, rectArrow2.height,
+        secondEnabled
+    );
+#endif
 }
 
 // ----------------------------------------------------------------------------

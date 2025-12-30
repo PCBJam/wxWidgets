@@ -2847,6 +2847,43 @@ wxGenericTreeCtrl::PaintLevel(wxGenericTreeItem *item,
         // draw
         PaintItem(item, dc);
 
+#ifdef __EMSCRIPTEN__
+        // Register tree item for element tracking
+        extern void WasmRegisterRenderedElement(
+            wxWindow* parent, const char* elementType, const char* subType,
+            int index, const wxString& label, const wxString& tooltip,
+            int screenX, int screenY, int width, int height, bool enabled);
+
+        // Get screen position
+        wxPoint screenPos = GetScreenPosition();
+
+        // Determine subtype based on item state
+        const char* subType;
+        if (item->IsExpanded())
+            subType = "expanded";
+        else if (item->HasPlus())
+            subType = "collapsed";
+        else
+            subType = "leaf";
+
+        // Calculate screen coordinates
+        int itemScreenX = screenPos.x + item->GetX();
+        int itemScreenY = screenPos.y + item->GetY();
+
+        // Register the tree item using Y position as index for uniqueness
+        WasmRegisterRenderedElement(
+            this,
+            "treeitem",
+            subType,
+            item->GetY(),  // Use Y position as unique index
+            item->GetText(),
+            wxEmptyString,
+            itemScreenX, itemScreenY,
+            item->GetWidth(), h,
+            true  // Tree items are always enabled
+        );
+#endif
+
         if (HasFlag(wxTR_ROW_LINES))
         {
             dc.SetPen(wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
@@ -3045,6 +3082,12 @@ void wxGenericTreeCtrl::OnPaint( wxPaintEvent &WXUNUSED(event) )
 
     if ( !m_anchor)
         return;
+
+#ifdef __EMSCRIPTEN__
+    // Clear existing tree elements before redrawing
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    WasmUnregisterRenderedElementsByParent(this);
+#endif
 
     dc.SetFont( m_normalFont );
     dc.SetPen( m_dottedPen );

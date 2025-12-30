@@ -4297,6 +4297,37 @@ void wxTextCtrl::DoDraw(wxControlRenderer *renderer)
 
         m_hasCaret = true;
     }
+
+#ifdef __EMSCRIPTEN__
+    // Register text control area for element tracking
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    extern void WasmRegisterRenderedElement(
+        wxWindow* parent, const char* elementType, const char* subType,
+        int index, const wxString& label, const wxString& tooltip,
+        int screenX, int screenY, int width, int height, bool enabled);
+
+    // Clear previous elements
+    WasmUnregisterRenderedElementsByParent(this);
+
+    wxPoint screenPos = GetScreenPosition();
+    wxRect textArea = GetRealTextArea();
+
+    // Use name if available, otherwise empty
+    wxString ctrlName = GetName();
+
+    // Register the text input area
+    WasmRegisterRenderedElement(
+        this,
+        "textctrl",
+        IsSingleLine() ? "singleline" : "multiline",
+        0,
+        ctrlName,
+        GetValue().Left(50),  // First 50 chars as tooltip
+        screenPos.x + textArea.x, screenPos.y + textArea.y,
+        textArea.width, textArea.height,
+        IsEnabled() && IsEditable()
+    );
+#endif
 }
 
 // ----------------------------------------------------------------------------

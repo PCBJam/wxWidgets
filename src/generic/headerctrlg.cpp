@@ -515,6 +515,12 @@ void wxHeaderCtrl::OnPaint(wxPaintEvent& WXUNUSED(event))
     // account for the horizontal scrollbar offset in the parent window
     dc.SetDeviceOrigin(m_scrollOffset, 0);
 
+#ifdef __EMSCRIPTEN__
+    // Clear previous header element registrations
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    WasmUnregisterRenderedElementsByParent(this);
+#endif
+
     const unsigned int count = m_numColumns;
     int xpos = 0;
     for ( unsigned int i = 0; i < count; i++ )
@@ -572,6 +578,27 @@ void wxHeaderCtrl::OnPaint(wxPaintEvent& WXUNUSED(event))
                                     sortArrow,
                                     &params
                                 );
+
+#ifdef __EMSCRIPTEN__
+        // Register this column header for element tracking
+        extern void WasmRegisterRenderedElement(
+            wxWindow* parent, const char* elementType, const char* subType,
+            int index, const wxString& label, const wxString& tooltip,
+            int screenX, int screenY, int width, int height, bool enabled);
+
+        wxPoint screenPos = GetScreenPosition();
+        WasmRegisterRenderedElement(
+            this,
+            "columnheader",
+            col.IsSortKey() ? "sortable" : "normal",
+            static_cast<int>(idx),
+            col.GetTitle(),
+            wxEmptyString,
+            screenPos.x + xpos, screenPos.y,
+            colWidth, h,
+            IsEnabled()
+        );
+#endif
 
         xpos += colWidth;
     }

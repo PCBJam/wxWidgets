@@ -34,6 +34,10 @@
 #include "wx/selstore.h"
 #include "wx/renderer.h"
 
+#if wxUSE_ODCOMBOBOX
+#include "wx/odcombo.h"
+#endif
+
 // ----------------------------------------------------------------------------
 // event tables
 // ----------------------------------------------------------------------------
@@ -448,6 +452,12 @@ void wxVListBox::OnPaint(wxPaintEvent& WXUNUSED(event))
     // the update rectangle
     wxRect rectUpdate = GetUpdateClientRect();
 
+#ifdef __EMSCRIPTEN__
+    // Clear previous element registrations for this window
+    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
+    WasmUnregisterRenderedElementsByParent(this);
+#endif
+
     // fill it with background colour
     dc.SetBackground(GetBackgroundColour());
     dc.Clear();
@@ -477,6 +487,39 @@ void wxVListBox::OnPaint(wxPaintEvent& WXUNUSED(event))
 
             rect.Deflate(m_ptMargins.x, m_ptMargins.y);
             OnDrawItem(dc, rect, line);
+
+#ifdef __EMSCRIPTEN__
+            // Register vlistbox item for element tracking (used by combo dropdowns)
+            extern void WasmRegisterRenderedElement(
+                wxWindow* parent, const char* elementType, const char* subType,
+                int index, const wxString& label, const wxString& tooltip,
+                int screenX, int screenY, int width, int height, bool enabled);
+
+            wxPoint screenPos = GetScreenPosition();
+            bool isSelected = IsSelected(line);
+
+            // Get item string - default to index
+            wxString itemLabel = wxString::Format(wxT("Item %zu"), line);
+
+#if wxUSE_ODCOMBOBOX
+            // Try to get actual string from combo popup if available
+            wxVListBoxComboPopup* popup = wxDynamicCast(this, wxVListBoxComboPopup);
+            if (popup && popup->GetCount() > line)
+                itemLabel = popup->GetString(line);
+#endif
+
+            WasmRegisterRenderedElement(
+                this,
+                "listboxitem",
+                isSelected ? "selected" : "item",
+                static_cast<int>(line),
+                itemLabel,
+                wxEmptyString,
+                screenPos.x + rectRow.x, screenPos.y + rectRow.y,
+                rectRow.width, rectRow.height,
+                true
+            );
+#endif
         }
         else // no intersection
         {
