@@ -1146,6 +1146,9 @@ void wxTrap()
     DebugBreak();
 #elif defined(_MSL_USING_MW_C_HEADERS) && _MSL_USING_MW_C_HEADERS
     Debugger();
+#elif defined(__EMSCRIPTEN__)
+    // In WASM, we can't break into a debugger and raise(SIGTRAP) crashes.
+    // The assertion message has already been logged, so just continue.
 #elif defined(__UNIX__)
     raise(SIGTRAP);
 #else
