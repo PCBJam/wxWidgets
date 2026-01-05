@@ -74,6 +74,9 @@ public:
     bool SelfNeedsPaint() const { return m_selfNeedsPaint; }
     void Invalidate(bool needsPaint);
 
+    // Returns true after wxWindowWasm::Create() completes
+    bool IsWasmCreated() const { return m_isCreated; }
+
 protected:
     virtual void DoGetTextExtent(const wxString& string,
                                  int *x, int *y,
@@ -123,6 +126,8 @@ private:
 
     bool m_childNeedsPaint;
     bool m_selfNeedsPaint;
+    bool m_isCreated;      // true after Create() completes, used to avoid calling
+                           // UpdateElementRegistry during construction
 
     wxDECLARE_DYNAMIC_CLASS(wxWindowWasm);
     wxDECLARE_NO_COPY_CLASS(wxWindowWasm);

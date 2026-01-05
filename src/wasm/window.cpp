@@ -43,6 +43,13 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
 {
     if (!window) return;
 
+    // Skip updates (isNew=false) if window isn't fully created yet.
+    // This prevents calling virtual methods on partially constructed objects
+    // during the construction chain (e.g., when SetSize calls DoMoveWindow).
+    if (!isNew && !window->IsWasmCreated()) {
+        return;
+    }
+
     // Get element info
     uintptr_t id = reinterpret_cast<uintptr_t>(window);
 
@@ -54,13 +61,29 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
         typeName = classInfo->GetClassName();
     }
 
+    // If RTTI returns a base class type (like "wxControl" or "wxWindow"), the object
+    // is still being constructed and its derived class vtable isn't set up yet.
+    // Calling virtual methods on such objects can cause null function pointer calls.
+    // Skip registration entirely for these partially constructed objects.
+    bool isBaseClassType = (typeName == wxT("wxControl") ||
+                            typeName == wxT("wxWindow") ||
+                            typeName == wxT("wxWindowWasm") ||
+                            typeName == wxT("wxPanel"));
+    if (isBaseClassType && isNew) {
+        // The object is still being constructed. Skip registration now;
+        // the derived class will handle proper registration when fully constructed.
+        return;
+    }
+
     // Some widgets (e.g. wxCollapsiblePane) override GetLabel() to access child
     // widgets that don't exist yet during base class construction. Skip GetLabel()
     // for these widgets to avoid WASM memory access errors (NULL pointer dereference).
     wxString label;
     wxString name;
     bool skipGetLabel = (typeName == wxT("wxGenericCollapsiblePane") ||
-                         typeName == wxT("wxCollapsiblePane"));
+                         typeName == wxT("wxCollapsiblePane") ||
+                         typeName == wxT("WX_COLLAPSIBLE_PANE") ||
+                         typeName == wxT("WX_COLLAPSIBLE_PANE_HEADER"));
     if (!skipGetLabel) {
         label = window->GetLabel();
     }
@@ -262,6 +285,7 @@ void wxWindowWasm::Init()
 
     m_childNeedsPaint = true;
     m_selfNeedsPaint = true;
+    m_isCreated = false;
 }
 
 bool wxWindowWasm::Create(wxWindow *parent,
@@ -271,7 +295,6 @@ bool wxWindowWasm::Create(wxWindow *parent,
                           long style,
                           const wxString& name)
 {
-    //printf("wxWindowWasm::Create\n");
     if (!CreateBase(parent, id, pos, size, style, wxDefaultValidator, name))
     {
         return false;
@@ -295,6 +318,9 @@ bool wxWindowWasm::Create(wxWindow *parent,
     int w = WidthDefault(size.x);
     int h = HeightDefault(size.y);
     SetSize(x, y, w, h);
+
+    // Mark window as created before registering
+    m_isCreated = true;
 
     // Register element in JS tracking system
     UpdateElementRegistry(this, true);
