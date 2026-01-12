@@ -33,7 +33,7 @@ public:
                 const wxString& name = wxPanelNameStr);
 
     // implement base class pure virtuals
-    virtual void SetLabel(const wxString& label) wxOVERRIDE { m_label = label; }
+    virtual void SetLabel(const wxString& label) wxOVERRIDE;
     virtual wxString GetLabel() const wxOVERRIDE { return m_label; }
 
     virtual void Raise() wxOVERRIDE;

@@ -163,6 +163,17 @@ static void UnregisterElement(wxWindowWasm* window)
     }, id);
 }
 
+// SetLabel implementation - updates element registry when label changes
+void wxWindowWasm::SetLabel(const wxString& label)
+{
+    m_label = label;
+
+    // Update element registry so tests can find elements by new label
+    if (IsWasmCreated()) {
+        UpdateElementRegistry(this, false);
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Rendered Element Tracking (toolbar tools, menu items, splitter sashes, etc.)
 // ----------------------------------------------------------------------------
