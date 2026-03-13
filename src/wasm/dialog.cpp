@@ -184,21 +184,51 @@ bool wxDialog::IsModal() const
 // 1. Starts a setTimeout-based event loop that calls ProcessEvents
 // 2. Returns a Promise that resolves when endModal() is called
 // 3. Asyncify suspends the C++ stack until the Promise resolves
+//
+// Note: When consecutive modals run (e.g. wizard pages), the second modal's
+// asyncify operation starts inside the first modal's doRewind. This is an
+// inherent limitation of Emscripten's asyncify — the errors are non-fatal
+// and both modals complete correctly. The try/catch in the event loop
+// prevents cascading errors after the asyncify state corruption.
 EM_ASYNC_JS(int, startModal, (), {
-    console.log('startModal');
+    var timer = null;
+    var stopped = false;
 
     var runEventLoop = function () {
-        modalTimer = setTimeout(function () {
-            ccall('ProcessEvents', 'void', [], []);
+        if (stopped) return;
+        timer = setTimeout(function () {
+            if (stopped) return;
+            try {
+                ccall('ProcessEvents', 'void', [], []);
+            } catch (e) {
+                // After asyncify state corruption from consecutive modals,
+                // ProcessEvents may fail. Stop the event loop to prevent
+                // cascading errors.
+                stopped = true;
+                if (timer !== null) {
+                    clearTimeout(timer);
+                    timer = null;
+                }
+                return;
+            }
             runEventLoop();
-        }, 17);  // ~60fps
+        }, 17);
     };
 
     const result = await new Promise((resolve, reject) => {
         runEventLoop();
-        endModal = resolve;
+        Module._endModal = function(code) {
+            stopped = true;
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            resolve(code);
+        };
     });
-    console.log('modal result: ' + result);
+
+    delete Module._endModal;
+
     return result;
 });
 
@@ -222,6 +252,12 @@ int wxDialog::ShowModal()
 
     m_isShowingModal = true;
     Show(true);
+
+    // Check if EndModal was called during Show(true)
+    if ( !m_isShowingModal )
+    {
+        return GetReturnCode();
+    }
 
     // Call the Asyncify-based modal event loop
     // This suspends the C++ stack until endModal() is called from EndModal()
@@ -251,11 +287,15 @@ void wxDialog::EndModal(int retCode)
 
     m_isShowingModal = false;
 
-    // Stop the JavaScript modal event loop and resolve the Promise
-    // This causes startModal() to return with the result code
+    // Resolve the modal promise via Module._endModal callback.
+    // If _endModal isn't set yet (EndModal called before startModal's event
+    // loop started), store the result as pending so ShowModal can pick it up.
     EM_ASM({
-        clearTimeout(modalTimer);
-        endModal($0);
+        if (typeof Module._endModal === 'function') {
+            Module._endModal($0);
+        } else {
+            Module._pendingModalResult = $0;
+        }
     }, retCode);
 
     Show(false);
