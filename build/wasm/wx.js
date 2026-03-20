@@ -445,6 +445,14 @@ if (typeof navigator !== 'undefined') {
 
   /* wxNonOwnedWindow */
 
+  // Ensure #window-container creates a stacking context so GL canvases
+  // render above the 2D #canvas inside #main-window.
+  var windowContainer = document.getElementById('window-container');
+  if (windowContainer) {
+    windowContainer.style.position = 'relative';
+    windowContainer.style.zIndex = '1';
+  }
+
   var nextWindowId = 0;
   var windowMap = new Map();
 
@@ -549,6 +557,11 @@ if (typeof navigator !== 'undefined') {
 
   var setWindowZIndex = function (id, zIndex) {
     //console.log('setWindowZIndex: ' + id + ': ' + zIndex);
+
+    // The main window (id=0) lives outside #window-container at the body level.
+    // Setting its z-index would place it above #window-container's stacking context,
+    // hiding GL canvases and popup windows inside it.
+    if (id === 0) return;
 
     var windowData = windowMap.get(id);
     windowData.window.style.zIndex = zIndex;
