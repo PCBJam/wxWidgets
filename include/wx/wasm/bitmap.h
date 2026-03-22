@@ -37,10 +37,12 @@ public:
     virtual int GetWidth() const;
     virtual int GetDepth() const;
 
+    virtual void SetScaleFactor(double scale);
     virtual double GetScaleFactor() const;
     virtual double GetScaledWidth() const;
     virtual double GetScaledHeight() const;
 
+    wxSize GetDIPSize() const { return GetSize(); }
     double GetLogicalWidth() const { return GetWidth(); }
     double GetLogicalHeight() const { return GetHeight(); }
     wxSize GetLogicalSize() const { return wxSize(GetWidth(), GetHeight()); }

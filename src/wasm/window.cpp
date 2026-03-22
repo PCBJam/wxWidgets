@@ -682,13 +682,13 @@ int wxWindowWasm::GetCharHeight() const
 
 double wxWindowWasm::GetContentScaleFactor() const
 {
-    return wxContentScaleFactor();
+    // Keep logical layout units in CSS pixels on WASM.
+    return 1.0;
 }
 
 double wxWindowWasm::GetDPIScaleFactor() const
 {
-
-    return GetContentScaleFactor();
+    return wxContentScaleFactor();
 }
 
 void wxWindowWasm::DoGetTextExtent(const wxString& string,
@@ -996,4 +996,3 @@ wxWindow* wxFindWindowAtPoint(const wxPoint& pt)
 {
     return wxGenericFindWindowAtPoint(pt);
 }
-

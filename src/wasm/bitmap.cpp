@@ -659,6 +659,22 @@ bool wxBitmap::HasAlpha() const
     return M_BITMAPDATA->GetHasAlpha();
 }
 
+void wxBitmap::SetScaleFactor(double scale)
+{
+    wxCHECK_RET(IsOk(), wxT("invalid bitmap"));
+    wxCHECK_RET(scale > 0.0, wxT("invalid bitmap scale"));
+
+    if (M_BITMAPDATA->GetScaleFactor() != scale)
+    {
+        AllocExclusive();
+        M_BITMAPDATA->SyncToCpp();
+        M_BITMAPDATA->m_scaleFactor = scale;
+        M_BITMAPDATA->m_width = wxRound(static_cast<double>(M_BITMAPDATA->m_dataWidth) / scale);
+        M_BITMAPDATA->m_height = wxRound(static_cast<double>(M_BITMAPDATA->m_dataHeight) / scale);
+        M_BITMAPDATA->m_dataSource = BITMAP_DATA_SOURCE_CPP;
+    }
+}
+
 double wxBitmap::GetScaleFactor() const
 {
     wxCHECK_MSG(IsOk(), -1, wxT("invalid bitmap"));
