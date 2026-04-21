@@ -40,6 +40,7 @@
 #include "wx/modalhook.h"
 
 #include <emscripten.h>
+#include <cstdio>
 
 //-----------------------------------------------------------------------------
 // wxDialog
@@ -193,14 +194,22 @@ bool wxDialog::IsModal() const
 EM_ASYNC_JS(int, startModal, (), {
     var timer = null;
     var stopped = false;
+    var tickCount = 0;
+
+    console.warn('[DIAG_STARTMODAL] startModal entered, asyncifyState=' +
+                 (typeof Asyncify !== 'undefined' ? Asyncify.state : 'N/A'));
 
     var runEventLoop = function () {
         if (stopped) return;
         timer = setTimeout(function () {
             if (stopped) return;
+            tickCount++;
             try {
                 ccall('ProcessEvents', 'void', [], []);
             } catch (e) {
+                console.error('[DIAG_STARTMODAL] ProcessEvents threw after ' + tickCount +
+                              ' ticks: ' + e.message +
+                              ' asyncifyState=' + (typeof Asyncify !== 'undefined' ? Asyncify.state : 'N/A'));
                 // After asyncify state corruption from consecutive modals,
                 // ProcessEvents may fail. Stop the event loop to prevent
                 // cascading errors.
@@ -218,6 +227,9 @@ EM_ASYNC_JS(int, startModal, (), {
     const result = await new Promise((resolve, reject) => {
         runEventLoop();
         Module._endModal = function(code) {
+            console.warn('[DIAG_STARTMODAL] endModal called, code=' + code +
+                         ' ticks=' + tickCount +
+                         ' asyncifyState=' + (typeof Asyncify !== 'undefined' ? Asyncify.state : 'N/A'));
             stopped = true;
             if (timer !== null) {
                 clearTimeout(timer);
@@ -226,6 +238,9 @@ EM_ASYNC_JS(int, startModal, (), {
             resolve(code);
         };
     });
+
+    console.warn('[DIAG_STARTMODAL] promise resolved, result=' + result +
+                 ' asyncifyState=' + (typeof Asyncify !== 'undefined' ? Asyncify.state : 'N/A'));
 
     delete Module._endModal;
 
@@ -261,7 +276,9 @@ int wxDialog::ShowModal()
 
     // Call the Asyncify-based modal event loop
     // This suspends the C++ stack until endModal() is called from EndModal()
+    std::fprintf(stderr, "[DIAG_SHOWMODAL] About to call startModal()\n");
     int result = startModal();
+    std::fprintf(stderr, "[DIAG_SHOWMODAL] startModal() returned %d\n", result);
 
     return result;
 }
