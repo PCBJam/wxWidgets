@@ -46,8 +46,6 @@ bool wxTopLevelWindowWasm::Create(wxWindow *parent,
                                   long style,
                                   const wxString& name)
 {
-    //wxLogDebug(wxT("creating toplevel window"));
-
     // Handle default size like GTK/MSW ports do - resolve to display size
     // before passing to base class. This ensures GetClientSize() returns
     // reasonable values even before Show() is called.
