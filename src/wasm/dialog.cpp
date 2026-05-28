@@ -191,6 +191,13 @@ bool wxDialog::IsModal() const
 // inherent limitation of Emscripten's asyncify — the errors are non-fatal
 // and both modals complete correctly. The try/catch in the event loop
 // prevents cascading errors after the asyncify state corruption.
+//
+// The setTimeout callback is async because ccall('ProcessEvents', …,
+// {async:true}) returns a Promise whenever ProcessEvents asyncify-suspends
+// (e.g. a tool coroutine yields).  Without `await`, that Promise rejects
+// with the "unwind" sentinel after the callback returns, surfacing as an
+// "Uncaught (in promise) unwind" page error in Chrome; with `await`, the
+// try/catch sees the rejection and stops the loop cleanly.
 EM_ASYNC_JS(int, startModal, (), {
     var timer = null;
     var stopped = false;
@@ -198,11 +205,11 @@ EM_ASYNC_JS(int, startModal, (), {
 
     var runEventLoop = function () {
         if (stopped) return;
-        timer = setTimeout(function () {
+        timer = setTimeout(async function () {
             if (stopped) return;
             tickCount++;
             try {
-                ccall('ProcessEvents', 'void', [], []);
+                await ccall('ProcessEvents', 'void', [], [], { async: true });
             } catch (e) {
                 // After asyncify state corruption from consecutive modals,
                 // ProcessEvents may fail. Stop the event loop to prevent
@@ -214,7 +221,7 @@ EM_ASYNC_JS(int, startModal, (), {
                 }
                 return;
             }
-            runEventLoop();
+            if (!stopped) runEventLoop();
         }, 17);
     };
 
