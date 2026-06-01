@@ -337,6 +337,29 @@ void wxGenericFileDialog::OnOk( wxCommandEvent &WXUNUSED(event) )
 
     const wxString& path = selectedFiles[0];
 
+    // If the user OKs a directory (via single-click + Enter/OK, or via a
+    // double-click that routed through here instead of wxGenericFileCtrl's
+    // OnActivated), navigate into the directory rather than closing the dialog
+    // and surfacing the folder path to the caller as if it were a file.
+    // Without this, KiCad's Open Drawing Sheet then tries to LoadDrawingSheetFile
+    // on the folder and surfaces "Unable to load /dev file" to the user.
+    //
+    // We patch this in the generic dialog itself (rather than confining the
+    // change to src/wasm/) because OnOk is the single place where the OK
+    // button click and the <Enter> key both land — they're wired to it
+    // through the dialog's event table (EVT_BUTTON(wxID_OK, ...) + the
+    // default-button mechanism). Subclassing in src/wasm/ would still bind
+    // the same event-table entry to the base implementation; you can't
+    // intercept "Enter on a directory row" without either replacing the
+    // event table or duplicating most of OnOk. Native builds that use
+    // wxGenericFileDialog as a fallback also benefit from this — folder
+    // rows shouldn't be returnable as file paths regardless of platform.
+    if (selectedFiles.Count() == 1 && wxDirExists(path))
+    {
+        m_filectrl->SetDirectory(path);
+        return;
+    }
+
     if (selectedFiles.Count() == 1)
     {
         SetPath(path);

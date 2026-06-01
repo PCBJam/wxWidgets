@@ -12,7 +12,9 @@
 #include "wx/log.h"
 #include <emscripten/html5.h>
 
-//#define HAS_MOUSE_DETAIL
+// Double-click detection threshold (ms). Matches the default
+// wxSYS_DCLICK_MSEC on most platforms.
+#define WASM_DCLICK_MSEC 500.0
 
 namespace
 {
@@ -63,11 +65,32 @@ wxEventType GetMouseEventType(int emscriptenEventType,
     wxEventType eventType;
     std::string eventName;
 
-#ifdef HAS_MOUSE_DETAIL
-    int clickCount = event.detail;
-#else
+    // EmscriptenMouseEvent no longer exposes a click-count field, so we
+    // detect double-clicks ourselves: two MOUSEDOWNs of the same button
+    // within WASM_DCLICK_MSEC count as a double-click. The browser also
+    // dispatches a real 'dblclick' event we could hook, but tracking it
+    // on MOUSEDOWN lets wxEVT_LEFT_DCLICK arrive at the same point in the
+    // sequence as on desktop (between LEFT_DOWN and LEFT_UP), which is
+    // what wxGenericListCtrl's activation logic expects.
+    static double lastMouseDownTime = 0.0;
+    static unsigned short lastMouseDownButton = 0xFFFF;
     int clickCount = 1;
-#endif
+    if (emscriptenEventType == EMSCRIPTEN_EVENT_MOUSEDOWN)
+    {
+        if (event.button == lastMouseDownButton &&
+            (event.timestamp - lastMouseDownTime) < WASM_DCLICK_MSEC)
+        {
+            clickCount = 2;
+            // Reset so a quick third click isn't chained as another DCLICK.
+            lastMouseDownTime = 0.0;
+            lastMouseDownButton = 0xFFFF;
+        }
+        else
+        {
+            lastMouseDownTime = event.timestamp;
+            lastMouseDownButton = event.button;
+        }
+    }
 
     switch (emscriptenEventType)
     {
