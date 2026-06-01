@@ -499,7 +499,12 @@ if (typeof navigator !== 'undefined') {
   var destroyWindow = function (id) {
     var windowData = windowMap.get(id);
 
-    document.getElementById('window-container').removeChild(windowData.window);
+    // The window element isn't always a child of #window-container (it may have
+    // been moved or never appended), so removeChild() on the container throws
+    // NotFoundError — which unwinds out of native callers like OpenProjectFiles
+    // and aborts the operation. Use Element.remove(): detaches from whatever
+    // parent it has, and is a no-op when unparented.
+    if (windowData && windowData.window) windowData.window.remove();
     windowMap.delete(id);
   };
 

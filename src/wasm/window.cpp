@@ -515,7 +515,12 @@ void wxWindowWasm::KillFocus()
 
 void wxWindowWasm::WarpPointer(int WXUNUSED(x), int WXUNUSED(y))
 {
-    wxFAIL_MSG("WarpPointer is not supported");
+    // Programmatic cursor warping is impossible in the browser, so this is a
+    // no-op. It used to wxFAIL_MSG, but KiCad calls WarpPointer during normal
+    // operations (e.g. view setup while loading a schematic); in a DEBUG build
+    // that fired an assert on every call, spamming the log and running the
+    // assert-handler path, which can reach an unsupported (null) function in the
+    // wasm port and abort the caller. Silently ignoring is the correct behavior.
 }
 
 void wxWindowWasm::Refresh(bool WXUNUSED(eraseBackground), const wxRect *WXUNUSED(rect))
