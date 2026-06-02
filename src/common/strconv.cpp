@@ -3281,6 +3281,19 @@ wxWhateverWorksConv::FromWChar(char *dst, size_t dstLen,
     WX_DEFINE_GLOBAL_CONV2(wxMBConv, wxMBConv_win32, wxConvLibc, wxEMPTY_PARAMETER_VALUE);
 #elif 0 // defined(__WXOSX__)
     WX_DEFINE_GLOBAL_CONV2(wxMBConv, wxMBConv_cf, wxConvLibc,  (wxFONTENCODING_UTF8));
+#elif defined(__EMSCRIPTEN__)
+    // wxConvLibc normally delegates to the C library's locale-dependent
+    // mbrtowc()/wcrtomb(). Under emscripten's musl the default "C" locale has
+    // MB_CUR_MAX == 1 and does NOT decode UTF-8: it maps every non-ASCII byte
+    // into the surrogate-escape range (0xDF80 + byte). So a narrow string
+    // literal containing non-ASCII (clang emits these as UTF-8, e.g. U+00B6 ->
+    // 0xC2 0xB6) is mis-decoded into lone surrogates (U+DFC2 U+DFB6) on the
+    // implicit char* -> wxString conversion, which then round-trips through
+    // utf8_str() as WTF-8 and is rejected downstream (e.g. PCRE2: "code points
+    // 0xd800-0xdfff are not defined"). On the web everything is UTF-8 and the
+    // locale can be reset to "C" at any time (KiCad's LOCALE_IO), so bind
+    // wxConvLibc to a locale-independent UTF-8 converter instead of the libc one.
+    WX_DEFINE_GLOBAL_CONV2(wxMBConv, wxMBConvUTF8, wxConvLibc, wxEMPTY_PARAMETER_VALUE);
 #else
     WX_DEFINE_GLOBAL_CONV2(wxMBConv, wxMBConvLibc, wxConvLibc, wxEMPTY_PARAMETER_VALUE);
 #endif
