@@ -271,7 +271,25 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
                  eventType == wxEVT_RIGHT_DOWN ||
                  eventType == wxEVT_MIDDLE_DOWN))
             {
-                if (g_mouseWindow->IsEnabled())
+                // A click on a toolbar must NOT steal keyboard focus from the canvas. KiCad
+                // binds its hotkey / Esc-to-cancel-tool handling (TOOL_DISPATCHER, via
+                // CHAR_HOOK) on the GAL canvas panel, and CHAR_HOOK only reaches it while the
+                // canvas holds focus. Grabbing focus to the toolbar on every tool click broke
+                // Esc and other canvas hotkeys until the user re-clicked the canvas. (Can't
+                // include the aui header from wx core, so detect toolbars by class name.)
+                bool toolbarClick = false;
+
+                for (wxWindow* w = g_mouseWindow; w != NULL; w = w->GetParent())
+                {
+                    if (w->GetClassInfo()->GetClassName() &&
+                        wxString(w->GetClassInfo()->GetClassName()).Lower().Contains("toolbar"))
+                    {
+                        toolbarClick = true;
+                        break;
+                    }
+                }
+
+                if (g_mouseWindow->IsEnabled() && !toolbarClick)
                 {
                     g_mouseWindow->SetFocus();
                 }
