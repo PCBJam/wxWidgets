@@ -31,8 +31,13 @@ public:
     virtual void SetValue(bool state) wxOVERRIDE;
     virtual bool GetValue() const wxOVERRIDE;
 
+    virtual void SetLabel(const wxString& label) wxOVERRIDE;
+
+    // wxEVT_TOGGLEBUTTON from the real aria-pressed <button>'s click
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 private:
-    // Cached pressed state until the control becomes a real DOM element.
+    // Cached pressed state, kept in sync with the element's aria-pressed.
     bool m_value;
 
     wxDECLARE_DYNAMIC_CLASS(wxToggleButton);

@@ -11,6 +11,8 @@
 
 #include "wx/statline.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxStaticLine::wxStaticLine()
 {
 }
@@ -36,7 +38,7 @@ bool wxStaticLine::Create(wxWindow *parent,
                            wxDefaultValidator, name))
         return false;
 
-    // TODO(dom-phase-2): create a real <hr>-like element.
+    WasmCreateDomNode("statline");
 
     return true;
 }

@@ -74,6 +74,40 @@ inline void wxDomSetReadOnly(int domId, bool readOnly)
     EM_ASM({ wxDomSetReadOnly($0, $1); }, domId, readOnly);
 }
 
+// Boolean state: checkbox/radio checked, toggle-button pressed.
+inline void wxDomSetBoolValue(int domId, bool on)
+{
+    EM_ASM({ wxDomSetBoolValue($0, $1); }, domId, on);
+}
+
+inline bool wxDomGetBoolValue(int domId)
+{
+    return EM_ASM_INT({ return wxDomGetBoolValue($0); }, domId) != 0;
+}
+
+// Numeric state: gauge/slider value.
+inline void wxDomSetIntValue(int domId, int value)
+{
+    EM_ASM({ wxDomSetIntValue($0, $1); }, domId, value);
+}
+
+inline int wxDomGetIntValue(int domId)
+{
+    return EM_ASM_INT({ return wxDomGetIntValue($0); }, domId);
+}
+
+inline void wxDomSetRange(int domId, int minVal, int maxVal)
+{
+    EM_ASM({ wxDomSetRange($0, $1, $2); }, domId, minVal, maxVal);
+}
+
+// HTML radio exclusivity: same group name = browser-exclusive group.
+inline void wxDomSetGroupName(int domId, const wxString& name)
+{
+    EM_ASM({ wxDomSetGroupName($0, UTF8ToString($1)); },
+           domId, (const char *)name.utf8_str());
+}
+
 inline void wxDomSetShown(int domId, bool shown)
 {
     EM_ASM({ wxDomSetShown($0, $1); }, domId, shown);

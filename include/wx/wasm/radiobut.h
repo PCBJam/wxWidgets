@@ -32,8 +32,14 @@ public:
     virtual void SetValue(bool value) wxOVERRIDE;
     virtual bool GetValue() const wxOVERRIDE;
 
+    virtual void SetLabel(const wxString& label) wxOVERRIDE;
+
+    // wxEVT_RADIOBUTTON from the real <input type="radio">'s change
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 private:
-    // Cached checked state until the control becomes a real DOM element.
+    // Cached checked state; GetValue() prefers the live DOM state because
+    // the browser un-checks group siblings without notifying them.
     bool m_value;
 
     wxDECLARE_DYNAMIC_CLASS(wxRadioButton);

@@ -25,6 +25,9 @@ public:
                 long style = 0,
                 const wxString& name = wxASCII_STR(wxStaticBoxNameStr));
 
+    // writes the <fieldset>'s <legend>
+    virtual void SetLabel(const wxString& label) wxOVERRIDE;
+
 private:
     wxDECLARE_DYNAMIC_CLASS(wxStaticBox);
 };

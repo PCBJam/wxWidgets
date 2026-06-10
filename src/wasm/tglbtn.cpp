@@ -16,6 +16,8 @@
 #include "wx/stockitem.h"
 #include "wx/tglbtn.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxDEFINE_EVENT( wxEVT_TOGGLEBUTTON, wxCommandEvent );
 
 wxIMPLEMENT_DYNAMIC_CLASS(wxToggleButton, wxControl);
@@ -49,23 +51,55 @@ bool wxToggleButton::Create(wxWindow *parent,
     if (!wxControl::Create(parent, id, pos, size, style, validator, name))
         return false;
 
-    SetLabel(wxIsStockID(id) ? wxGetStockLabel(id) : label);
+    WasmCreateDomNode("toggle");
 
-    // TODO(dom-phase-2): create a real toggleable <button> element and wire
-    // its click event through wx_dom_event.
+    SetLabel(wxIsStockID(id) ? wxGetStockLabel(id) : label);
 
     return true;
 }
 
+void wxToggleButton::SetLabel(const wxString& label)
+{
+    wxControl::SetLabel(label);
+
+    if (WasmGetDomId())
+    {
+        // Strip the mnemonic marker; browser buttons have no accelerators yet.
+        wxDomSetText(WasmGetDomId(), GetLabelText());
+        InvalidateBestSize();
+    }
+}
+
 void wxToggleButton::SetValue(bool state)
 {
-    // TODO(dom-phase-2): reflect the pressed state on the DOM element.
     m_value = state;
+
+    if (WasmGetDomId())
+        wxDomSetBoolValue(WasmGetDomId(), state);
 }
 
 bool wxToggleButton::GetValue() const
 {
     return m_value;
+}
+
+void wxToggleButton::OnDomEvent(wxDomEventKind kind)
+{
+    if (kind == wxDOM_EVENT_CLICK)
+    {
+        // Clicking a plain <button> doesn't change aria-pressed by itself:
+        // C++ owns the toggle and pushes it back to the element.
+        m_value = !m_value;
+        wxDomSetBoolValue(WasmGetDomId(), m_value);
+
+        wxCommandEvent event(wxEVT_TOGGLEBUTTON, GetId());
+        event.SetInt(GetValue());
+        event.SetEventObject(this);
+        HandleWindowEvent(event);
+        return;
+    }
+
+    wxControl::OnDomEvent(kind);
 }
 
 //##############################################################################

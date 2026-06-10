@@ -44,6 +44,9 @@ public:
     virtual void SetThumbLength(int lenPixels) wxOVERRIDE;
     virtual int GetThumbLength() const wxOVERRIDE;
 
+    // wxEVT_SLIDER from the real <input type="range">'s input
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 protected:
     virtual wxSize DoGetBestSize() const wxOVERRIDE;
 

@@ -11,6 +11,8 @@
 
 #include "wx/slider.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxSlider::wxSlider() :
     m_value(0),
     m_min(0),
@@ -52,12 +54,13 @@ bool wxSlider::Create(wxWindow *parent,
     if (!wxControl::Create(parent, id, pos, size, style, validator, name))
         return false;
 
+    WasmCreateDomNode("slider");
+
+    // the overrides below push range/value to the <input type="range">;
+    // the range must be set first so the browser doesn't clamp the value
     SetRange(minValue, maxValue);
     SetValue(value);
     SetPageSize(wxMax(1, (maxValue - minValue) / 10));
-
-    // TODO(dom-phase-2): create a real <input type="range"> element and
-    // wire its input event through wx_dom_event.
 
     return true;
 }
@@ -69,15 +72,19 @@ int wxSlider::GetValue() const
 
 void wxSlider::SetValue(int value)
 {
-    // TODO(dom-phase-2): update the DOM element's value.
     m_value = value;
+
+    if (WasmGetDomId())
+        wxDomSetIntValue(WasmGetDomId(), value);
 }
 
 void wxSlider::SetRange(int minValue, int maxValue)
 {
-    // TODO(dom-phase-2): update the DOM element's min/max attributes.
     m_min = minValue;
     m_max = maxValue;
+
+    if (WasmGetDomId())
+        wxDomSetRange(WasmGetDomId(), minValue, maxValue);
 }
 
 int wxSlider::GetMin() const
@@ -118,6 +125,27 @@ void wxSlider::SetThumbLength(int lenPixels)
 int wxSlider::GetThumbLength() const
 {
     return m_thumbLength;
+}
+
+void wxSlider::OnDomEvent(wxDomEventKind kind)
+{
+    if (kind == wxDOM_EVENT_INPUT)
+    {
+        // Pull the dragged position into the cache and fire wxEVT_SLIDER,
+        // like any port does for user changes.
+        m_value = wxDomGetIntValue(WasmGetDomId());
+
+        wxCommandEvent event(wxEVT_SLIDER, GetId());
+        event.SetInt(m_value);
+        event.SetEventObject(this);
+        HandleWindowEvent(event);
+
+        // TODO(dom-phase-3): also fire the wxScrollEvent family
+        // (wxEVT_SCROLL_THUMBTRACK/THUMBRELEASE/CHANGED).
+        return;
+    }
+
+    wxControl::OnDomEvent(kind);
 }
 
 wxSize wxSlider::DoGetBestSize() const

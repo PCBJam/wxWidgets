@@ -11,6 +11,8 @@
 
 #include "wx/checkbox.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxCheckBox::wxCheckBox() :
     m_state(wxCHK_UNCHECKED)
 {
@@ -40,12 +42,23 @@ bool wxCheckBox::Create(wxWindow *parent,
     if (!wxControl::Create(parent, id, pos, size, style, validator, name))
         return false;
 
+    WasmCreateDomNode("checkbox");
+
     SetLabel(label);
 
-    // TODO(dom-phase-2): create a real <input type="checkbox"> element plus
-    // label and wire its change event through wx_dom_event.
-
     return true;
+}
+
+void wxCheckBox::SetLabel(const wxString& label)
+{
+    wxControl::SetLabel(label);
+
+    if (WasmGetDomId())
+    {
+        // Strip the mnemonic marker; browser checkboxes have no accelerators yet.
+        wxDomSetText(WasmGetDomId(), GetLabelText());
+        InvalidateBestSize();
+    }
 }
 
 void wxCheckBox::SetValue(bool value)
@@ -60,14 +73,36 @@ bool wxCheckBox::GetValue() const
 
 void wxCheckBox::DoSet3StateValue(wxCheckBoxState state)
 {
-    // TODO(dom-phase-2): reflect the state on the DOM element
-    // (checked/indeterminate).
     m_state = state;
+
+    // TODO(dom-phase-3): reflect wxCHK_UNDETERMINED via the element's
+    // indeterminate property.
+    if (WasmGetDomId())
+        wxDomSetBoolValue(WasmGetDomId(), m_state == wxCHK_CHECKED);
 }
 
 wxCheckBoxState wxCheckBox::DoGet3StateValue() const
 {
     return m_state;
+}
+
+void wxCheckBox::OnDomEvent(wxDomEventKind kind)
+{
+    if (kind == wxDOM_EVENT_CHANGE)
+    {
+        // Pull the clicked state into the cache and fire wxEVT_CHECKBOX,
+        // like any port does for user toggles.
+        m_state = wxDomGetBoolValue(WasmGetDomId()) ? wxCHK_CHECKED
+                                                    : wxCHK_UNCHECKED;
+
+        wxCommandEvent event(wxEVT_CHECKBOX, GetId());
+        event.SetInt(IsChecked());
+        event.SetEventObject(this);
+        HandleWindowEvent(event);
+        return;
+    }
+
+    wxControl::OnDomEvent(kind);
 }
 
 #endif // wxUSE_CHECKBOX

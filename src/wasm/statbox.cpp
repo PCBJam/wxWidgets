@@ -11,6 +11,8 @@
 
 #include "wx/statbox.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxStaticBox::wxStaticBox()
 {
 }
@@ -35,11 +37,23 @@ bool wxStaticBox::Create(wxWindow *parent, wxWindowID id,
     if (!wxControl::Create(parent, id, pos, size, style, wxDefaultValidator, name))
         return false;
 
+    WasmCreateDomNode("statbox");
+
     SetLabel(label);
 
-    // TODO(dom-phase-2): create a real <fieldset>/<legend> element.
-
     return true;
+}
+
+void wxStaticBox::SetLabel(const wxString& label)
+{
+    wxControl::SetLabel(label);
+
+    if (WasmGetDomId())
+    {
+        // Writes the <fieldset>'s <legend>; strip the mnemonic marker.
+        wxDomSetText(WasmGetDomId(), GetLabelText());
+        InvalidateBestSize();
+    }
 }
 
 #endif // wxUSE_STATBOX

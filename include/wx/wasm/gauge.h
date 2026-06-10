@@ -29,6 +29,10 @@ public:
                 const wxValidator& validator = wxDefaultValidator,
                 const wxString& name = wxASCII_STR(wxGaugeNameStr));
 
+    // push range/position to the <progress> element
+    virtual void SetRange(int range) wxOVERRIDE;
+    virtual void SetValue(int pos) wxOVERRIDE;
+
 protected:
     virtual wxSize DoGetBestSize() const wxOVERRIDE;
 

@@ -29,12 +29,17 @@ public:
     virtual void SetValue(bool value) wxOVERRIDE;
     virtual bool GetValue() const wxOVERRIDE;
 
+    virtual void SetLabel(const wxString& label) wxOVERRIDE;
+
+    // wxEVT_CHECKBOX from the real <input type="checkbox">'s change
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 protected:
     virtual void DoSet3StateValue(wxCheckBoxState state) wxOVERRIDE;
     virtual wxCheckBoxState DoGet3StateValue() const wxOVERRIDE;
 
 private:
-    // Cached state until the control becomes a real DOM element.
+    // Cached state, kept in sync with the DOM element's checked property.
     wxCheckBoxState m_state;
 
     wxDECLARE_DYNAMIC_CLASS(wxCheckBox);
