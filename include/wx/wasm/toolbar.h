@@ -23,6 +23,12 @@ public:
                 long style = wxTB_DEFAULT_STYLE,
                 const wxString& name = wxASCII_STR(wxToolBarNameStr));
 
+    // pushes the tools to the DOM toolbar node
+    virtual bool Realize() wxOVERRIDE;
+
+    // wxEVT_TOOL dispatch for clicks on the DOM tool buttons
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
     virtual wxToolBarToolBase *FindToolForPosition(wxCoord x,
                                                    wxCoord y) const wxOVERRIDE;
 
@@ -46,7 +52,15 @@ protected:
     virtual void DoToggleTool(wxToolBarToolBase *tool, bool toggle) wxOVERRIDE;
     virtual void DoSetToggle(wxToolBarToolBase *tool, bool toggle) wxOVERRIDE;
 
+    // intrinsic size of the DOM toolbar, applied by Realize() and stretched
+    // by wxFrame::PositionToolBar()
+    virtual wxSize DoGetBestSize() const wxOVERRIDE;
+
 private:
+    // Re-serializes m_tools to JSON and pushes them to the DOM toolbar
+    // node; no-op until Create() made the node.
+    void WasmRebuildTools();
+
     wxDECLARE_DYNAMIC_CLASS(wxToolBar);
 };
 

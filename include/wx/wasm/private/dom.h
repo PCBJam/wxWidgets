@@ -155,6 +155,53 @@ class wxBitmap;
 // empty string if the bitmap is invalid or encoding fails.
 wxString wxDomBitmapToDataURL(const wxBitmap& bitmap);
 
+// Minimal JSON string escaping for the menu/toolbar structure payloads.
+inline wxString wxDomJsonEscape(const wxString& s)
+{
+    wxString out;
+    out.reserve(s.length() + 8);
+    for ( wxString::const_iterator it = s.begin(); it != s.end(); ++it )
+    {
+        const wxUniChar c = *it;
+        if ( c == wxT('"') || c == wxT('\\') )
+        {
+            out += wxT('\\');
+            out += c;
+        }
+        else if ( c == wxT('\n') )
+            out += wxT("\\n");
+        else if ( c == wxT('\t') )
+            out += wxT("\\t");
+        else if ( c == wxT('\r') )
+            out += wxT("\\r");
+        else
+            out += c;
+    }
+    return out;
+}
+
+// Menubar structure: JSON [{title, items:[{id,label,kind,checked,enabled,
+// items}]}] — kind: "normal" | "separator" | "check" | "radio" | "submenu".
+inline void wxDomMenuSetStructure(int domId, const wxString& json)
+{
+    EM_ASM({ wxDomMenuSetStructure($0, UTF8ToString($1)); },
+           domId, (const char *)json.utf8_str());
+}
+
+// Toolbar tools: JSON [{id,label,tooltip,kind,toggled,enabled,img,imgW,
+// imgH}] — kind: "button" | "toggle" | "separator".
+inline void wxDomToolbarSetTools(int domId, const wxString& json)
+{
+    EM_ASM({ wxDomToolbarSetTools($0, UTF8ToString($1)); },
+           domId, (const char *)json.utf8_str());
+}
+
+// Command id of the last activated menu item / tool.
+inline int wxDomGetLastCommandId(int domId)
+{
+    return EM_ASM_INT({ return wxDomGetLastCommandId($0); }, domId);
+}
+
 inline void wxDomSetShown(int domId, bool shown)
 {
     EM_ASM({ wxDomSetShown($0, $1); }, domId, shown);
@@ -174,6 +221,12 @@ inline void wxDomSetFont(int domId, const wxString& cssFont)
 inline void wxDomSetAriaLabel(int domId, const wxString& label)
 {
     EM_ASM({ wxDomSetAriaLabel($0, UTF8ToString($1)); }, domId, (const char *)label.utf8_str());
+}
+
+// Browser-native tooltip (HTML title attribute).
+inline void wxDomSetTooltip(int domId, const wxString& tip)
+{
+    EM_ASM({ wxDomSetTooltip($0, UTF8ToString($1)); }, domId, (const char *)tip.utf8_str());
 }
 
 // Intrinsic (content-driven) size of the live element: width/height packed

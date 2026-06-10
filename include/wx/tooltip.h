@@ -27,6 +27,8 @@
 #include "wx/osx/tooltip.h"
 #elif defined(__WXQT__)
 #include "wx/qt/tooltip.h"
+#elif defined(__WXWASM__)
+#include "wx/wasm/tooltip.h"
 #endif
 
 #endif

@@ -11,6 +11,29 @@
 
 #include "wx/menu.h"
 
+#ifndef WX_PRECOMP
+    #include "wx/frame.h"
+#endif
+
+#include "wx/wasm/private/dom.h"
+
+#if wxUSE_MENUBAR
+
+// Refresh the DOM menubar (if any) that `menu` ultimately hangs off: a
+// submenu's GetMenuBar() walks up to the root menu's bar.
+static void DomRefreshMenuBarOf(const wxMenuBase *menu)
+{
+    wxMenuBar *bar = menu->GetMenuBar();
+    if (bar && bar->WasmGetDomId())
+        bar->WasmRebuildMenus();
+}
+
+#else // !wxUSE_MENUBAR
+
+static inline void DomRefreshMenuBarOf(const wxMenuBase *WXUNUSED(menu)) { }
+
+#endif // wxUSE_MENUBAR/!wxUSE_MENUBAR
+
 // ----------------------------------------------------------------------------
 // wxMenu
 // ----------------------------------------------------------------------------
@@ -30,20 +53,32 @@ wxMenu::wxMenu(const wxString& title, long style)
 
 wxMenuItem *wxMenu::DoAppend(wxMenuItem *item)
 {
-    // TODO(dom-phase-2): create a DOM node for the item.
-    return wxMenuBase::DoAppend(item);
+    wxMenuItem *ret = wxMenuBase::DoAppend(item);
+
+    if (ret)
+        DomRefreshMenuBarOf(this);
+
+    return ret;
 }
 
 wxMenuItem *wxMenu::DoInsert(size_t pos, wxMenuItem *item)
 {
-    // TODO(dom-phase-2): create a DOM node for the item.
-    return wxMenuBase::DoInsert(pos, item);
+    wxMenuItem *ret = wxMenuBase::DoInsert(pos, item);
+
+    if (ret)
+        DomRefreshMenuBarOf(this);
+
+    return ret;
 }
 
 wxMenuItem *wxMenu::DoRemove(wxMenuItem *item)
 {
-    // TODO(dom-phase-2): remove the item's DOM node.
-    return wxMenuBase::DoRemove(item);
+    wxMenuItem *ret = wxMenuBase::DoRemove(item);
+
+    if (ret)
+        DomRefreshMenuBarOf(this);
+
+    return ret;
 }
 
 // ----------------------------------------------------------------------------
@@ -51,6 +86,58 @@ wxMenuItem *wxMenu::DoRemove(wxMenuItem *item)
 // ----------------------------------------------------------------------------
 
 #if wxUSE_MENUBAR
+
+// Serializes a menu's items (recursing into submenus) to the JSON array
+// consumed by wxDomMenuSetStructure: [{id,label,kind,checked,enabled,items}]
+// with kind one of "normal" | "separator" | "check" | "radio" | "submenu".
+static wxString DomMenuItemsToJson(const wxMenu *menu)
+{
+    wxString json(wxT("["));
+
+    bool first = true;
+    for (wxMenuItemList::compatibility_iterator
+            node = menu->GetMenuItems().GetFirst();
+         node;
+         node = node->GetNext())
+    {
+        wxMenuItem *item = node->GetData();
+
+        if (!first)
+            json += wxT(",");
+        first = false;
+
+        const char *kind;
+        if (item->IsSeparator())
+            kind = "separator";
+        else if (item->GetSubMenu())
+            kind = "submenu";
+        else if (item->GetKind() == wxITEM_CHECK)
+            kind = "check";
+        else if (item->GetKind() == wxITEM_RADIO)
+            kind = "radio";
+        else
+            kind = "normal";
+
+        json += wxString::Format(
+            wxT("{\"id\":%d,\"label\":\"%s\",\"kind\":\"%s\",")
+            wxT("\"checked\":%s,\"enabled\":%s"),
+            item->GetId(),
+            // no mnemonics/accelerators in the browser menus (yet)
+            wxDomJsonEscape(item->GetItemLabelText()),
+            kind,
+            item->IsCheckable() && item->IsChecked() ? "true" : "false",
+            item->IsEnabled() ? "true" : "false");
+
+        if (item->GetSubMenu())
+            json += wxT(",\"items\":") + DomMenuItemsToJson(item->GetSubMenu());
+
+        json += wxT("}");
+    }
+
+    json += wxT("]");
+
+    return json;
+}
 
 wxMenuBar::wxMenuBar()
 {
@@ -76,7 +163,7 @@ bool wxMenuBar::Append(wxMenu *menu, const wxString& title)
     menu->SetTitle(title);
     m_enabledTop.push_back(true);
 
-    // TODO(dom-phase-2): create a DOM node for the menu.
+    WasmRebuildMenus();
 
     return true;
 }
@@ -89,7 +176,7 @@ bool wxMenuBar::Insert(size_t pos, wxMenu *menu, const wxString& title)
     menu->SetTitle(title);
     m_enabledTop.insert(m_enabledTop.begin() + pos, true);
 
-    // TODO(dom-phase-2): create a DOM node for the menu.
+    WasmRebuildMenus();
 
     return true;
 }
@@ -101,7 +188,7 @@ wxMenu *wxMenuBar::Remove(size_t pos)
     {
         m_enabledTop.erase(m_enabledTop.begin() + pos);
 
-        // TODO(dom-phase-2): remove the menu's DOM node.
+        WasmRebuildMenus();
     }
 
     return menu;
@@ -113,7 +200,7 @@ void wxMenuBar::EnableTop(size_t pos, bool enable)
 
     m_enabledTop[pos] = enable;
 
-    // TODO(dom-phase-2): reflect the enabled state on the DOM node.
+    WasmRebuildMenus();
 }
 
 bool wxMenuBar::IsEnabledTop(size_t pos) const
@@ -129,7 +216,7 @@ void wxMenuBar::SetMenuLabel(size_t pos, const wxString& label)
 
     GetMenu(pos)->SetTitle(label);
 
-    // TODO(dom-phase-2): update the DOM node's label.
+    WasmRebuildMenus();
 }
 
 wxString wxMenuBar::GetMenuLabel(size_t pos) const
@@ -141,16 +228,103 @@ wxString wxMenuBar::GetMenuLabel(size_t pos) const
 
 void wxMenuBar::Attach(wxFrame *frame)
 {
+    wxCHECK_RET(frame, wxT("wxMenuBar::Attach(NULL) called"));
+
     wxMenuBarBase::Attach(frame);
 
-    // TODO(dom-phase-2): attach the menu bar's DOM node to the frame's.
+    // The menubar window is created lazily here: applications construct
+    // wxMenuBar without a parent, so the wxWindow part (and its DOM node)
+    // can only exist once the frame is known (as in src/univ/menu.cpp).
+    if (!IsWasmCreated())
+        Create(frame, wxID_ANY);
+
+    if (!WasmGetDomId())
+        WasmCreateDomNode("menubar");
+
+    WasmRebuildMenus();
+
+    // give the bar its intrinsic height right away: the frame's
+    // PositionMenuBar() only positions and stretches, it never measures
+    SetSize(wxDefaultCoord, GetBestSize().y);
 }
 
 void wxMenuBar::Detach()
 {
-    // TODO(dom-phase-2): detach the menu bar's DOM node from the frame's.
+    // the DOM node is left in place: the frame owns the bar's positioning
+    // and window destruction handles the cleanup
 
     wxMenuBarBase::Detach();
+}
+
+void wxMenuBar::WasmRebuildMenus()
+{
+    if (!WasmGetDomId())
+        return;
+
+    wxString json(wxT("["));
+
+    for (size_t pos = 0; pos < GetMenuCount(); pos++)
+    {
+        if (pos > 0)
+            json += wxT(",");
+
+        json += wxString::Format(wxT("{\"title\":\"%s\",\"items\":"),
+                                 wxDomJsonEscape(GetMenuLabelText(pos)));
+        json += DomMenuItemsToJson(GetMenu(pos));
+        json += wxT("}");
+    }
+
+    json += wxT("]");
+
+    wxDomMenuSetStructure(WasmGetDomId(), json);
+    InvalidateBestSize();
+}
+
+void wxMenuBar::OnDomEvent(wxDomEventKind kind)
+{
+    if (kind == wxDOM_EVENT_MENU)
+    {
+        // Dispatch the activated item like the univ port does: toggle
+        // checkable items first, then let the menu fire wxEVT_MENU.
+        const int id = wxDomGetLastCommandId(WasmGetDomId());
+
+        wxMenu *menu = NULL;
+        wxMenuItem *item = FindItem(id, &menu);
+        if (item)
+        {
+            const bool checkable = item->IsCheckable();
+            if (checkable)
+                item->Toggle();
+
+            if (menu)
+                menu->SendEvent(id, checkable ? item->IsChecked() : -1);
+
+            // refresh the check mark in the DOM structure
+            if (checkable)
+                WasmRebuildMenus();
+        }
+        return;
+    }
+
+    wxMenuBarBase::OnDomEvent(kind);
+}
+
+wxSize wxMenuBar::DoGetBestSize() const
+{
+    // DOM-backed bars report their intrinsic (content-driven) size,
+    // measured on the live element, like wxControl::DoGetBestSize().
+    if (WasmGetDomId())
+    {
+        int w = 0;
+        int h = 0;
+        wxDomGetIntrinsicSize(WasmGetDomId(), &w, &h);
+        if (w > 0 && h > 0)
+            return wxSize(w, h);
+    }
+
+    // stub bars (no DOM node yet): a plausible menubar height so
+    // wxFrame::PositionMenuBar() keeps the layout sane
+    return wxSize(100, 24);
 }
 
 #endif // wxUSE_MENUBAR

@@ -27,7 +27,7 @@
 
   // Mirror of wxDomEventKind in include/wx/wasm/window.h.
   var EVT = { CLICK: 1, INPUT: 2, CHANGE: 3, FOCUSIN: 4, FOCUSOUT: 5,
-              ENTER: 6, SPIN_UP: 7, SPIN_DOWN: 8 };
+              ENTER: 6, SPIN_UP: 7, SPIN_DOWN: 8, MENU: 9, TOOL: 10 };
 
   // Marks the bundle as DOM-port for tests/boot code.
   window.wxDomPort = true;
@@ -180,6 +180,23 @@
         root.style.overflowY = 'auto';
         root.style.background = '#ffffff';
         root.style.border = '1px solid #b5b2aa';
+        break;
+      }
+      case 'menubar': {
+        // Horizontal strip of menu-title buttons; menus open as popup divs
+        // (built by wxDomMenuSetStructure).
+        root = document.createElement('div');
+        root.dataset.wxMenuBar = '1';
+        root.style.background = '#d4d0c8';
+        flexCenter(root);
+        break;
+      }
+      case 'toolbar': {
+        // Horizontal strip of tool buttons (built by wxDomToolbarSetTools).
+        root = document.createElement('div');
+        root.dataset.wxToolBar = '1';
+        root.style.background = '#d4d0c8';
+        flexCenter(root);
         break;
       }
       default: {
@@ -570,6 +587,212 @@
   window.wxDomSetAriaLabel = function (domId, label) {
     var el = controls.get(domId);
     if (el) el.setAttribute('aria-label', label);
+  };
+
+  window.wxDomSetTooltip = function (domId, tip) {
+    var el = controls.get(domId);
+    if (el) el.title = tip;
+  };
+
+  // ========== Menus & toolbars ==========
+
+  var openMenuPopup = null;
+
+  function closeMenuPopup() {
+    if (openMenuPopup) {
+      openMenuPopup.remove();
+      openMenuPopup = null;
+    }
+  }
+
+  document.addEventListener('mousedown', function (ev) {
+    // any click outside an open menu closes it (mousedown so the click on
+    // another control still lands)
+    if (openMenuPopup && !openMenuPopup.contains(ev.target)) {
+      var inTitle = ev.target.closest && ev.target.closest('.wx-menu-title');
+      if (!inTitle) closeMenuPopup();
+    }
+  });
+
+  function registryRegister(id, info) {
+    var reg = window.wxElementRegistry;
+    if (reg && reg.registerRendered) reg.registerRendered(id, info);
+  }
+
+  function rectInfo(el) {
+    var r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height,
+             centerX: r.x + r.width / 2, centerY: r.y + r.height / 2 };
+  }
+
+  // Builds and shows the popup for one menu's items below `anchor`.
+  // items: [{id,label,kind:'normal'|'separator'|'check'|'radio'|'submenu',
+  //          checked,enabled,items}]
+  function showMenuPopup(domId, anchor, items, registryParent) {
+    closeMenuPopup();
+    var pop = document.createElement('div');
+    pop.className = 'wx-menu-popup';
+    var a = anchor.getBoundingClientRect();
+    pop.style.cssText =
+      'position:absolute;z-index:10000;background:#d4d0c8;' +
+      'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
+      'padding:2px;white-space:pre;min-width:120px;' +
+      'left:' + (a.left + window.scrollX) + 'px;' +
+      'top:' + (a.bottom + window.scrollY) + 'px;';
+    pop.style.font = anchor.style.font || getComputedStyle(anchor).font;
+
+    items.forEach(function (it, idx) {
+      if (it.kind === 'separator') {
+        var sep = document.createElement('div');
+        sep.style.cssText = 'border-top:1px solid #808080;margin:2px 4px;';
+        pop.appendChild(sep);
+        return;
+      }
+      var row = document.createElement('div');
+      row.textContent = (it.checked ? '✓ ' : '   ') + it.label +
+                        (it.kind === 'submenu' ? '  ▸' : '');
+      row.style.cssText = 'padding:2px 14px 2px 6px;cursor:default;' +
+                          (it.enabled ? '' : 'color:#808080;');
+      if (it.enabled) {
+        row.addEventListener('mouseenter', function () {
+          row.style.background = '#000080';
+          row.style.color = '#ffffff';
+        });
+        row.addEventListener('mouseleave', function () {
+          row.style.background = '';
+          row.style.color = '';
+        });
+        row.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          if (it.kind === 'submenu') {
+            // simple inline expansion: replace popup with the submenu
+            showMenuPopup(domId, row, it.items || [], registryParent);
+            return;
+          }
+          var bar = controls.get(domId);
+          if (bar) bar.dataset.wxLastCommand = String(it.id);
+          closeMenuPopup();
+          dispatch(domId, EVT.MENU);
+        });
+      }
+      pop.appendChild(row);
+      // register popup items for the e2e registry (canvas parity)
+      requestAnimationFrame(function () {
+        if (!pop.isConnected) return;
+        registryRegister(registryParent + ':menuitem:' + idx, Object.assign({
+          elementType: 'menuitem',
+          subType: it.kind === 'check' || it.kind === 'radio' ? it.kind : 'normal',
+          label: it.label, tooltip: '', enabled: !!it.enabled,
+          parentId: registryParent, index: idx
+        }, rectInfo(row)));
+      });
+    });
+
+    document.body.appendChild(pop);
+    openMenuPopup = pop;
+  }
+
+  // structureJson: [{title, items:[...]}, ...] (schema above)
+  window.wxDomMenuSetStructure = function (domId, structureJson) {
+    var el = controls.get(domId);
+    if (!el || !el.dataset.wxMenuBar) return;
+    var menus;
+    try {
+      menus = JSON.parse(structureJson);
+    } catch (e) {
+      console.error('wxDomMenuSetStructure: bad JSON', e);
+      return;
+    }
+    el.textContent = '';
+    closeMenuPopup();
+    menus.forEach(function (m, idx) {
+      var btn = document.createElement('button');
+      btn.className = 'wx-menu-title';
+      btn.textContent = m.title;
+      btn.style.cssText =
+        'border:none;background:transparent;padding:2px 8px;margin:0;' +
+        'font:inherit;white-space:pre;';
+      btn.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
+      btn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (openMenuPopup) {
+          closeMenuPopup();
+        } else {
+          showMenuPopup(domId, btn, m.items || [], domId + ':' + idx);
+        }
+      });
+      el.appendChild(btn);
+      requestAnimationFrame(function () {
+        registryRegister(domId + ':menubartitle:' + idx, Object.assign({
+          elementType: 'menuitem', subType: 'menubar',
+          label: m.title, tooltip: '', enabled: true,
+          parentId: String(domId), index: idx
+        }, rectInfo(btn)));
+      });
+    });
+  };
+
+  // tools: [{id,label,tooltip,kind:'button'|'toggle'|'separator',
+  //          toggled,enabled,img,imgW,imgH}]
+  window.wxDomToolbarSetTools = function (domId, toolsJson) {
+    var el = controls.get(domId);
+    if (!el || !el.dataset.wxToolBar) return;
+    var tools;
+    try {
+      tools = JSON.parse(toolsJson);
+    } catch (e) {
+      console.error('wxDomToolbarSetTools: bad JSON', e);
+      return;
+    }
+    el.textContent = '';
+    tools.forEach(function (t, idx) {
+      if (t.kind === 'separator') {
+        var sep = document.createElement('div');
+        sep.style.cssText =
+          'border-left:1px solid #808080;align-self:stretch;margin:1px 3px;';
+        el.appendChild(sep);
+        return;
+      }
+      var btn = document.createElement('button');
+      btn.className = 'wx-tool';
+      btn.title = t.tooltip || t.label || '';
+      btn.style.cssText = 'padding:1px 3px;margin:1px;font:inherit;' +
+                          'display:flex;align-items:center;';
+      if (t.img) {
+        var img = document.createElement('img');
+        if (t.imgW > 0) { img.width = t.imgW; img.style.width = t.imgW + 'px'; }
+        if (t.imgH > 0) { img.height = t.imgH; img.style.height = t.imgH + 'px'; }
+        img.style.flexShrink = '0';
+        img.src = t.img;
+        btn.appendChild(img);
+      } else {
+        btn.textContent = t.label || '';
+      }
+      btn.disabled = !t.enabled;
+      if (t.toggled) btn.style.background = '#b0c4de';
+      btn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        el.dataset.wxLastCommand = String(t.id);
+        dispatch(domId, EVT.TOOL);
+      });
+      el.appendChild(btn);
+      requestAnimationFrame(function () {
+        if (!btn.isConnected) return;
+        registryRegister(domId + ':tool:' + idx, Object.assign({
+          elementType: 'tool', subType: t.kind === 'toggle' ? 'toggle' : 'button',
+          label: t.label || '', tooltip: t.tooltip || '', enabled: !!t.enabled,
+          parentId: String(domId), index: idx, toggled: !!t.toggled
+        }, rectInfo(btn)));
+      });
+    });
+  };
+
+  // Command id of the last activated menu item / tool (set by the click
+  // handlers above; read by wxMenuBar/wxToolBar OnDomEvent).
+  window.wxDomGetLastCommandId = function (domId) {
+    var el = controls.get(domId);
+    var v = el ? parseInt(el.dataset.wxLastCommand, 10) : NaN;
+    return isNaN(v) ? -1 : v;
   };
 
   // Intrinsic (content-driven) size, packed (w << 16) | h for EM_ASM_INT.

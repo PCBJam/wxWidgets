@@ -2147,6 +2147,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     src/wasm/textentry.cpp
     src/wasm/tglbtn.cpp
     src/wasm/toolbar.cpp
+    src/wasm/tooltip.cpp
 </set>
 <set var="WASM_HDR" hints="files">
     wx/wasm/anybutton.h
@@ -2177,6 +2178,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     wx/wasm/textentry.h
     wx/wasm/tglbtn.h
     wx/wasm/toolbar.h
+    wx/wasm/tooltip.h
 </set>
 
 <!-- ====================================================================== -->

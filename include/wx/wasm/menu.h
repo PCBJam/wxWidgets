@@ -48,6 +48,19 @@ public:
     virtual void Attach(wxFrame *frame) wxOVERRIDE;
     virtual void Detach() wxOVERRIDE;
 
+    // Re-serializes ALL menus to JSON and pushes the structure to the DOM
+    // menubar node; no-op until Attach() created the node. Public so that
+    // wxMenu mutations can refresh the bar they hang off.
+    void WasmRebuildMenus();
+
+    // wxEVT_MENU dispatch for clicks on the DOM menu popups
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
+protected:
+    // intrinsic size of the DOM menubar, used by wxFrame::PositionMenuBar()
+    // via the SetSize() call in Attach()
+    virtual wxSize DoGetBestSize() const wxOVERRIDE;
+
 private:
     // enabled state of the top level menus, kept parallel to m_menus
     wxVector<bool> m_enabledTop;

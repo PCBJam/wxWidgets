@@ -3768,7 +3768,8 @@ COND_TOOLKIT_WASM_GUI_HDR =  \
 	wx/wasm/textctrl.h \
 	wx/wasm/textentry.h \
 	wx/wasm/tglbtn.h \
-	wx/wasm/toolbar.h
+	wx/wasm/toolbar.h \
+	wx/wasm/tooltip.h
 @COND_TOOLKIT_WASM@GUI_HDR = $(COND_TOOLKIT_WASM_GUI_HDR)
 @COND_TOOLKIT_COCOA@MEDIA_PLATFORM_HDR = 
 @COND_TOOLKIT_GTK@MEDIA_PLATFORM_HDR = 
@@ -6044,7 +6045,8 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS =  \
 	monodll_wasm_textctrl.o \
 	monodll_wasm_textentry.o \
 	monodll_wasm_tglbtn.o \
-	monodll_wasm_toolbar.o
+	monodll_wasm_toolbar.o \
+	monodll_wasm_tooltip.o
 @COND_TOOLKIT_WASM@__GUI_SRC_OBJECTS = $(COND_TOOLKIT_WASM___GUI_SRC_OBJECTS)
 COND_PLATFORM_WIN32_1___QT_PLATFORM_SRC_OBJECTS =  \
 	monodll_comimpl.o \
@@ -8181,7 +8183,8 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_1 =  \
 	monolib_wasm_textctrl.o \
 	monolib_wasm_textentry.o \
 	monolib_wasm_tglbtn.o \
-	monolib_wasm_toolbar.o
+	monolib_wasm_toolbar.o \
+	monolib_wasm_tooltip.o
 @COND_TOOLKIT_WASM@__GUI_SRC_OBJECTS_1 = $(COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_1)
 COND_PLATFORM_WIN32_1___QT_PLATFORM_SRC_OBJECTS_1 =  \
 	monolib_comimpl.o \
@@ -10472,7 +10475,8 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_2 =  \
 	coredll_wasm_textctrl.o \
 	coredll_wasm_textentry.o \
 	coredll_wasm_tglbtn.o \
-	coredll_wasm_toolbar.o
+	coredll_wasm_toolbar.o \
+	coredll_wasm_tooltip.o
 @COND_TOOLKIT_WASM@__GUI_SRC_OBJECTS_2 = $(COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_2)
 COND_PLATFORM_WIN32_1___QT_PLATFORM_SRC_OBJECTS_2 =  \
 	coredll_comimpl.o \
@@ -12336,7 +12340,8 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_3 =  \
 	corelib_wasm_textctrl.o \
 	corelib_wasm_textentry.o \
 	corelib_wasm_tglbtn.o \
-	corelib_wasm_toolbar.o
+	corelib_wasm_toolbar.o \
+	corelib_wasm_tooltip.o
 @COND_TOOLKIT_WASM@__GUI_SRC_OBJECTS_3 = $(COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_3)
 COND_PLATFORM_WIN32_1___QT_PLATFORM_SRC_OBJECTS_3 =  \
 	corelib_comimpl.o \
@@ -17865,6 +17870,9 @@ monodll_wasm_tglbtn.o: $(srcdir)/src/wasm/tglbtn.cpp $(MONODLL_ODEP)
 
 monodll_wasm_toolbar.o: $(srcdir)/src/wasm/toolbar.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/toolbar.cpp
+
+monodll_wasm_tooltip.o: $(srcdir)/src/wasm/tooltip.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/tooltip.cpp
 
 monodll_univ_anybutton.o: $(srcdir)/src/univ/anybutton.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/univ/anybutton.cpp
@@ -23433,6 +23441,9 @@ monolib_wasm_tglbtn.o: $(srcdir)/src/wasm/tglbtn.cpp $(MONOLIB_ODEP)
 
 monolib_wasm_toolbar.o: $(srcdir)/src/wasm/toolbar.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/toolbar.cpp
+
+monolib_wasm_tooltip.o: $(srcdir)/src/wasm/tooltip.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/tooltip.cpp
 
 monolib_univ_anybutton.o: $(srcdir)/src/univ/anybutton.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/univ/anybutton.cpp
@@ -29689,6 +29700,9 @@ coredll_wasm_tglbtn.o: $(srcdir)/src/wasm/tglbtn.cpp $(COREDLL_ODEP)
 coredll_wasm_toolbar.o: $(srcdir)/src/wasm/toolbar.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/toolbar.cpp
 
+coredll_wasm_tooltip.o: $(srcdir)/src/wasm/tooltip.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/tooltip.cpp
+
 coredll_univ_anybutton.o: $(srcdir)/src/univ/anybutton.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/univ/anybutton.cpp
 
@@ -34215,6 +34229,9 @@ corelib_wasm_tglbtn.o: $(srcdir)/src/wasm/tglbtn.cpp $(CORELIB_ODEP)
 
 corelib_wasm_toolbar.o: $(srcdir)/src/wasm/toolbar.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/toolbar.cpp
+
+corelib_wasm_tooltip.o: $(srcdir)/src/wasm/tooltip.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/tooltip.cpp
 
 corelib_univ_anybutton.o: $(srcdir)/src/univ/anybutton.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/univ/anybutton.cpp
