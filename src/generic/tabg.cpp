@@ -551,11 +551,13 @@ wxTabView::wxTabView(long style)
   m_tabViewRect.x = 300;
   m_highlightColour = *wxWHITE;
   m_shadowColour = wxColour(128, 128, 128);
-  // m_backgroundColour = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
   m_textColour = *wxBLACK;
   m_highlightPen = wxWHITE_PEN;
   m_shadowPen = wxGREY_PEN;
-  // SetBackgroundColour(m_backgroundColour);
+  // Without this the background pen/brush stay invalid and the tabs are
+  // drawn black (the initialization was commented out upstream; only
+  // visible on ports that use the generic notebook).
+  SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE));
   m_tabFont = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
   m_tabSelectedFont = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
   m_window = NULL;

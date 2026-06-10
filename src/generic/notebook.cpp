@@ -422,7 +422,14 @@ bool wxNotebook::InsertPage(size_t nPage,
     // some page must be selected: either this one or the first one if there is
     // still no selection
     if ( m_selection == -1 )
+    {
       ChangePage(-1, 0);
+
+      // Keep the tab view's own selection in sync (without activation
+      // events): otherwise the first user tab switch reports an old
+      // selection of -1 and the initial page is never hidden.
+      m_tabView->SetTabSelection(GetPageId(m_tabView, m_pages[0]), false);
+    }
 
     RefreshLayout(false);
 
