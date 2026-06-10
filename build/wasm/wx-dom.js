@@ -160,6 +160,28 @@
         root.dataset.wxChrome = '1'; // non-interactive like statbmp
         break;
       }
+      case 'combobox': {
+        // Editable combo: text input + datalist autocomplete (HTML has no
+        // native editable select). wxDomSetItems fills the datalist.
+        root = document.createElement('input');
+        root.type = 'text';
+        var dl = document.createElement('datalist');
+        dl.id = 'wx-datalist-' + nextControlId; // == the domId assigned below
+        root.setAttribute('list', dl.id);
+        document.body.appendChild(dl);
+        root.dataset.wxDatalist = dl.id;
+        break;
+      }
+      case 'checklistbox': {
+        // Scrollable list of checkbox rows; row checkbox toggles dispatch
+        // CHANGE with the row index retrievable via wxDomGetIntValue.
+        root = document.createElement('div');
+        root.dataset.wxCheckList = '1';
+        root.style.overflowY = 'auto';
+        root.style.background = '#ffffff';
+        root.style.border = '1px solid #b5b2aa';
+        break;
+      }
       default: {
         root = document.createElement(type);
         if (typeAttr) root.setAttribute('type', typeAttr);
@@ -271,6 +293,10 @@
   window.wxDomDestroyControl = function (domId) {
     var el = controls.get(domId);
     if (el) {
+      if (el.dataset.wxDatalist) {
+        var dl = document.getElementById(el.dataset.wxDatalist);
+        if (dl) dl.remove();
+      }
       el.remove();
       controls.delete(domId);
       inputs.delete(domId);
@@ -323,7 +349,7 @@
     return el.getAttribute('aria-pressed') === 'true' ? 1 : 0;
   };
 
-  // Numeric state: gauge/slider value, select/radiobox selection index.
+  // Numeric state: gauge/slider value, select/radiobox/combobox selection.
   window.wxDomSetIntValue = function (domId, value) {
     var el = inputs.get(domId) || controls.get(domId);
     if (!el) return;
@@ -332,6 +358,11 @@
     } else if (el.dataset && el.dataset.wxRadioBox) {
       var radios = el.querySelectorAll('input[type=radio]');
       if (radios[value]) radios[value].checked = true;
+    } else if (el.dataset && el.dataset.wxDatalist) {
+      // combobox selection = the nth datalist option's text
+      var dl = document.getElementById(el.dataset.wxDatalist);
+      var opt = dl && dl.options[value];
+      if (opt) el.value = opt.value;
     } else {
       el.value = value;
     }
@@ -345,6 +376,21 @@
       var radios = el.querySelectorAll('input[type=radio]');
       for (var i = 0; i < radios.length; i++) {
         if (radios[i].checked) return i;
+      }
+      return -1;
+    }
+    if (el.dataset && el.dataset.wxCheckList) {
+      // index of the row whose checkbox last toggled (for wxEVT_CHECKLISTBOX)
+      var t = parseInt(el.dataset.wxLastToggled, 10);
+      return isNaN(t) ? -1 : t;
+    }
+    if (el.dataset && el.dataset.wxDatalist) {
+      // combobox selection = index of the option matching the current text
+      var dl = document.getElementById(el.dataset.wxDatalist);
+      if (dl) {
+        for (var j = 0; j < dl.options.length; j++) {
+          if (dl.options[j].value === el.value) return j;
+        }
       }
       return -1;
     }
@@ -376,7 +422,36 @@
     var el = controls.get(domId);
     if (!el) return;
     var items = joined === '' ? [] : joined.split('\x1f');
-    if (el.tagName === 'SELECT') {
+    if (el.dataset.wxDatalist) {
+      var dl = document.getElementById(el.dataset.wxDatalist);
+      if (dl) {
+        dl.textContent = '';
+        items.forEach(function (it) {
+          var o = document.createElement('option');
+          o.value = it;
+          dl.appendChild(o);
+        });
+      }
+    } else if (el.dataset.wxCheckList) {
+      el.textContent = '';
+      items.forEach(function (it, idx) {
+        var row = document.createElement('label');
+        row.style.cssText =
+          'display:flex;align-items:center;padding:0 2px;white-space:pre;';
+        var inp = document.createElement('input');
+        inp.type = 'checkbox';
+        inp.style.margin = '0 3px 0 0';
+        inp.addEventListener('change', function () {
+          el.dataset.wxLastToggled = String(idx);
+          dispatch(domId, EVT.CHANGE);
+        });
+        var sp = document.createElement('span');
+        sp.textContent = it;
+        row.appendChild(inp);
+        row.appendChild(sp);
+        el.appendChild(row);
+      });
+    } else if (el.tagName === 'SELECT') {
       el.textContent = '';
       items.forEach(function (it) {
         var o = document.createElement('option');
@@ -407,21 +482,33 @@
     }
   };
 
-  // Multi-selection (listbox): per-index selected state; selected indices
-  // returned as a comma-joined string.
+  // Multi-selection (listbox) / per-item checked state (checklistbox):
+  // per-index boolean; "selected" indices returned comma-joined.
   window.wxDomSetItemSelected = function (domId, index, on) {
     var el = controls.get(domId);
-    if (el && el.tagName === 'SELECT' && el.options[index]) {
+    if (!el) return;
+    if (el.dataset.wxCheckList) {
+      var boxes = el.querySelectorAll('input[type=checkbox]');
+      if (boxes[index]) boxes[index].checked = !!on;
+    } else if (el.tagName === 'SELECT' && el.options[index]) {
       el.options[index].selected = !!on;
     }
   };
 
   window.wxDomGetSelectedIndices = function (domId) {
     var el = controls.get(domId);
-    if (!el || el.tagName !== 'SELECT') return '';
+    if (!el) return '';
     var out = [];
-    for (var i = 0; i < el.options.length; i++) {
-      if (el.options[i].selected) out.push(i);
+    var i;
+    if (el.dataset.wxCheckList) {
+      var boxes = el.querySelectorAll('input[type=checkbox]');
+      for (i = 0; i < boxes.length; i++) {
+        if (boxes[i].checked) out.push(i);
+      }
+    } else if (el.tagName === 'SELECT') {
+      for (i = 0; i < el.options.length; i++) {
+        if (el.options[i].selected) out.push(i);
+      }
     }
     return out.join(',');
   };
@@ -442,6 +529,8 @@
       if (!img) {
         img = document.createElement('img');
         img.className = 'wx-btn-img';
+        // keep the bitmap from being squashed inside the flex button
+        img.style.flexShrink = '0';
         el.insertBefore(img, el.firstChild);
       }
     }

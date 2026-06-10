@@ -11,6 +11,8 @@
 
 #include "wx/combobox.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxComboBox::wxComboBox()
 {
 }
@@ -67,14 +69,67 @@ bool wxComboBox::Create(wxWindow *parent, wxWindowID id,
                           style, validator, name))
         return false;
 
-    // TODO(dom-phase-2): create a real editable combo (<input> backed by a
-    // <datalist>, or <select> when wxCB_READONLY) and wire its events
-    // through wx_dom_event.
-
     if (!value.empty())
         wxTextEntry::ChangeValue(value);
 
     return true;
+}
+
+const char *wxComboBox::WasmDomNodeType() const
+{
+    // Read-only combos behave like a choice; editable ones are a text
+    // input with datalist autocomplete.
+    return HasFlag(wxCB_READONLY) ? "choice" : "combobox";
+}
+
+void wxComboBox::DoSetValue(const wxString& value, int flags)
+{
+    wxTextEntry::DoSetValue(value, flags);
+
+    // push into the DOM element — unless the new value just came FROM the
+    // element ('input' event), where echoing it back would move the caret
+    if (WasmGetDomId() && !m_inDomInput)
+        wxDomSetValue(WasmGetDomId(), value);
+}
+
+void wxComboBox::OnDomEvent(wxDomEventKind kind)
+{
+    switch (kind)
+    {
+        case wxDOM_EVENT_INPUT:
+        {
+            m_inDomInput = true;
+            DoSetValue(wxDomGetValue(WasmGetDomId()), SetValue_SendEvent);
+            m_inDomInput = false;
+            return;
+        }
+
+        case wxDOM_EVENT_CHANGE:
+        {
+            // Datalist pick or commit-on-blur: sync the choice selection to
+            // the text and notify.
+            const wxString value = wxDomGetValue(WasmGetDomId());
+            const int sel = FindString(value);
+
+            m_inDomInput = true;
+            wxTextEntry::DoSetValue(value, 0);
+            m_inDomInput = false;
+
+            if (sel != wxNOT_FOUND)
+                wxChoice::SetSelection(sel);
+
+            wxCommandEvent event(wxEVT_COMBOBOX, GetId());
+            event.SetEventObject(this);
+            event.SetInt(sel);
+            event.SetString(value);
+            HandleWindowEvent(event);
+            return;
+        }
+
+        default:
+            wxChoice::OnDomEvent(kind);
+            return;
+    }
 }
 
 void wxComboBox::SetSelection(int n)

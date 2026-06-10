@@ -76,7 +76,7 @@ bool wxListBox::Create(wxWindow *parent, wxWindowID id,
 
     // TODO(dom-phase-3): single-selection (wxLB_SINGLE) listboxes still use
     // the multiple <select>; switch on the style here.
-    WasmCreateDomNode("listbox");
+    WasmCreateDomNode(WasmDomNodeType());
 
     // Append() goes through DoInsertItems() which pushes the items to the
     // DOM <select>.

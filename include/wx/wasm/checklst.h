@@ -45,7 +45,14 @@ public:
     virtual bool IsChecked(unsigned int item) const wxOVERRIDE;
     virtual void Check(unsigned int item, bool check = true) wxOVERRIDE;
 
+    // wxEVT_CHECKLISTBOX when a row checkbox toggles
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 protected:
+    // checkbox-row list instead of the <select multiple>
+    virtual const char *WasmDomNodeType() const wxOVERRIDE
+        { return "checklistbox"; }
+
     // keep the checked-state cache in sync with the item cache
     virtual int DoInsertOneItem(const wxString& item, unsigned int pos) wxOVERRIDE;
     virtual void DoDeleteOneItem(unsigned int pos) wxOVERRIDE;

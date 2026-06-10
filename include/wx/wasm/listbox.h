@@ -59,6 +59,10 @@ public:
     virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
 
 protected:
+    // DOM node type built by Create(); wxCheckListBox overrides to get the
+    // checkbox-row list instead of the <select multiple>.
+    virtual const char *WasmDomNodeType() const { return "listbox"; }
+
     virtual void DoSetFirstItem(int n) wxOVERRIDE;
 
     virtual void DoSetSelection(int n, bool select) wxOVERRIDE;

@@ -75,7 +75,7 @@ bool wxChoice::Create(wxWindow *parent, wxWindowID id,
     if (!wxControl::Create(parent, id, pos, size, style, validator, name))
         return false;
 
-    WasmCreateDomNode("choice");
+    WasmCreateDomNode(WasmDomNodeType());
 
     // Append() goes through DoInsertItems() which pushes the items to the
     // DOM <select>.

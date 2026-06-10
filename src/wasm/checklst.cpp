@@ -11,6 +11,9 @@
 
 #include "wx/checklst.h"
 
+#include "wx/tokenzr.h"
+#include "wx/wasm/private/dom.h"
+
 #define INVALID_INDEX_MESSAGE wxT("invalid checklistbox index")
 
 wxCheckListBox::wxCheckListBox()
@@ -77,8 +80,44 @@ void wxCheckListBox::Check(unsigned int item, bool check)
 {
     wxCHECK_RET(item < m_itemsChecked.size(), INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): reflect the state on the item's DOM checkbox.
     m_itemsChecked[item] = check ? 1 : 0;
+
+    if (WasmGetDomId())
+        wxDomSetItemSelected(WasmGetDomId(), item, check);
+}
+
+void wxCheckListBox::OnDomEvent(wxDomEventKind kind)
+{
+    if (kind == wxDOM_EVENT_CHANGE)
+    {
+        // a row checkbox toggled; the JS side remembers which one
+        const int item = wxDomGetIntValue(WasmGetDomId());
+        if (item >= 0 && static_cast<size_t>(item) < m_itemsChecked.size())
+        {
+            // re-read this item's live checked state
+            m_itemsChecked[item] = 0;
+            wxStringTokenizer tok(wxDomGetSelectedIndices(WasmGetDomId()),
+                                  wxT(","));
+            while (tok.HasMoreTokens())
+            {
+                long v;
+                if (tok.GetNextToken().ToLong(&v) && v == item)
+                {
+                    m_itemsChecked[item] = 1;
+                    break;
+                }
+            }
+
+            wxCommandEvent event(wxEVT_CHECKLISTBOX, GetId());
+            event.SetEventObject(this);
+            event.SetInt(item);
+            event.SetString(GetString(item));
+            HandleWindowEvent(event);
+        }
+        return;
+    }
+
+    wxListBox::OnDomEvent(kind);
 }
 
 int wxCheckListBox::DoInsertOneItem(const wxString& item, unsigned int pos)

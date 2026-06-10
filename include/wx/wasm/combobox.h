@@ -74,9 +74,22 @@ public:
     virtual const wxTextEntry* WXGetTextEntry() const wxOVERRIDE
         { return this; }
 
+    // wxEVT_TEXT while typing, wxEVT_COMBOBOX on datalist pick/commit
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
+protected:
+    // editable combos are an <input>+<datalist>; read-only ones a <select>
+    virtual const char *WasmDomNodeType() const wxOVERRIDE;
+
+    // pushes programmatic value changes into the DOM input
+    virtual void DoSetValue(const wxString& value, int flags = 0) wxOVERRIDE;
+
 private:
     // From wxTextEntry:
     virtual wxWindow *GetEditableWindow() wxOVERRIDE { return this; }
+
+    // guards against echoing DOM 'input' events back into the element
+    bool m_inDomInput = false;
 
     wxDECLARE_DYNAMIC_CLASS(wxComboBox);
 };

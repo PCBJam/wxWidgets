@@ -59,6 +59,10 @@ public:
     virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
 
 protected:
+    // DOM node type built by Create(); wxComboBox overrides to get an
+    // editable <input>+<datalist> instead of the <select>.
+    virtual const char *WasmDomNodeType() const { return "choice"; }
+
     virtual int DoInsertItems(const wxArrayStringsAdapter& items,
                               unsigned int pos,
                               void **clientData,
