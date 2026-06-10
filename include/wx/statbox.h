@@ -78,6 +78,8 @@ protected:
     #include "wx/osx/statbox.h"
 #elif defined(__WXQT__)
     #include "wx/qt/statbox.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/statbox.h"
 #endif
 
 #endif // wxUSE_STATBOX

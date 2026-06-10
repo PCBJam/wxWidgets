@@ -885,6 +885,8 @@ protected:
     #include "wx/osx/textctrl.h"
 #elif defined(__WXQT__)
     #include "wx/qt/textctrl.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/textctrl.h"
 #endif
 
 // ----------------------------------------------------------------------------

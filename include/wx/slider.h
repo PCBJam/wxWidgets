@@ -141,6 +141,8 @@ private:
     #include "wx/osx/slider.h"
 #elif defined(__WXQT__)
     #include "wx/qt/slider.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/slider.h"
 #endif
 
 #endif // wxUSE_SLIDER

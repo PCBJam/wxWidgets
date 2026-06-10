@@ -64,6 +64,24 @@ public:
 
     virtual bool IsDoubleBuffered() const wxOVERRIDE { return true; }
 
+#ifndef __WXUNIVERSAL__
+    // In universal mode these wxWindowBase pure virtuals are implemented by
+    // the wxUniv wxWindow layer; in the native (DOM) build wxWindowWasm IS
+    // wxWindow, so it must provide them itself.
+    virtual void SetScrollbar(int orient, int pos, int thumbvisible,
+                              int range, bool refresh = true) wxOVERRIDE;
+    virtual void SetScrollPos(int orient, int pos, bool refresh = true) wxOVERRIDE;
+    virtual int GetScrollPos(int orient) const wxOVERRIDE;
+    virtual int GetScrollThumb(int orient) const wxOVERRIDE;
+    virtual int GetScrollRange(int orient) const wxOVERRIDE;
+    virtual void ScrollWindow(int dx, int dy, const wxRect* rect = NULL) wxOVERRIDE;
+#if wxUSE_MENUS
+    virtual bool DoPopupMenu(wxMenu *menu, int x, int y) wxOVERRIDE;
+    virtual void DoPopupMenu(wxMenu *menu, int x, int y,
+                             std::function<void (bool)> callback) wxOVERRIDE;
+#endif // wxUSE_MENUS
+#endif // !__WXUNIVERSAL__
+
     virtual WXWidget GetHandle() const wxOVERRIDE { return NULL; }
 
     virtual bool HasTransparentBackground() wxOVERRIDE;
@@ -121,6 +139,15 @@ private:
 
     int m_x, m_y;          // window position
     int m_width, m_height; // window size
+
+#ifndef __WXUNIVERSAL__
+    // built-in scrollbar state caches (index 0 = horizontal, 1 = vertical);
+    // honest enough for wxScrollHelper users until the DOM port renders
+    // real scrollbars. TODO(dom-phase-2)
+    int m_scrollPos[2];
+    int m_scrollThumb[2];
+    int m_scrollRange[2];
+#endif // !__WXUNIVERSAL__
 
     wxString m_label;
 

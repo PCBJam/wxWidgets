@@ -296,6 +296,7 @@ private:
 
 #if defined(__WX_COMPILING_MSGDLGG_CPP__) || \
     defined(__WXUNIVERSAL__) || defined(__WXGPE__) || \
+    defined(__WXWASM__) || \
     (defined(__WXGTK__) && !defined(__WXGTK20__))
 
     #define wxMessageDialog wxGenericMessageDialog

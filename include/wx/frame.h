@@ -271,6 +271,8 @@ protected:
         #include "wx/osx/frame.h"
     #elif defined(__WXQT__)
         #include "wx/qt/frame.h"
+#elif defined(__WXWASM__)
+        #include "wx/wasm/frame.h"
     #endif
 #endif
 

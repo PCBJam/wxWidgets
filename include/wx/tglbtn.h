@@ -88,6 +88,8 @@ protected:
     #define wxHAS_BITMAPTOGGLEBUTTON
 #elif defined(__WXQT__)
     #include "wx/qt/tglbtn.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/tglbtn.h"
 #endif
 
 // old wxEVT_COMMAND_* constants

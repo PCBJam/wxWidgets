@@ -240,6 +240,8 @@ inline void wxMenuItemBase::SetText(const wxString& text) { SetItemLabel(text); 
     #include "wx/osx/menuitem.h"
 #elif defined(__WXQT__)
     #include "wx/qt/menuitem.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/menuitem.h"
 #endif
 #endif // wxUSE_BASE_CLASSES_ONLY/!wxUSE_BASE_CLASSES_ONLY
 

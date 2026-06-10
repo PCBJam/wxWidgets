@@ -297,7 +297,93 @@ void wxWindowWasm::Init()
     m_childNeedsPaint = true;
     m_selfNeedsPaint = true;
     m_isCreated = false;
+
+#ifndef __WXUNIVERSAL__
+    for ( int orient = 0; orient < 2; orient++ )
+    {
+        m_scrollPos[orient] = 0;
+        m_scrollThumb[orient] = 0;
+        m_scrollRange[orient] = 0;
+    }
+#endif // !__WXUNIVERSAL__
 }
+
+#ifndef __WXUNIVERSAL__
+
+// ----------------------------------------------------------------------------
+// Built-in scrollbars and popup menus: in universal mode the wxUniv wxWindow
+// layer implements these wxWindowBase pure virtuals; the native (DOM) build
+// must provide them here. State is cached so wxScrollHelper-style callers
+// behave consistently. TODO(dom-phase-2): render real scrollbars.
+// ----------------------------------------------------------------------------
+
+namespace
+{
+inline int wxScrollOrientIndex(int orient)
+{
+    return orient == wxVERTICAL ? 1 : 0;
+}
+} // anonymous namespace
+
+void wxWindowWasm::SetScrollbar(int orient, int pos, int thumbvisible,
+                                int range, bool refresh)
+{
+    const int i = wxScrollOrientIndex(orient);
+    m_scrollPos[i] = pos;
+    m_scrollThumb[i] = thumbvisible;
+    m_scrollRange[i] = range;
+
+    if ( refresh )
+        Refresh();
+}
+
+void wxWindowWasm::SetScrollPos(int orient, int pos, bool refresh)
+{
+    m_scrollPos[wxScrollOrientIndex(orient)] = pos;
+
+    if ( refresh )
+        Refresh();
+}
+
+int wxWindowWasm::GetScrollPos(int orient) const
+{
+    return m_scrollPos[wxScrollOrientIndex(orient)];
+}
+
+int wxWindowWasm::GetScrollThumb(int orient) const
+{
+    return m_scrollThumb[wxScrollOrientIndex(orient)];
+}
+
+int wxWindowWasm::GetScrollRange(int orient) const
+{
+    return m_scrollRange[wxScrollOrientIndex(orient)];
+}
+
+void wxWindowWasm::ScrollWindow(int WXUNUSED(dx), int WXUNUSED(dy),
+                                const wxRect *WXUNUSED(rect))
+{
+    // No incremental blit support; repaint the whole window.
+    Refresh();
+}
+
+#if wxUSE_MENUS
+bool wxWindowWasm::DoPopupMenu(wxMenu *WXUNUSED(menu), int WXUNUSED(x),
+                               int WXUNUSED(y))
+{
+    // TODO(dom-phase-5): DOM popup menus.
+    wxFAIL_MSG(wxT("DoPopupMenu not implemented in the DOM port yet"));
+    return false;
+}
+
+void wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y,
+                               std::function<void (bool)> callback)
+{
+    callback(DoPopupMenu(menu, x, y));
+}
+#endif // wxUSE_MENUS
+
+#endif // !__WXUNIVERSAL__
 
 bool wxWindowWasm::Create(wxWindow *parent,
                           wxWindowID id,

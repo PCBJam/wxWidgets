@@ -2099,6 +2099,84 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     wx/wasm/window.h
 </set>
 
+<!-- Native (non-universal) widget set for the WASM DOM port: controls are
+     real DOM elements. Only included in CORE_SRC when WXUNIV=='0'.
+     wxDialog impl is shared (src/wasm/dialog.cpp in WASM_LOWLEVEL_SRC). -->
+<set var="WASM_SRC" hints="files">
+    src/generic/accel.cpp
+    src/generic/activityindicator.cpp
+    src/generic/clrpickerg.cpp
+    src/generic/collpaneg.cpp
+    src/generic/colrdlgg.cpp
+    src/generic/dirdlgg.cpp
+    src/generic/fdrepdlg.cpp
+    src/generic/filedlgg.cpp
+    src/generic/filepickerg.cpp
+    src/generic/fontdlgg.cpp
+    src/generic/fontpickerg.cpp
+    src/generic/listctrl.cpp
+    src/generic/mdig.cpp
+    src/generic/notebook.cpp
+    src/generic/prntdlgg.cpp
+    src/generic/statusbr.cpp
+    src/generic/tabg.cpp
+    src/wasm/anybutton.cpp
+    src/wasm/bmpbuttn.cpp
+    src/wasm/button.cpp
+    src/wasm/checkbox.cpp
+    src/wasm/checklst.cpp
+    src/wasm/choice.cpp
+    src/wasm/combobox.cpp
+    src/wasm/control.cpp
+    src/wasm/frame.cpp
+    src/wasm/gauge.cpp
+    src/wasm/listbox.cpp
+    src/wasm/menu.cpp
+    src/wasm/menuitem.cpp
+    src/wasm/radiobox.cpp
+    src/wasm/radiobut.cpp
+    src/wasm/scrolbar.cpp
+    src/wasm/slider.cpp
+    src/wasm/spinbutt.cpp
+    src/wasm/statbmp.cpp
+    src/wasm/statbox.cpp
+    src/wasm/statline.cpp
+    src/wasm/stattext.cpp
+    src/wasm/textctrl.cpp
+    src/wasm/textentry.cpp
+    src/wasm/tglbtn.cpp
+    src/wasm/toolbar.cpp
+</set>
+<set var="WASM_HDR" hints="files">
+    wx/wasm/anybutton.h
+    wx/wasm/bmpbuttn.h
+    wx/wasm/button.h
+    wx/wasm/checkbox.h
+    wx/wasm/checklst.h
+    wx/wasm/choice.h
+    wx/wasm/combobox.h
+    wx/wasm/control.h
+    wx/wasm/dialog.h
+    wx/wasm/frame.h
+    wx/wasm/gauge.h
+    wx/wasm/listbox.h
+    wx/wasm/menu.h
+    wx/wasm/menuitem.h
+    wx/wasm/radiobox.h
+    wx/wasm/radiobut.h
+    wx/wasm/scrolbar.h
+    wx/wasm/slider.h
+    wx/wasm/spinbutt.h
+    wx/wasm/statbmp.h
+    wx/wasm/statbox.h
+    wx/wasm/statline.h
+    wx/wasm/stattext.h
+    wx/wasm/textctrl.h
+    wx/wasm/textentry.h
+    wx/wasm/tglbtn.h
+    wx/wasm/toolbar.h
+</set>
+
 <!-- ====================================================================== -->
 <!--                                wxMSW                                   -->
 <!-- ====================================================================== -->
@@ -3671,6 +3749,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
         <if cond="TOOLKIT=='OSX_COCOA'">$(OSX_COCOA_SRC)</if>
         <if cond="TOOLKIT=='OSX_IPHONE'">$(OSX_IPHONE_SRC)</if>
         <if cond="TOOLKIT=='QT'">$(QT_SRC)</if>
+        <if cond="TOOLKIT=='WASM'">$(WASM_SRC)</if>
     </set>
     <set var="GUI_HDR" hints="files">
         <if cond="TOOLKIT=='GTK' and TOOLKIT_VERSION=='4'">$(GTK_HDR)</if>
@@ -3682,6 +3761,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
         <if cond="TOOLKIT=='OSX_COCOA'">$(OSX_SHARED_HDR) $(OSX_COCOA_HDR)</if>
         <if cond="TOOLKIT=='OSX_IPHONE'">$(OSX_SHARED_HDR) $(OSX_IPHONE_HDR)</if>
         <if cond="TOOLKIT=='QT'">$(QT_HDR)</if>
+        <if cond="TOOLKIT=='WASM'">$(WASM_HDR)</if>
     </set>
 
     <set var="CORE_SRC" hints="files">

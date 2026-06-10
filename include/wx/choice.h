@@ -86,6 +86,8 @@ private:
     #include "wx/osx/choice.h"
 #elif defined(__WXQT__)
     #include "wx/qt/choice.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/choice.h"
 #endif
 
 #endif // wxUSE_CHOICE

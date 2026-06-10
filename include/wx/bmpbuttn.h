@@ -140,6 +140,8 @@ protected:
     #include "wx/osx/bmpbuttn.h"
 #elif defined(__WXQT__)
     #include "wx/qt/bmpbuttn.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/bmpbuttn.h"
 #endif
 
 #endif // wxUSE_BMPBUTTON

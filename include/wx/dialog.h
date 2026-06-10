@@ -382,6 +382,8 @@ public:
         #include "wx/osx/dialog.h"
     #elif defined(__WXQT__)
         #include "wx/qt/dialog.h"
+#elif defined(__WXWASM__)
+        #include "wx/wasm/dialog.h"
     #endif
 #endif
 

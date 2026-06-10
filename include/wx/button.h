@@ -61,6 +61,8 @@ protected:
     #include "wx/osx/button.h"
 #elif defined(__WXQT__)
     #include "wx/qt/button.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/button.h"
 #endif
 
 #endif // wxUSE_BUTTON

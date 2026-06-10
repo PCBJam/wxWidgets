@@ -49,6 +49,8 @@ public:
     #include "wx/osx/checklst.h"
 #elif defined(__WXQT__)
     #include "wx/qt/checklst.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/checklst.h"
 #endif
 
 #endif // wxUSE_CHECKLISTBOX

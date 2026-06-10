@@ -158,6 +158,8 @@ private:
     #include "wx/osx/listbox.h"
 #elif defined(__WXQT__)
     #include "wx/qt/listbox.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/listbox.h"
 #endif
 
 #endif // wxUSE_LISTBOX

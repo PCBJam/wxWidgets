@@ -196,6 +196,8 @@ protected:
     #include "wx/osx/anybutton.h"
 #elif defined(__WXQT__)
     #include "wx/qt/anybutton.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/anybutton.h"
 #else
     typedef wxAnyButtonBase wxAnyButton;
 #endif

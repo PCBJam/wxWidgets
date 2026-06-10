@@ -94,6 +94,8 @@ protected:
     #include "wx/osx/statline.h"
 #elif defined(__WXQT__)
     #include "wx/qt/statline.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/statline.h"
 #else // use generic implementation for all other platforms
     #include "wx/generic/statline.h"
 #endif

@@ -185,6 +185,8 @@ private:
     #include "wx/osx/checkbox.h"
 #elif defined(__WXQT__)
     #include "wx/qt/checkbox.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/checkbox.h"
 #endif
 
 #endif // wxUSE_CHECKBOX

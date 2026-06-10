@@ -110,6 +110,8 @@ private:
     #include "wx/osx/stattext.h"
 #elif defined(__WXQT__)
     #include "wx/qt/stattext.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/stattext.h"
 #endif
 
 #endif // !wxNO_PORT_STATTEXT_INCLUDE

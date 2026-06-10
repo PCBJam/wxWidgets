@@ -138,6 +138,8 @@ protected:
     #include "wx/osx/gauge.h"
 #elif defined(__WXQT__)
     #include "wx/qt/gauge.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/gauge.h"
 #endif
 
 #endif // wxUSE_GAUGE

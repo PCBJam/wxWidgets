@@ -80,6 +80,8 @@ wxALLOW_COMBINING_ENUMS(wxToolBarStyleFlags, wxBorder)
        #include "wx/osx/toolbar.h"
     #elif defined(__WXQT__)
         #include "wx/qt/toolbar.h"
+#elif defined(__WXWASM__)
+        #include "wx/wasm/toolbar.h"
     #endif
 #endif // wxUSE_TOOLBAR
 

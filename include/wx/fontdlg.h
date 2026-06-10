@@ -65,7 +65,8 @@ protected:
 
 #if defined(__WXUNIVERSAL__) || \
     defined(__WXMOTIF__)     || \
-    defined(__WXGPE__)
+    defined(__WXGPE__)       || \
+    defined(__WXWASM__)
 
     #include "wx/generic/fontdlgg.h"
     #define wxFontDialog wxGenericFontDialog

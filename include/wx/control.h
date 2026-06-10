@@ -215,6 +215,8 @@ protected:
     #include "wx/osx/control.h"
 #elif defined(__WXQT__)
     #include "wx/qt/control.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/control.h"
 #endif
 
 #endif // wxUSE_CONTROLS

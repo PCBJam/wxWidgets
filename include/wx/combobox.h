@@ -83,6 +83,8 @@ public:
     #include "wx/osx/combobox.h"
 #elif defined(__WXQT__)
     #include "wx/qt/combobox.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/combobox.h"
 #endif
 
 #endif // wxUSE_COMBOBOX

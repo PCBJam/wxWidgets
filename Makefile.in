@@ -3740,6 +3740,35 @@ COND_TOOLKIT_QT_GUI_HDR =  \
 	$(QT_PLATFORM_HDR) \
 	wx/qt/treectrl.h
 @COND_TOOLKIT_QT@GUI_HDR = $(COND_TOOLKIT_QT_GUI_HDR)
+COND_TOOLKIT_WASM_GUI_HDR =  \
+	wx/wasm/anybutton.h \
+	wx/wasm/bmpbuttn.h \
+	wx/wasm/button.h \
+	wx/wasm/checkbox.h \
+	wx/wasm/checklst.h \
+	wx/wasm/choice.h \
+	wx/wasm/combobox.h \
+	wx/wasm/control.h \
+	wx/wasm/dialog.h \
+	wx/wasm/frame.h \
+	wx/wasm/gauge.h \
+	wx/wasm/listbox.h \
+	wx/wasm/menu.h \
+	wx/wasm/menuitem.h \
+	wx/wasm/radiobox.h \
+	wx/wasm/radiobut.h \
+	wx/wasm/scrolbar.h \
+	wx/wasm/slider.h \
+	wx/wasm/spinbutt.h \
+	wx/wasm/statbmp.h \
+	wx/wasm/statbox.h \
+	wx/wasm/statline.h \
+	wx/wasm/stattext.h \
+	wx/wasm/textctrl.h \
+	wx/wasm/textentry.h \
+	wx/wasm/tglbtn.h \
+	wx/wasm/toolbar.h
+@COND_TOOLKIT_WASM@GUI_HDR = $(COND_TOOLKIT_WASM_GUI_HDR)
 @COND_TOOLKIT_COCOA@MEDIA_PLATFORM_HDR = 
 @COND_TOOLKIT_GTK@MEDIA_PLATFORM_HDR = 
 @COND_TOOLKIT_MOTIF@MEDIA_PLATFORM_HDR = 
@@ -5970,6 +5999,51 @@ COND_TOOLKIT_QT___GUI_SRC_OBJECTS =  \
 	$(__QT_PLATFORM_SRC_OBJECTS) \
 	monodll_qt_treectrl.o
 @COND_TOOLKIT_QT@__GUI_SRC_OBJECTS = $(COND_TOOLKIT_QT___GUI_SRC_OBJECTS)
+COND_TOOLKIT_WASM___GUI_SRC_OBJECTS =  \
+	monodll_generic_accel.o \
+	monodll_generic_activityindicator.o \
+	monodll_clrpickerg.o \
+	monodll_collpaneg.o \
+	monodll_colrdlgg.o \
+	monodll_dirdlgg.o \
+	monodll_generic_fdrepdlg.o \
+	monodll_filedlgg.o \
+	monodll_filepickerg.o \
+	monodll_fontdlgg.o \
+	monodll_fontpickerg.o \
+	monodll_generic_listctrl.o \
+	monodll_mdig.o \
+	monodll_generic_notebook.o \
+	monodll_prntdlgg.o \
+	monodll_generic_statusbr.o \
+	monodll_tabg.o \
+	monodll_wasm_anybutton.o \
+	monodll_wasm_bmpbuttn.o \
+	monodll_wasm_button.o \
+	monodll_wasm_checkbox.o \
+	monodll_wasm_checklst.o \
+	monodll_wasm_choice.o \
+	monodll_wasm_combobox.o \
+	monodll_wasm_control.o \
+	monodll_wasm_frame.o \
+	monodll_wasm_gauge.o \
+	monodll_wasm_listbox.o \
+	monodll_wasm_menu.o \
+	monodll_wasm_menuitem.o \
+	monodll_wasm_radiobox.o \
+	monodll_wasm_radiobut.o \
+	monodll_wasm_scrolbar.o \
+	monodll_wasm_slider.o \
+	monodll_wasm_spinbutt.o \
+	monodll_wasm_statbmp.o \
+	monodll_wasm_statbox.o \
+	monodll_wasm_statline.o \
+	monodll_wasm_stattext.o \
+	monodll_wasm_textctrl.o \
+	monodll_wasm_textentry.o \
+	monodll_wasm_tglbtn.o \
+	monodll_wasm_toolbar.o
+@COND_TOOLKIT_WASM@__GUI_SRC_OBJECTS = $(COND_TOOLKIT_WASM___GUI_SRC_OBJECTS)
 COND_PLATFORM_WIN32_1___QT_PLATFORM_SRC_OBJECTS =  \
 	monodll_comimpl.o \
 	monodll_msw_dialup.o \
@@ -8061,6 +8135,51 @@ COND_TOOLKIT_QT___GUI_SRC_OBJECTS_1 =  \
 	$(__QT_PLATFORM_SRC_OBJECTS_1) \
 	monolib_qt_treectrl.o
 @COND_TOOLKIT_QT@__GUI_SRC_OBJECTS_1 = $(COND_TOOLKIT_QT___GUI_SRC_OBJECTS_1)
+COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_1 =  \
+	monolib_generic_accel.o \
+	monolib_generic_activityindicator.o \
+	monolib_clrpickerg.o \
+	monolib_collpaneg.o \
+	monolib_colrdlgg.o \
+	monolib_dirdlgg.o \
+	monolib_generic_fdrepdlg.o \
+	monolib_filedlgg.o \
+	monolib_filepickerg.o \
+	monolib_fontdlgg.o \
+	monolib_fontpickerg.o \
+	monolib_generic_listctrl.o \
+	monolib_mdig.o \
+	monolib_generic_notebook.o \
+	monolib_prntdlgg.o \
+	monolib_generic_statusbr.o \
+	monolib_tabg.o \
+	monolib_wasm_anybutton.o \
+	monolib_wasm_bmpbuttn.o \
+	monolib_wasm_button.o \
+	monolib_wasm_checkbox.o \
+	monolib_wasm_checklst.o \
+	monolib_wasm_choice.o \
+	monolib_wasm_combobox.o \
+	monolib_wasm_control.o \
+	monolib_wasm_frame.o \
+	monolib_wasm_gauge.o \
+	monolib_wasm_listbox.o \
+	monolib_wasm_menu.o \
+	monolib_wasm_menuitem.o \
+	monolib_wasm_radiobox.o \
+	monolib_wasm_radiobut.o \
+	monolib_wasm_scrolbar.o \
+	monolib_wasm_slider.o \
+	monolib_wasm_spinbutt.o \
+	monolib_wasm_statbmp.o \
+	monolib_wasm_statbox.o \
+	monolib_wasm_statline.o \
+	monolib_wasm_stattext.o \
+	monolib_wasm_textctrl.o \
+	monolib_wasm_textentry.o \
+	monolib_wasm_tglbtn.o \
+	monolib_wasm_toolbar.o
+@COND_TOOLKIT_WASM@__GUI_SRC_OBJECTS_1 = $(COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_1)
 COND_PLATFORM_WIN32_1___QT_PLATFORM_SRC_OBJECTS_1 =  \
 	monolib_comimpl.o \
 	monolib_msw_dialup.o \
@@ -10306,6 +10425,51 @@ COND_TOOLKIT_QT___GUI_SRC_OBJECTS_2 =  \
 	$(__QT_PLATFORM_SRC_OBJECTS_2) \
 	coredll_qt_treectrl.o
 @COND_TOOLKIT_QT@__GUI_SRC_OBJECTS_2 = $(COND_TOOLKIT_QT___GUI_SRC_OBJECTS_2)
+COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_2 =  \
+	coredll_generic_accel.o \
+	coredll_generic_activityindicator.o \
+	coredll_clrpickerg.o \
+	coredll_collpaneg.o \
+	coredll_colrdlgg.o \
+	coredll_dirdlgg.o \
+	coredll_generic_fdrepdlg.o \
+	coredll_filedlgg.o \
+	coredll_filepickerg.o \
+	coredll_fontdlgg.o \
+	coredll_fontpickerg.o \
+	coredll_generic_listctrl.o \
+	coredll_mdig.o \
+	coredll_generic_notebook.o \
+	coredll_prntdlgg.o \
+	coredll_generic_statusbr.o \
+	coredll_tabg.o \
+	coredll_wasm_anybutton.o \
+	coredll_wasm_bmpbuttn.o \
+	coredll_wasm_button.o \
+	coredll_wasm_checkbox.o \
+	coredll_wasm_checklst.o \
+	coredll_wasm_choice.o \
+	coredll_wasm_combobox.o \
+	coredll_wasm_control.o \
+	coredll_wasm_frame.o \
+	coredll_wasm_gauge.o \
+	coredll_wasm_listbox.o \
+	coredll_wasm_menu.o \
+	coredll_wasm_menuitem.o \
+	coredll_wasm_radiobox.o \
+	coredll_wasm_radiobut.o \
+	coredll_wasm_scrolbar.o \
+	coredll_wasm_slider.o \
+	coredll_wasm_spinbutt.o \
+	coredll_wasm_statbmp.o \
+	coredll_wasm_statbox.o \
+	coredll_wasm_statline.o \
+	coredll_wasm_stattext.o \
+	coredll_wasm_textctrl.o \
+	coredll_wasm_textentry.o \
+	coredll_wasm_tglbtn.o \
+	coredll_wasm_toolbar.o
+@COND_TOOLKIT_WASM@__GUI_SRC_OBJECTS_2 = $(COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_2)
 COND_PLATFORM_WIN32_1___QT_PLATFORM_SRC_OBJECTS_2 =  \
 	coredll_comimpl.o \
 	coredll_msw_dialup.o \
@@ -12124,6 +12288,51 @@ COND_TOOLKIT_QT___GUI_SRC_OBJECTS_3 =  \
 	$(__QT_PLATFORM_SRC_OBJECTS_3) \
 	corelib_qt_treectrl.o
 @COND_TOOLKIT_QT@__GUI_SRC_OBJECTS_3 = $(COND_TOOLKIT_QT___GUI_SRC_OBJECTS_3)
+COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_3 =  \
+	corelib_generic_accel.o \
+	corelib_generic_activityindicator.o \
+	corelib_clrpickerg.o \
+	corelib_collpaneg.o \
+	corelib_colrdlgg.o \
+	corelib_dirdlgg.o \
+	corelib_generic_fdrepdlg.o \
+	corelib_filedlgg.o \
+	corelib_filepickerg.o \
+	corelib_fontdlgg.o \
+	corelib_fontpickerg.o \
+	corelib_generic_listctrl.o \
+	corelib_mdig.o \
+	corelib_generic_notebook.o \
+	corelib_prntdlgg.o \
+	corelib_generic_statusbr.o \
+	corelib_tabg.o \
+	corelib_wasm_anybutton.o \
+	corelib_wasm_bmpbuttn.o \
+	corelib_wasm_button.o \
+	corelib_wasm_checkbox.o \
+	corelib_wasm_checklst.o \
+	corelib_wasm_choice.o \
+	corelib_wasm_combobox.o \
+	corelib_wasm_control.o \
+	corelib_wasm_frame.o \
+	corelib_wasm_gauge.o \
+	corelib_wasm_listbox.o \
+	corelib_wasm_menu.o \
+	corelib_wasm_menuitem.o \
+	corelib_wasm_radiobox.o \
+	corelib_wasm_radiobut.o \
+	corelib_wasm_scrolbar.o \
+	corelib_wasm_slider.o \
+	corelib_wasm_spinbutt.o \
+	corelib_wasm_statbmp.o \
+	corelib_wasm_statbox.o \
+	corelib_wasm_statline.o \
+	corelib_wasm_stattext.o \
+	corelib_wasm_textctrl.o \
+	corelib_wasm_textentry.o \
+	corelib_wasm_tglbtn.o \
+	corelib_wasm_toolbar.o
+@COND_TOOLKIT_WASM@__GUI_SRC_OBJECTS_3 = $(COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_3)
 COND_PLATFORM_WIN32_1___QT_PLATFORM_SRC_OBJECTS_3 =  \
 	corelib_comimpl.o \
 	corelib_msw_dialup.o \
@@ -16920,14 +17129,8 @@ monodll_motif_window.o: $(srcdir)/src/motif/window.cpp $(MONODLL_ODEP)
 monodll_xmcombo.o: $(srcdir)/src/motif/xmcombo/xmcombo.c $(MONODLL_ODEP)
 	$(CCC) -c -o $@ $(MONODLL_CFLAGS) $(srcdir)/src/motif/xmcombo/xmcombo.c
 
-monodll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONODLL_ODEP)
-	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
 monodll_generic_statline.o: $(srcdir)/src/generic/statline.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/statline.cpp
-
-monodll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONODLL_ODEP)
-	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 monodll_msw_accel.o: $(srcdir)/src/msw/accel.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/msw/accel.cpp
@@ -17576,6 +17779,84 @@ monodll_qt_graphics.o: $(srcdir)/src/qt/graphics.cpp $(MONODLL_ODEP)
 
 monodll_qt_treectrl.o: $(srcdir)/src/qt/treectrl.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/qt/treectrl.cpp
+
+monodll_wasm_anybutton.o: $(srcdir)/src/wasm/anybutton.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/anybutton.cpp
+
+monodll_wasm_bmpbuttn.o: $(srcdir)/src/wasm/bmpbuttn.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/bmpbuttn.cpp
+
+monodll_wasm_button.o: $(srcdir)/src/wasm/button.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/button.cpp
+
+monodll_wasm_checkbox.o: $(srcdir)/src/wasm/checkbox.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/checkbox.cpp
+
+monodll_wasm_checklst.o: $(srcdir)/src/wasm/checklst.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/checklst.cpp
+
+monodll_wasm_choice.o: $(srcdir)/src/wasm/choice.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/choice.cpp
+
+monodll_wasm_combobox.o: $(srcdir)/src/wasm/combobox.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/combobox.cpp
+
+monodll_wasm_control.o: $(srcdir)/src/wasm/control.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/control.cpp
+
+monodll_wasm_frame.o: $(srcdir)/src/wasm/frame.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/frame.cpp
+
+monodll_wasm_gauge.o: $(srcdir)/src/wasm/gauge.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/gauge.cpp
+
+monodll_wasm_listbox.o: $(srcdir)/src/wasm/listbox.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/listbox.cpp
+
+monodll_wasm_menu.o: $(srcdir)/src/wasm/menu.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/menu.cpp
+
+monodll_wasm_menuitem.o: $(srcdir)/src/wasm/menuitem.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/menuitem.cpp
+
+monodll_wasm_radiobox.o: $(srcdir)/src/wasm/radiobox.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/radiobox.cpp
+
+monodll_wasm_radiobut.o: $(srcdir)/src/wasm/radiobut.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/radiobut.cpp
+
+monodll_wasm_scrolbar.o: $(srcdir)/src/wasm/scrolbar.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/scrolbar.cpp
+
+monodll_wasm_slider.o: $(srcdir)/src/wasm/slider.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/slider.cpp
+
+monodll_wasm_spinbutt.o: $(srcdir)/src/wasm/spinbutt.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/spinbutt.cpp
+
+monodll_wasm_statbmp.o: $(srcdir)/src/wasm/statbmp.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/statbmp.cpp
+
+monodll_wasm_statbox.o: $(srcdir)/src/wasm/statbox.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/statbox.cpp
+
+monodll_wasm_statline.o: $(srcdir)/src/wasm/statline.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/statline.cpp
+
+monodll_wasm_stattext.o: $(srcdir)/src/wasm/stattext.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/stattext.cpp
+
+monodll_wasm_textctrl.o: $(srcdir)/src/wasm/textctrl.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/textctrl.cpp
+
+monodll_wasm_textentry.o: $(srcdir)/src/wasm/textentry.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/textentry.cpp
+
+monodll_wasm_tglbtn.o: $(srcdir)/src/wasm/tglbtn.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/tglbtn.cpp
+
+monodll_wasm_toolbar.o: $(srcdir)/src/wasm/toolbar.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/toolbar.cpp
 
 monodll_univ_anybutton.o: $(srcdir)/src/univ/anybutton.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/univ/anybutton.cpp
@@ -19884,6 +20165,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1_WXUNIV_0@monodll_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
 
@@ -19910,6 +20194,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monodll_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monodll_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
@@ -19941,6 +20228,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monodll_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
 
@@ -19964,6 +20254,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monodll_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monodll_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
@@ -19995,6 +20288,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monodll_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
 
@@ -20021,6 +20317,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monodll_generic_statusbr.o: $(srcdir)/src/generic/statusbr.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/statusbr.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_generic_statusbr.o: $(srcdir)/src/generic/statusbr.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/statusbr.cpp
 
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1_WXUNIV_0@monodll_gtk_anybutton.o: $(srcdir)/src/gtk/anybutton.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/gtk/anybutton.cpp
@@ -20541,6 +20840,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monodll_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
 
@@ -20558,6 +20860,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monodll_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monodll_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
@@ -20580,6 +20885,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monodll_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
 
@@ -20601,6 +20909,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monodll_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
 
@@ -20615,6 +20926,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monodll_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monodll_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
@@ -20631,6 +20945,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monodll_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
 
@@ -20642,6 +20959,9 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monodll_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monodll_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
@@ -20664,14 +20984,32 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monodll_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
 
 @COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monodll_mdig.o: $(srcdir)/src/generic/mdig.cpp $(MONODLL_ODEP)
 @COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_mdig.o: $(srcdir)/src/generic/mdig.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monodll_mdig.o: $(srcdir)/src/generic/mdig.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
+
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monodll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monodll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONODLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@monodll_anybutton_osx.o: $(srcdir)/src/osx/anybutton_osx.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/osx/anybutton_osx.cpp
@@ -22356,14 +22694,8 @@ monolib_motif_window.o: $(srcdir)/src/motif/window.cpp $(MONOLIB_ODEP)
 monolib_xmcombo.o: $(srcdir)/src/motif/xmcombo/xmcombo.c $(MONOLIB_ODEP)
 	$(CCC) -c -o $@ $(MONOLIB_CFLAGS) $(srcdir)/src/motif/xmcombo/xmcombo.c
 
-monolib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONOLIB_ODEP)
-	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
 monolib_generic_statline.o: $(srcdir)/src/generic/statline.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/statline.cpp
-
-monolib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONOLIB_ODEP)
-	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 monolib_msw_accel.o: $(srcdir)/src/msw/accel.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/msw/accel.cpp
@@ -23012,6 +23344,84 @@ monolib_qt_graphics.o: $(srcdir)/src/qt/graphics.cpp $(MONOLIB_ODEP)
 
 monolib_qt_treectrl.o: $(srcdir)/src/qt/treectrl.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/qt/treectrl.cpp
+
+monolib_wasm_anybutton.o: $(srcdir)/src/wasm/anybutton.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/anybutton.cpp
+
+monolib_wasm_bmpbuttn.o: $(srcdir)/src/wasm/bmpbuttn.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/bmpbuttn.cpp
+
+monolib_wasm_button.o: $(srcdir)/src/wasm/button.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/button.cpp
+
+monolib_wasm_checkbox.o: $(srcdir)/src/wasm/checkbox.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/checkbox.cpp
+
+monolib_wasm_checklst.o: $(srcdir)/src/wasm/checklst.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/checklst.cpp
+
+monolib_wasm_choice.o: $(srcdir)/src/wasm/choice.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/choice.cpp
+
+monolib_wasm_combobox.o: $(srcdir)/src/wasm/combobox.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/combobox.cpp
+
+monolib_wasm_control.o: $(srcdir)/src/wasm/control.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/control.cpp
+
+monolib_wasm_frame.o: $(srcdir)/src/wasm/frame.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/frame.cpp
+
+monolib_wasm_gauge.o: $(srcdir)/src/wasm/gauge.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/gauge.cpp
+
+monolib_wasm_listbox.o: $(srcdir)/src/wasm/listbox.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/listbox.cpp
+
+monolib_wasm_menu.o: $(srcdir)/src/wasm/menu.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/menu.cpp
+
+monolib_wasm_menuitem.o: $(srcdir)/src/wasm/menuitem.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/menuitem.cpp
+
+monolib_wasm_radiobox.o: $(srcdir)/src/wasm/radiobox.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/radiobox.cpp
+
+monolib_wasm_radiobut.o: $(srcdir)/src/wasm/radiobut.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/radiobut.cpp
+
+monolib_wasm_scrolbar.o: $(srcdir)/src/wasm/scrolbar.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/scrolbar.cpp
+
+monolib_wasm_slider.o: $(srcdir)/src/wasm/slider.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/slider.cpp
+
+monolib_wasm_spinbutt.o: $(srcdir)/src/wasm/spinbutt.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/spinbutt.cpp
+
+monolib_wasm_statbmp.o: $(srcdir)/src/wasm/statbmp.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/statbmp.cpp
+
+monolib_wasm_statbox.o: $(srcdir)/src/wasm/statbox.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/statbox.cpp
+
+monolib_wasm_statline.o: $(srcdir)/src/wasm/statline.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/statline.cpp
+
+monolib_wasm_stattext.o: $(srcdir)/src/wasm/stattext.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/stattext.cpp
+
+monolib_wasm_textctrl.o: $(srcdir)/src/wasm/textctrl.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/textctrl.cpp
+
+monolib_wasm_textentry.o: $(srcdir)/src/wasm/textentry.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/textentry.cpp
+
+monolib_wasm_tglbtn.o: $(srcdir)/src/wasm/tglbtn.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/tglbtn.cpp
+
+monolib_wasm_toolbar.o: $(srcdir)/src/wasm/toolbar.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/toolbar.cpp
 
 monolib_univ_anybutton.o: $(srcdir)/src/univ/anybutton.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/univ/anybutton.cpp
@@ -25320,6 +25730,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1_WXUNIV_0@monolib_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
 
@@ -25346,6 +25759,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monolib_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monolib_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
@@ -25377,6 +25793,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monolib_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
 
@@ -25400,6 +25819,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monolib_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monolib_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
@@ -25431,6 +25853,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monolib_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
 
@@ -25457,6 +25882,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monolib_generic_statusbr.o: $(srcdir)/src/generic/statusbr.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/statusbr.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_generic_statusbr.o: $(srcdir)/src/generic/statusbr.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/statusbr.cpp
 
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1_WXUNIV_0@monolib_gtk_anybutton.o: $(srcdir)/src/gtk/anybutton.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/gtk/anybutton.cpp
@@ -25977,6 +26405,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monolib_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
 
@@ -25994,6 +26425,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monolib_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monolib_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
@@ -26016,6 +26450,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monolib_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
 
@@ -26037,6 +26474,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monolib_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
 
@@ -26051,6 +26491,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monolib_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monolib_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
@@ -26067,6 +26510,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monolib_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
 
@@ -26078,6 +26524,9 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@monolib_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@monolib_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
@@ -26100,14 +26549,32 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@monolib_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
 
 @COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monolib_mdig.o: $(srcdir)/src/generic/mdig.cpp $(MONOLIB_ODEP)
 @COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_mdig.o: $(srcdir)/src/generic/mdig.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@monolib_mdig.o: $(srcdir)/src/generic/mdig.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
+
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monolib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monolib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONOLIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@monolib_anybutton_osx.o: $(srcdir)/src/osx/anybutton_osx.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/osx/anybutton_osx.cpp
@@ -28479,14 +28946,8 @@ coredll_motif_window.o: $(srcdir)/src/motif/window.cpp $(COREDLL_ODEP)
 coredll_xmcombo.o: $(srcdir)/src/motif/xmcombo/xmcombo.c $(COREDLL_ODEP)
 	$(CCC) -c -o $@ $(COREDLL_CFLAGS) $(srcdir)/src/motif/xmcombo/xmcombo.c
 
-coredll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(COREDLL_ODEP)
-	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
 coredll_generic_statline.o: $(srcdir)/src/generic/statline.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/statline.cpp
-
-coredll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(COREDLL_ODEP)
-	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 coredll_msw_accel.o: $(srcdir)/src/msw/accel.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/msw/accel.cpp
@@ -29135,6 +29596,84 @@ coredll_qt_graphics.o: $(srcdir)/src/qt/graphics.cpp $(COREDLL_ODEP)
 
 coredll_qt_treectrl.o: $(srcdir)/src/qt/treectrl.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/qt/treectrl.cpp
+
+coredll_wasm_anybutton.o: $(srcdir)/src/wasm/anybutton.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/anybutton.cpp
+
+coredll_wasm_bmpbuttn.o: $(srcdir)/src/wasm/bmpbuttn.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/bmpbuttn.cpp
+
+coredll_wasm_button.o: $(srcdir)/src/wasm/button.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/button.cpp
+
+coredll_wasm_checkbox.o: $(srcdir)/src/wasm/checkbox.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/checkbox.cpp
+
+coredll_wasm_checklst.o: $(srcdir)/src/wasm/checklst.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/checklst.cpp
+
+coredll_wasm_choice.o: $(srcdir)/src/wasm/choice.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/choice.cpp
+
+coredll_wasm_combobox.o: $(srcdir)/src/wasm/combobox.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/combobox.cpp
+
+coredll_wasm_control.o: $(srcdir)/src/wasm/control.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/control.cpp
+
+coredll_wasm_frame.o: $(srcdir)/src/wasm/frame.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/frame.cpp
+
+coredll_wasm_gauge.o: $(srcdir)/src/wasm/gauge.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/gauge.cpp
+
+coredll_wasm_listbox.o: $(srcdir)/src/wasm/listbox.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/listbox.cpp
+
+coredll_wasm_menu.o: $(srcdir)/src/wasm/menu.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/menu.cpp
+
+coredll_wasm_menuitem.o: $(srcdir)/src/wasm/menuitem.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/menuitem.cpp
+
+coredll_wasm_radiobox.o: $(srcdir)/src/wasm/radiobox.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/radiobox.cpp
+
+coredll_wasm_radiobut.o: $(srcdir)/src/wasm/radiobut.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/radiobut.cpp
+
+coredll_wasm_scrolbar.o: $(srcdir)/src/wasm/scrolbar.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/scrolbar.cpp
+
+coredll_wasm_slider.o: $(srcdir)/src/wasm/slider.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/slider.cpp
+
+coredll_wasm_spinbutt.o: $(srcdir)/src/wasm/spinbutt.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/spinbutt.cpp
+
+coredll_wasm_statbmp.o: $(srcdir)/src/wasm/statbmp.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/statbmp.cpp
+
+coredll_wasm_statbox.o: $(srcdir)/src/wasm/statbox.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/statbox.cpp
+
+coredll_wasm_statline.o: $(srcdir)/src/wasm/statline.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/statline.cpp
+
+coredll_wasm_stattext.o: $(srcdir)/src/wasm/stattext.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/stattext.cpp
+
+coredll_wasm_textctrl.o: $(srcdir)/src/wasm/textctrl.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/textctrl.cpp
+
+coredll_wasm_textentry.o: $(srcdir)/src/wasm/textentry.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/textentry.cpp
+
+coredll_wasm_tglbtn.o: $(srcdir)/src/wasm/tglbtn.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/tglbtn.cpp
+
+coredll_wasm_toolbar.o: $(srcdir)/src/wasm/toolbar.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/toolbar.cpp
 
 coredll_univ_anybutton.o: $(srcdir)/src/univ/anybutton.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/univ/anybutton.cpp
@@ -30861,6 +31400,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1_WXUNIV_0@coredll_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
 
@@ -30887,6 +31429,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@coredll_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@coredll_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
@@ -30918,6 +31463,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@coredll_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
 
@@ -30941,6 +31489,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@coredll_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@coredll_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
@@ -30972,6 +31523,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@coredll_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
 
@@ -30998,6 +31552,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@coredll_generic_statusbr.o: $(srcdir)/src/generic/statusbr.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/statusbr.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_generic_statusbr.o: $(srcdir)/src/generic/statusbr.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/statusbr.cpp
 
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1_WXUNIV_0@coredll_gtk_anybutton.o: $(srcdir)/src/gtk/anybutton.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/gtk/anybutton.cpp
@@ -31518,6 +32075,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@coredll_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
 
@@ -31535,6 +32095,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@coredll_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@coredll_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
@@ -31557,6 +32120,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@coredll_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
 
@@ -31578,6 +32144,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@coredll_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
 
@@ -31592,6 +32161,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@coredll_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@coredll_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
@@ -31608,6 +32180,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@coredll_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
 
@@ -31619,6 +32194,9 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@coredll_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@coredll_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
@@ -31641,14 +32219,32 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@coredll_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
 
 @COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@coredll_mdig.o: $(srcdir)/src/generic/mdig.cpp $(COREDLL_ODEP)
 @COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_mdig.o: $(srcdir)/src/generic/mdig.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@coredll_mdig.o: $(srcdir)/src/generic/mdig.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
+
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@coredll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@coredll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(COREDLL_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@coredll_anybutton_osx.o: $(srcdir)/src/osx/anybutton_osx.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/osx/anybutton_osx.cpp
@@ -32874,14 +33470,8 @@ corelib_motif_window.o: $(srcdir)/src/motif/window.cpp $(CORELIB_ODEP)
 corelib_xmcombo.o: $(srcdir)/src/motif/xmcombo/xmcombo.c $(CORELIB_ODEP)
 	$(CCC) -c -o $@ $(CORELIB_CFLAGS) $(srcdir)/src/motif/xmcombo/xmcombo.c
 
-corelib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(CORELIB_ODEP)
-	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
 corelib_generic_statline.o: $(srcdir)/src/generic/statline.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/statline.cpp
-
-corelib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(CORELIB_ODEP)
-	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 corelib_msw_accel.o: $(srcdir)/src/msw/accel.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/msw/accel.cpp
@@ -33530,6 +34120,84 @@ corelib_qt_graphics.o: $(srcdir)/src/qt/graphics.cpp $(CORELIB_ODEP)
 
 corelib_qt_treectrl.o: $(srcdir)/src/qt/treectrl.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/qt/treectrl.cpp
+
+corelib_wasm_anybutton.o: $(srcdir)/src/wasm/anybutton.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/anybutton.cpp
+
+corelib_wasm_bmpbuttn.o: $(srcdir)/src/wasm/bmpbuttn.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/bmpbuttn.cpp
+
+corelib_wasm_button.o: $(srcdir)/src/wasm/button.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/button.cpp
+
+corelib_wasm_checkbox.o: $(srcdir)/src/wasm/checkbox.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/checkbox.cpp
+
+corelib_wasm_checklst.o: $(srcdir)/src/wasm/checklst.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/checklst.cpp
+
+corelib_wasm_choice.o: $(srcdir)/src/wasm/choice.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/choice.cpp
+
+corelib_wasm_combobox.o: $(srcdir)/src/wasm/combobox.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/combobox.cpp
+
+corelib_wasm_control.o: $(srcdir)/src/wasm/control.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/control.cpp
+
+corelib_wasm_frame.o: $(srcdir)/src/wasm/frame.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/frame.cpp
+
+corelib_wasm_gauge.o: $(srcdir)/src/wasm/gauge.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/gauge.cpp
+
+corelib_wasm_listbox.o: $(srcdir)/src/wasm/listbox.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/listbox.cpp
+
+corelib_wasm_menu.o: $(srcdir)/src/wasm/menu.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/menu.cpp
+
+corelib_wasm_menuitem.o: $(srcdir)/src/wasm/menuitem.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/menuitem.cpp
+
+corelib_wasm_radiobox.o: $(srcdir)/src/wasm/radiobox.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/radiobox.cpp
+
+corelib_wasm_radiobut.o: $(srcdir)/src/wasm/radiobut.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/radiobut.cpp
+
+corelib_wasm_scrolbar.o: $(srcdir)/src/wasm/scrolbar.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/scrolbar.cpp
+
+corelib_wasm_slider.o: $(srcdir)/src/wasm/slider.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/slider.cpp
+
+corelib_wasm_spinbutt.o: $(srcdir)/src/wasm/spinbutt.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/spinbutt.cpp
+
+corelib_wasm_statbmp.o: $(srcdir)/src/wasm/statbmp.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/statbmp.cpp
+
+corelib_wasm_statbox.o: $(srcdir)/src/wasm/statbox.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/statbox.cpp
+
+corelib_wasm_statline.o: $(srcdir)/src/wasm/statline.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/statline.cpp
+
+corelib_wasm_stattext.o: $(srcdir)/src/wasm/stattext.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/stattext.cpp
+
+corelib_wasm_textctrl.o: $(srcdir)/src/wasm/textctrl.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/textctrl.cpp
+
+corelib_wasm_textentry.o: $(srcdir)/src/wasm/textentry.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/textentry.cpp
+
+corelib_wasm_tglbtn.o: $(srcdir)/src/wasm/tglbtn.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/tglbtn.cpp
+
+corelib_wasm_toolbar.o: $(srcdir)/src/wasm/toolbar.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/toolbar.cpp
 
 corelib_univ_anybutton.o: $(srcdir)/src/univ/anybutton.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/univ/anybutton.cpp
@@ -35256,6 +35924,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1_WXUNIV_0@corelib_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION__USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_generic_accel.o: $(srcdir)/src/generic/accel.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/accel.cpp
 
@@ -35282,6 +35953,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@corelib_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@corelib_generic_fdrepdlg.o: $(srcdir)/src/generic/fdrepdlg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fdrepdlg.cpp
@@ -35313,6 +35987,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@corelib_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_filepickerg.o: $(srcdir)/src/generic/filepickerg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/filepickerg.cpp
 
@@ -35336,6 +36013,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@corelib_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@corelib_generic_listctrl.o: $(srcdir)/src/generic/listctrl.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/listctrl.cpp
@@ -35367,6 +36047,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@corelib_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_prntdlgg.o: $(srcdir)/src/generic/prntdlgg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/prntdlgg.cpp
 
@@ -35393,6 +36076,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@corelib_generic_statusbr.o: $(srcdir)/src/generic/statusbr.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/statusbr.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_generic_statusbr.o: $(srcdir)/src/generic/statusbr.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/statusbr.cpp
 
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1_WXUNIV_0@corelib_gtk_anybutton.o: $(srcdir)/src/gtk/anybutton.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_GTK_TOOLKIT_VERSION_4_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/gtk/anybutton.cpp
@@ -35913,6 +36599,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@corelib_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_fontdlgg.o: $(srcdir)/src/generic/fontdlgg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fontdlgg.cpp
 
@@ -35930,6 +36619,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@corelib_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@corelib_generic_activityindicator.o: $(srcdir)/src/generic/activityindicator.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/activityindicator.cpp
@@ -35952,6 +36644,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@corelib_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_clrpickerg.o: $(srcdir)/src/generic/clrpickerg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/clrpickerg.cpp
 
@@ -35973,6 +36668,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@corelib_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_collpaneg.o: $(srcdir)/src/generic/collpaneg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/collpaneg.cpp
 
@@ -35987,6 +36685,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@corelib_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@corelib_colrdlgg.o: $(srcdir)/src/generic/colrdlgg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/colrdlgg.cpp
@@ -36003,6 +36704,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@corelib_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_dirdlgg.o: $(srcdir)/src/generic/dirdlgg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/dirdlgg.cpp
 
@@ -36014,6 +36718,9 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@corelib_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_IPHONE_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
 
 @COND_USE_GUI_1_WXUNIV_1@corelib_filedlgg.o: $(srcdir)/src/generic/filedlgg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/filedlgg.cpp
@@ -36036,14 +36743,32 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@corelib_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_QT_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_fontpickerg.o: $(srcdir)/src/generic/fontpickerg.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/fontpickerg.cpp
 
 @COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@corelib_mdig.o: $(srcdir)/src/generic/mdig.cpp $(CORELIB_ODEP)
 @COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
 
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_mdig.o: $(srcdir)/src/generic/mdig.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
+
 @COND_USE_GUI_1_WXUNIV_1@corelib_mdig.o: $(srcdir)/src/generic/mdig.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
+
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@corelib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@corelib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
+
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(CORELIB_ODEP)
+@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@corelib_anybutton_osx.o: $(srcdir)/src/osx/anybutton_osx.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/osx/anybutton_osx.cpp

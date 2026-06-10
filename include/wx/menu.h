@@ -611,6 +611,8 @@ protected:
     #include "wx/osx/menu.h"
 #elif defined(__WXQT__)
     #include "wx/qt/menu.h"
+#elif defined(__WXWASM__)
+    #include "wx/wasm/menu.h"
 #endif
 #endif // wxUSE_BASE_CLASSES_ONLY/!wxUSE_BASE_CLASSES_ONLY
 
