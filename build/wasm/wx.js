@@ -447,7 +447,11 @@ if (typeof navigator !== 'undefined') {
 
   // Ensure #window-container creates a stacking context so GL canvases
   // render above the 2D #canvas inside #main-window.
-  var windowContainer = document.getElementById('window-container');
+  // This runs at script eval, and with -pthread the same script also evaluates
+  // inside Web Workers, where `document` doesn't exist — guard or the workers
+  // die with "ReferenceError: document is not defined" before the app loads.
+  var windowContainer = (typeof document !== 'undefined')
+      ? document.getElementById('window-container') : null;
   if (windowContainer) {
     windowContainer.style.position = 'relative';
     windowContainer.style.zIndex = '1';
