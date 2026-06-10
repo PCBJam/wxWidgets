@@ -11,9 +11,12 @@
 
 #include "wx/textctrl.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxTextCtrl::wxTextCtrl()
 {
     m_modified = false;
+    m_inDomInput = false;
 }
 
 wxTextCtrl::wxTextCtrl(wxWindow *parent, wxWindowID id,
@@ -24,6 +27,7 @@ wxTextCtrl::wxTextCtrl(wxWindow *parent, wxWindowID id,
                        const wxString& name)
 {
     m_modified = false;
+    m_inDomInput = false;
 
     Create(parent, id, value, pos, size, style, validator, name);
 }
@@ -38,11 +42,18 @@ bool wxTextCtrl::Create(wxWindow *parent, wxWindowID id,
     if (!wxControl::Create(parent, id, pos, size, style, validator, name))
         return false;
 
+    if (style & wxTE_MULTILINE)
+        WasmCreateDomNode("textarea");
+    else if (style & wxTE_PASSWORD)
+        WasmCreateDomNode("input", "password");
+    else
+        WasmCreateDomNode("input", "text");
+
     // set the initial contents without generating a wxEVT_TEXT event
     ChangeValue(value);
 
-    // TODO(dom-phase-2): create an <input>/<textarea> element (depending on
-    // wxTE_MULTILINE) and wire its input events through wx_dom_event.
+    if (WasmGetDomId() && (style & wxTE_READONLY))
+        SetEditable(false);
 
     return true;
 }
@@ -70,6 +81,11 @@ void wxTextCtrl::WriteText(const wxString& text)
 {
     wxTextEntry::WriteText(text);
 
+    // WriteText/AppendText mutate the cache directly (not via DoSetValue),
+    // so push the result into the DOM element here.
+    if (WasmGetDomId() && !m_inDomInput)
+        wxDomSetValue(WasmGetDomId(), GetValue());
+
     MarkDirty();
 }
 
@@ -77,9 +93,46 @@ void wxTextCtrl::DoSetValue(const wxString& value, int flags)
 {
     wxTextEntry::DoSetValue(value, flags);
 
+    // push into the DOM element — unless the new value just came FROM the
+    // element ('input' event), where echoing it back would move the caret
+    if (WasmGetDomId() && !m_inDomInput)
+        wxDomSetValue(WasmGetDomId(), value);
+
     // setting the value programmatically resets the modified flag, as if the
     // contents had just been loaded
     m_modified = false;
+}
+
+void wxTextCtrl::OnDomEvent(wxDomEventKind kind)
+{
+    switch (kind)
+    {
+        case wxDOM_EVENT_INPUT:
+        {
+            // Pull the typed text into the wxTextEntry cache and fire
+            // wxEVT_TEXT, like any port does for user edits.
+            m_inDomInput = true;
+            const wxString value = wxDomGetValue(WasmGetDomId());
+            DoSetValue(value, SetValue_SendEvent);
+            m_inDomInput = false;
+            m_modified = true;
+            return;
+        }
+
+        case wxDOM_EVENT_ENTER:
+            if (GetWindowStyle() & wxTE_PROCESS_ENTER)
+            {
+                wxCommandEvent event(wxEVT_TEXT_ENTER, GetId());
+                event.SetEventObject(this);
+                event.SetString(GetValue());
+                HandleWindowEvent(event);
+            }
+            return;
+
+        default:
+            wxControl::OnDomEvent(kind);
+            return;
+    }
 }
 
 // ----------------------------------------------------------------------------

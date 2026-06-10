@@ -11,6 +11,8 @@
 
 #include "wx/control.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxIMPLEMENT_DYNAMIC_CLASS(wxControl, wxWindow);
 
 wxControl::wxControl()
@@ -43,8 +45,19 @@ bool wxControl::Create(wxWindow *parent, wxWindowID id,
 
 wxSize wxControl::DoGetBestSize() const
 {
-    // TODO(dom-phase-2): measure the control's DOM element instead.
-    // Until then, size to the label text so sizer layouts stay sane.
+    // DOM-backed controls report their intrinsic (content-driven) size,
+    // measured on the live element; sizers then decide the final layout.
+    if (WasmGetDomId())
+    {
+        int w = 0;
+        int h = 0;
+        wxDomGetIntrinsicSize(WasmGetDomId(), &w, &h);
+        if (w > 0 && h > 0)
+            return wxSize(w, h);
+    }
+
+    // Stub controls (no DOM node yet): size to the label text so sizer
+    // layouts stay sane.
     int w = 0;
     int h = 0;
     GetTextExtent(GetLabel(), &w, &h);

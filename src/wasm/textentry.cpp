@@ -11,6 +11,8 @@
 
 #include "wx/textentry.h"
 
+#include "wx/wasm/private/dom.h"
+
 #ifndef WX_PRECOMP
     #include "wx/window.h"
     #include "wx/utils.h"           // for wxSwap()
@@ -205,7 +207,9 @@ void wxTextEntry::SetEditable(bool editable)
 {
     m_editable = editable;
 
-    // TODO(dom-phase-2): toggle the "readonly" attribute on the DOM element.
+    wxWindow * const win = GetEditableWindow();
+    if (win && win->WasmGetDomId())
+        wxDomSetReadOnly(win->WasmGetDomId(), !editable);
 }
 
 wxString wxTextEntry::DoGetValue() const

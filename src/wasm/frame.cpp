@@ -1,6 +1,8 @@
 /////////////////////////////////////////////////////////////////////////////
 // Name:        src/wasm/frame.cpp
-// Purpose:     wxFrame implementation for the WASM DOM port
+// Purpose:     wxFrame implementation for the WASM DOM port.
+//              Bar positioning mirrors src/univ/framuniv.cpp so DOM and
+//              canvas builds produce the same frame geometry.
 // Licence:     wxWindows licence
 /////////////////////////////////////////////////////////////////////////////
 
@@ -17,6 +19,10 @@
 
 // Note: the wxClassInfo for wxFrame is implemented centrally in
 // src/common/framecmn.cpp, so no wxIMPLEMENT_DYNAMIC_CLASS here.
+
+wxBEGIN_EVENT_TABLE(wxFrame, wxFrameBase)
+    EVT_SIZE(wxFrame::OnSize)
+wxEND_EVENT_TABLE()
 
 wxFrame::wxFrame()
 {
@@ -41,12 +47,197 @@ bool wxFrame::Create(wxWindow *parent,
                      long style,
                      const wxString& name)
 {
-    if (!wxTopLevelWindow::Create(parent, id, title, pos, size, style, name))
-        return false;
+    return wxTopLevelWindow::Create(parent, id, title, pos, size, style, name);
+}
 
-    // The bars are stored by wxFrameBase (SetMenuBar/SetToolBar/SetStatusBar).
-    // TODO(dom-phase-2): position the bars and account for them in
-    // DoGetClientSize()/DoSetClientSize().
+void wxFrame::OnSize(wxSizeEvent& event)
+{
+#if wxUSE_MENUS
+    PositionMenuBar();
+#endif // wxUSE_MENUS
+#if wxUSE_STATUSBAR
+    PositionStatusBar();
+#endif // wxUSE_STATUSBAR
+#if wxUSE_TOOLBAR
+    PositionToolBar();
+#endif // wxUSE_TOOLBAR
 
-    return true;
+    event.Skip();
+}
+
+#if wxUSE_MENUS
+
+void wxFrame::PositionMenuBar()
+{
+    if ( m_frameMenuBar )
+    {
+        // the menubar is positioned above the client area, hence the negative
+        // y coord
+        wxCoord heightMbar = m_frameMenuBar->GetSize().y;
+
+        wxCoord heightTbar = 0;
+
+#if wxUSE_TOOLBAR
+        if ( m_frameToolBar )
+            heightTbar = m_frameToolBar->GetSize().y;
+#endif // wxUSE_TOOLBAR
+
+        m_frameMenuBar->SetSize(0,
+                                - (heightMbar + heightTbar),
+                                GetClientSize().x, heightMbar);
+    }
+}
+
+void wxFrame::DetachMenuBar()
+{
+    wxFrameBase::DetachMenuBar();
+    SendSizeEvent();
+}
+
+void wxFrame::AttachMenuBar(wxMenuBar *menubar)
+{
+    wxFrameBase::AttachMenuBar(menubar);
+    SendSizeEvent();
+}
+
+#endif // wxUSE_MENUS
+
+#if wxUSE_STATUSBAR
+
+void wxFrame::PositionStatusBar()
+{
+    if ( m_frameStatusBar )
+    {
+        wxSize size = GetClientSize();
+        m_frameStatusBar->SetSize(0, size.y, size.x, wxDefaultCoord);
+    }
+}
+
+wxStatusBar* wxFrame::CreateStatusBar(int number, long style,
+                                      wxWindowID id, const wxString& name)
+{
+    wxStatusBar *bar = wxFrameBase::CreateStatusBar(number, style, id, name);
+    SendSizeEvent();
+    return bar;
+}
+
+#endif // wxUSE_STATUSBAR
+
+#if wxUSE_TOOLBAR
+
+wxToolBar* wxFrame::CreateToolBar(long style, wxWindowID id, const wxString& name)
+{
+    if ( wxFrameBase::CreateToolBar(style, id, name) )
+    {
+        PositionToolBar();
+    }
+
+    return m_frameToolBar;
+}
+
+void wxFrame::PositionToolBar()
+{
+    if ( m_frameToolBar )
+    {
+        wxSize size = GetClientSize();
+        int tw, th, tx, ty;
+
+        tx = ty = 0;
+        m_frameToolBar->GetSize(&tw, &th);
+        if ( m_frameToolBar->GetWindowStyleFlag() & wxTB_VERTICAL )
+        {
+            tx = -tw;
+            th = size.y;
+        }
+        else
+        {
+            ty = -th;
+            tw = size.x;
+        }
+
+        m_frameToolBar->SetSize(tx, ty, tw, th);
+    }
+}
+#endif // wxUSE_TOOLBAR
+
+wxPoint wxFrame::GetClientAreaOrigin() const
+{
+    wxPoint pt = wxFrameBase::GetClientAreaOrigin();
+
+#if wxUSE_MENUS
+    if ( m_frameMenuBar )
+    {
+        pt.y += m_frameMenuBar->GetSize().y;
+    }
+#endif // wxUSE_MENUS
+
+#if wxUSE_TOOLBAR
+    if ( m_frameToolBar )
+    {
+        if ( m_frameToolBar->GetWindowStyleFlag() & wxTB_VERTICAL )
+            pt.x += m_frameToolBar->GetSize().x;
+        else
+            pt.y += m_frameToolBar->GetSize().y;
+    }
+#endif // wxUSE_TOOLBAR
+
+    return pt;
+}
+
+void wxFrame::DoGetClientSize(int *width, int *height) const
+{
+    wxFrameBase::DoGetClientSize(width, height);
+
+#if wxUSE_MENUS
+    if ( m_frameMenuBar && height )
+    {
+        (*height) -= m_frameMenuBar->GetSize().y;
+    }
+#endif // wxUSE_MENUS
+
+#if wxUSE_STATUSBAR
+    if ( m_frameStatusBar && height )
+    {
+        (*height) -= m_frameStatusBar->GetSize().y;
+    }
+#endif // wxUSE_STATUSBAR
+
+#if wxUSE_TOOLBAR
+    if ( m_frameToolBar )
+    {
+        if ( width && (m_frameToolBar->GetWindowStyleFlag() & wxTB_VERTICAL) )
+            (*width) -= m_frameToolBar->GetSize().x;
+        else if ( height )
+            (*height) -= m_frameToolBar->GetSize().y;
+    }
+#endif // wxUSE_TOOLBAR
+}
+
+void wxFrame::DoSetClientSize(int width, int height)
+{
+#if wxUSE_MENUS
+    if ( m_frameMenuBar )
+    {
+        height += m_frameMenuBar->GetSize().y;
+    }
+#endif // wxUSE_MENUS
+
+#if wxUSE_STATUSBAR
+    if ( m_frameStatusBar )
+    {
+        height += m_frameStatusBar->GetSize().y;
+    }
+#endif // wxUSE_STATUSBAR
+
+#if wxUSE_TOOLBAR
+    if ( m_frameToolBar )
+    {
+        if ( m_frameToolBar->GetWindowStyleFlag() & wxTB_VERTICAL )
+            width += m_frameToolBar->GetSize().x;
+        else
+            height += m_frameToolBar->GetSize().y;
+    }
+#endif // wxUSE_TOOLBAR
+
+    wxFrameBase::DoSetClientSize(width, height);
 }

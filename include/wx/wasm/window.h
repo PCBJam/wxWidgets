@@ -11,6 +11,20 @@
 
 class wxNonOwnedWindow;
 
+#ifndef __WXUNIVERSAL__
+// DOM event kinds delivered from wx-dom.js via wx_dom_event()
+// (src/wasm/domevents.cpp) to wxWindowWasm::OnDomEvent overrides.
+enum wxDomEventKind
+{
+    wxDOM_EVENT_CLICK = 1,
+    wxDOM_EVENT_INPUT = 2,
+    wxDOM_EVENT_CHANGE = 3,
+    wxDOM_EVENT_FOCUSIN = 4,
+    wxDOM_EVENT_FOCUSOUT = 5,
+    wxDOM_EVENT_ENTER = 6
+};
+#endif // !__WXUNIVERSAL__
+
 class WXDLLIMPEXP_CORE wxWindowWasm : public wxWindowBase
 {
 public:
@@ -80,6 +94,16 @@ public:
     virtual void DoPopupMenu(wxMenu *menu, int x, int y,
                              std::function<void (bool)> callback) wxOVERRIDE;
 #endif // wxUSE_MENUS
+
+    // ----- DOM-backed native controls -----
+    // A control becomes DOM-backed by calling WasmCreateDomNode() from its
+    // Create(); geometry, visibility, enabled state, font and destruction
+    // then sync automatically from the shared window machinery.
+    bool WasmCreateDomNode(const char *tag, const char *typeAttr = NULL);
+    int WasmGetDomId() const { return m_domId; }
+
+    // DOM events (click/input/focus...) routed here by src/wasm/domevents.cpp.
+    virtual void OnDomEvent(wxDomEventKind kind);
 #endif // !__WXUNIVERSAL__
 
     virtual WXWidget GetHandle() const wxOVERRIDE { return NULL; }
@@ -147,6 +171,17 @@ private:
     int m_scrollPos[2];
     int m_scrollThumb[2];
     int m_scrollRange[2];
+
+    // JS-side element id for DOM-backed native controls (0 = none).
+    int m_domId;
+
+    // Push the wx rect (in top-level-window coordinates) to the DOM element.
+    void UpdateDomGeometry();
+
+    // Push IsShownOnScreen() to this window's and all descendants' DOM
+    // elements (a hidden ancestor — e.g. an unselected notebook page —
+    // must hide the whole DOM subtree).
+    void UpdateDomVisibility();
 #endif // !__WXUNIVERSAL__
 
     wxString m_label;

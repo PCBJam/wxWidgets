@@ -19,6 +19,11 @@
 #include "wx/nonownedwnd.h"
 #include "wx/wasm/private/display.h"
 
+#ifndef __WXUNIVERSAL__
+#include "wx/settings.h"
+#include "wx/wasm/private/dom.h"
+#endif
+
 #include <emscripten.h>
 
 #if wxUSE_COMBOBOX || wxUSE_COMBOCTRL
@@ -261,6 +266,15 @@ wxWindowWasm::wxWindowWasm(wxWindow *parent,
 
 wxWindowWasm::~wxWindowWasm()
 {
+#ifndef __WXUNIVERSAL__
+    if (m_domId)
+    {
+        wxDomUnregisterWindow(m_domId);
+        wxDomDestroyControl(m_domId);
+        m_domId = 0;
+    }
+#endif
+
     // Unregister from JS tracking system before destruction
     UnregisterElement(this);
 
@@ -305,8 +319,93 @@ void wxWindowWasm::Init()
         m_scrollThumb[orient] = 0;
         m_scrollRange[orient] = 0;
     }
+
+    m_domId = 0;
 #endif // !__WXUNIVERSAL__
 }
+
+#ifndef __WXUNIVERSAL__
+
+// ----------------------------------------------------------------------------
+// DOM-backed native controls
+// ----------------------------------------------------------------------------
+
+bool wxWindowWasm::WasmCreateDomNode(const char *tag, const char *typeAttr)
+{
+    wxASSERT_MSG(m_domId == 0, wxT("window already has a DOM node"));
+
+    wxNonOwnedWindow *tlw = GetTopLevelWindow();
+    if ( !tlw )
+        return false;
+
+    m_domId = wxDomCreateControl(tlw->GetCSSId(), tag, typeAttr);
+    if ( m_domId == 0 )
+        return false;
+
+    wxDomRegisterWindow(m_domId, this);
+
+    wxDomSetFont(m_domId, GetFont().GetNativeFontInfoDesc());
+    wxDomSetEnabled(m_domId, IsEnabled());
+    wxDomSetShown(m_domId, IsShownOnScreen());
+    UpdateDomGeometry();
+
+    return true;
+}
+
+void wxWindowWasm::UpdateDomGeometry()
+{
+    if ( m_domId )
+    {
+        wxNonOwnedWindow *tlw = GetTopLevelWindow();
+        if ( tlw )
+        {
+            // Element is absolutely positioned inside the TLW container div.
+            const wxPoint pos = GetScreenPosition() - tlw->GetScreenPosition();
+            wxDomSetRect(m_domId, pos.x, pos.y, m_width, m_height);
+        }
+    }
+
+    // DOM rects are TLW-relative, so when THIS window moves, every
+    // DOM-backed descendant's on-screen position changes even though its
+    // wx (parent-relative) rect didn't — refresh them all.
+    for ( wxWindowList::compatibility_iterator node = GetChildren().GetFirst();
+          node; node = node->GetNext() )
+    {
+        wxWindowWasm *child = static_cast<wxWindowWasm *>(node->GetData());
+        child->UpdateDomGeometry();
+    }
+}
+
+void wxWindowWasm::UpdateDomVisibility()
+{
+    if ( m_domId )
+        wxDomSetShown(m_domId, IsShownOnScreen());
+
+    for ( wxWindowList::compatibility_iterator node = GetChildren().GetFirst();
+          node; node = node->GetNext() )
+    {
+        wxWindowWasm *child = static_cast<wxWindowWasm *>(node->GetData());
+        child->UpdateDomVisibility();
+    }
+}
+
+void wxWindowWasm::OnDomEvent(wxDomEventKind kind)
+{
+    switch ( kind )
+    {
+        case wxDOM_EVENT_FOCUSIN:
+            // Keep the wx focus model truthful when the browser moves focus.
+            if ( gs_focusWindow != this && CanAcceptFocus() )
+                SetFocus();
+            break;
+
+        default:
+            // Controls override for click/input/change behavior.
+            break;
+    }
+}
+
+#endif // !__WXUNIVERSAL__
 
 #ifndef __WXUNIVERSAL__
 
@@ -506,6 +605,12 @@ bool wxWindowWasm::Show(bool show)
         eventShow.SetEventObject(this);
         HandleWindowEvent(eventShow);
 
+#ifndef __WXUNIVERSAL__
+        // Sync the whole DOM subtree: showing/hiding a container (e.g. a
+        // notebook page) changes IsShownOnScreen() for every descendant.
+        UpdateDomVisibility();
+#endif
+
         // Update visibility in element registry
         UpdateElementRegistry(this, false);
 
@@ -574,6 +679,12 @@ void wxWindowWasm::SetFocus()
     if ( caret )
         caret->OnSetFocus();
 #endif // wxUSE_CARET
+
+#ifndef __WXUNIVERSAL__
+    // Keep browser focus in sync (no-op if the element already has it).
+    if (m_domId)
+        wxDomFocus(m_domId);
+#endif
 }
 
 void wxWindowWasm::KillFocus()
@@ -647,7 +758,25 @@ void wxWindowWasm::EraseBackgroundWindow()
     wxWindowDC dc(static_cast<wxWindow *>(this));
     wxEraseEvent eraseEvent(GetId(), &dc);
     eraseEvent.SetEventObject(this);
-    HandleWindowEvent(eraseEvent);
+
+    if (!HandleWindowEvent(eraseEvent))
+    {
+#ifndef __WXUNIVERSAL__
+        // In universal mode the wxUniv wxWindow paints the background itself;
+        // the native (DOM) port has no such painter, so an unhandled erase
+        // must fill the canvas with the background colour — otherwise the
+        // window paints over uninitialised (black) pixels.
+        if (!HasTransparentBackground())
+        {
+            wxColour bg = GetBackgroundColour();
+            if (!bg.IsOk())
+                bg = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
+
+            dc.SetBackground(wxBrush(bg));
+            dc.Clear();
+        }
+#endif // !__WXUNIVERSAL__
+    }
 }
 
 void wxWindowWasm::PaintSelf()
@@ -730,6 +859,15 @@ void wxWindowWasm::DoPaint(bool parentWasPainted)
 bool wxWindowWasm::SetFont(const wxFont& font)
 {
     m_font = font;
+
+#ifndef __WXUNIVERSAL__
+    if (m_domId && font.IsOk())
+    {
+        wxDomSetFont(m_domId, font.GetNativeFontInfoDesc());
+        InvalidateBestSize();
+    }
+#endif
+
     return true;
 }
 
@@ -1003,6 +1141,10 @@ void wxWindowWasm::DoMoveWindow(int x, int y, int width, int height)
 
         // Update element position in JS registry
         UpdateElementRegistry(this, false);
+
+#ifndef __WXUNIVERSAL__
+        UpdateDomGeometry();
+#endif
     }
 }
 
@@ -1012,6 +1154,11 @@ void wxWindowWasm::DoEnable(bool enable)
     {
         KillFocus();
     }
+
+#ifndef __WXUNIVERSAL__
+    if (m_domId)
+        wxDomSetEnabled(m_domId, enable);
+#endif
 
     // Update enabled state in element registry
     UpdateElementRegistry(this, false);

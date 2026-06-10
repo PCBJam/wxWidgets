@@ -11,6 +11,8 @@
 
 #include "wx/stattext.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxStaticText::wxStaticText()
 {
 }
@@ -37,9 +39,9 @@ bool wxStaticText::Create(wxWindow *parent,
     if (!wxControl::Create(parent, id, pos, size, style, wxDefaultValidator, name))
         return false;
 
-    SetLabel(label);
+    WasmCreateDomNode("span");
 
-    // TODO(dom-phase-2): create a real <label>/<span> element.
+    SetLabel(label);
 
     return true;
 }
@@ -64,8 +66,10 @@ wxString wxStaticText::WXGetVisibleLabel() const
 
 void wxStaticText::WXSetVisibleLabel(const wxString& str)
 {
-    // TODO(dom-phase-2): update the DOM element's text content.
     m_visibleLabel = str;
+
+    if (WasmGetDomId())
+        wxDomSetText(WasmGetDomId(), m_visibleLabel);
 }
 
 #endif // wxUSE_STATTEXT

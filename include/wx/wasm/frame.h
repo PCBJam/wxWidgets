@@ -7,9 +7,9 @@
 #ifndef __WX_WASM_FRAME_H__
 #define __WX_WASM_FRAME_H__
 
-// wxFrameBase has no pure virtuals of its own: it stores the menu, tool and
-// status bars itself and all the window machinery comes from
-// wxTopLevelWindowWasm/wxWindowWasm.
+// Bar geometry mirrors src/univ/framuniv.cpp (what the canvas port runs):
+// menu/tool bars live above the client-area origin, the status bar below
+// the client area, and DoGetClientSize subtracts all of them.
 class WXDLLIMPEXP_CORE wxFrame : public wxFrameBase
 {
 public:
@@ -30,8 +30,37 @@ public:
                 long style = wxDEFAULT_FRAME_STYLE,
                 const wxString& name = wxASCII_STR(wxFrameNameStr));
 
+    virtual wxPoint GetClientAreaOrigin() const wxOVERRIDE;
+
+#if wxUSE_MENUS
+    virtual void DetachMenuBar() wxOVERRIDE;
+    virtual void AttachMenuBar(wxMenuBar *menubar) wxOVERRIDE;
+    void PositionMenuBar();
+#endif // wxUSE_MENUS
+
+#if wxUSE_STATUSBAR
+    virtual void PositionStatusBar() wxOVERRIDE;
+    virtual wxStatusBar* CreateStatusBar(int number = 1, long style = wxSTB_DEFAULT_STYLE,
+                                         wxWindowID id = 0,
+                                         const wxString& name = wxASCII_STR(wxStatusBarNameStr)) wxOVERRIDE;
+#endif // wxUSE_STATUSBAR
+
+#if wxUSE_TOOLBAR
+    virtual wxToolBar* CreateToolBar(long style = -1,
+                                     wxWindowID id = wxID_ANY,
+                                     const wxString& name = wxASCII_STR(wxToolBarNameStr)) wxOVERRIDE;
+    virtual void PositionToolBar() wxOVERRIDE;
+#endif // wxUSE_TOOLBAR
+
+protected:
+    void OnSize(wxSizeEvent& event);
+
+    virtual void DoGetClientSize(int *width, int *height) const wxOVERRIDE;
+    virtual void DoSetClientSize(int width, int height) wxOVERRIDE;
+
 private:
     wxDECLARE_DYNAMIC_CLASS(wxFrame);
+    wxDECLARE_EVENT_TABLE();
 };
 
 #endif // __WX_WASM_FRAME_H__

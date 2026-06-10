@@ -3755,6 +3755,7 @@ COND_TOOLKIT_WASM_GUI_HDR =  \
 	wx/wasm/listbox.h \
 	wx/wasm/menu.h \
 	wx/wasm/menuitem.h \
+	wx/wasm/private/dom.h \
 	wx/wasm/radiobox.h \
 	wx/wasm/radiobut.h \
 	wx/wasm/scrolbar.h \
@@ -6025,6 +6026,7 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS =  \
 	monodll_wasm_choice.o \
 	monodll_wasm_combobox.o \
 	monodll_wasm_control.o \
+	monodll_domevents.o \
 	monodll_wasm_frame.o \
 	monodll_wasm_gauge.o \
 	monodll_wasm_listbox.o \
@@ -8161,6 +8163,7 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_1 =  \
 	monolib_wasm_choice.o \
 	monolib_wasm_combobox.o \
 	monolib_wasm_control.o \
+	monolib_domevents.o \
 	monolib_wasm_frame.o \
 	monolib_wasm_gauge.o \
 	monolib_wasm_listbox.o \
@@ -10451,6 +10454,7 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_2 =  \
 	coredll_wasm_choice.o \
 	coredll_wasm_combobox.o \
 	coredll_wasm_control.o \
+	coredll_domevents.o \
 	coredll_wasm_frame.o \
 	coredll_wasm_gauge.o \
 	coredll_wasm_listbox.o \
@@ -12314,6 +12318,7 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_3 =  \
 	corelib_wasm_choice.o \
 	corelib_wasm_combobox.o \
 	corelib_wasm_control.o \
+	corelib_domevents.o \
 	corelib_wasm_frame.o \
 	corelib_wasm_gauge.o \
 	corelib_wasm_listbox.o \
@@ -17803,6 +17808,9 @@ monodll_wasm_combobox.o: $(srcdir)/src/wasm/combobox.cpp $(MONODLL_ODEP)
 
 monodll_wasm_control.o: $(srcdir)/src/wasm/control.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/control.cpp
+
+monodll_domevents.o: $(srcdir)/src/wasm/domevents.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/domevents.cpp
 
 monodll_wasm_frame.o: $(srcdir)/src/wasm/frame.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/frame.cpp
@@ -23368,6 +23376,9 @@ monolib_wasm_combobox.o: $(srcdir)/src/wasm/combobox.cpp $(MONOLIB_ODEP)
 
 monolib_wasm_control.o: $(srcdir)/src/wasm/control.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/control.cpp
+
+monolib_domevents.o: $(srcdir)/src/wasm/domevents.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/domevents.cpp
 
 monolib_wasm_frame.o: $(srcdir)/src/wasm/frame.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/frame.cpp
@@ -29621,6 +29632,9 @@ coredll_wasm_combobox.o: $(srcdir)/src/wasm/combobox.cpp $(COREDLL_ODEP)
 coredll_wasm_control.o: $(srcdir)/src/wasm/control.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/control.cpp
 
+coredll_domevents.o: $(srcdir)/src/wasm/domevents.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/domevents.cpp
+
 coredll_wasm_frame.o: $(srcdir)/src/wasm/frame.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/frame.cpp
 
@@ -34144,6 +34158,9 @@ corelib_wasm_combobox.o: $(srcdir)/src/wasm/combobox.cpp $(CORELIB_ODEP)
 
 corelib_wasm_control.o: $(srcdir)/src/wasm/control.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/control.cpp
+
+corelib_domevents.o: $(srcdir)/src/wasm/domevents.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/domevents.cpp
 
 corelib_wasm_frame.o: $(srcdir)/src/wasm/frame.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/frame.cpp

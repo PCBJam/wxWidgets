@@ -486,6 +486,21 @@ EM_BOOL KeyCallback(int eventType,
 {
     //printf("KeyCallback: %d\n", eventType);
 
+#ifndef __WXUNIVERSAL__
+    // DOM port: while a DOM editable (<input>/<textarea>) owns browser
+    // focus, the keystroke belongs to it — no wx dispatch, no
+    // preventDefault, or typing would be swallowed. Escape still goes to
+    // wx so modal dialogs can close. (wx-dom.js maintains the flag.)
+    if (EM_ASM_INT({
+            return (typeof window !== 'undefined' &&
+                    window.wxDomEditableFocused) ? 1 : 0;
+        }))
+    {
+        if (strcmp(emscriptenEvent->key, "Escape") != 0)
+            return EM_FALSE;
+    }
+#endif // !__WXUNIVERSAL__
+
     wxApp* app = static_cast<wxApp*>(userData);
     wxKeyEvent event;
     bool preventDefault = true;

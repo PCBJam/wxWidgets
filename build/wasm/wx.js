@@ -512,6 +512,17 @@ if (typeof navigator !== 'undefined') {
     windowMap.delete(id);
   };
 
+  // Read-only accessor for the DOM port's control layer (wx-dom.js): native
+  // controls attach to their top-level window's container element. No
+  // behavior change for the canvas port. (Guarded: with -pthread this script
+  // also evaluates in Web Workers, where `window` doesn't exist.)
+  if (typeof window !== 'undefined') {
+    window.__wxGetWindowElement = function (id) {
+      var windowData = windowMap.get(id);
+      return windowData ? windowData.window : null;
+    };
+  }
+
   var setWindowVisibility = function (id, isVisible) {
     //console.log('setWindowVisibility: ' + id + ': ' + isVisible);
 

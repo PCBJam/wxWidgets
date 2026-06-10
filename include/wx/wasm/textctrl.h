@@ -42,12 +42,19 @@ public:
     // editing the control marks it as dirty
     virtual void WriteText(const wxString& text) wxOVERRIDE;
 
+    // typed text / enter / focus from the real <input>/<textarea>
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 protected:
     // setting the value programmatically resets the modified flag
+    // and pushes the new value into the DOM element
     virtual void DoSetValue(const wxString& value, int flags = 0) wxOVERRIDE;
 
 private:
     bool m_modified;
+
+    // guards against echoing DOM 'input' events back into the element
+    bool m_inDomInput;
 
     wxDECLARE_DYNAMIC_CLASS(wxTextCtrl);
 };

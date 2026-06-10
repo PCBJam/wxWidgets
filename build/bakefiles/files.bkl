@@ -2128,6 +2128,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     src/wasm/choice.cpp
     src/wasm/combobox.cpp
     src/wasm/control.cpp
+    src/wasm/domevents.cpp
     src/wasm/frame.cpp
     src/wasm/gauge.cpp
     src/wasm/listbox.cpp
@@ -2162,6 +2163,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     wx/wasm/listbox.h
     wx/wasm/menu.h
     wx/wasm/menuitem.h
+    wx/wasm/private/dom.h
     wx/wasm/radiobox.h
     wx/wasm/radiobut.h
     wx/wasm/scrolbar.h

@@ -27,6 +27,11 @@ public:
 
     virtual wxWindow *SetDefault() wxOVERRIDE;
 
+    virtual void SetLabel(const wxString& label) wxOVERRIDE;
+
+    // wxEVT_BUTTON from the real <button>'s click
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 private:
     wxDECLARE_DYNAMIC_CLASS_NO_COPY(wxButton);
 };
