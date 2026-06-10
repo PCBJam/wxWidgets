@@ -12,6 +12,11 @@
 
 #include "wx/window.h"
 #include "wx/hashmap.h"
+#include "wx/base64.h"
+#include "wx/bitmap.h"
+#include "wx/image.h"
+#include "wx/log.h"
+#include "wx/mstream.h"
 #include "wx/wasm/private/dom.h"
 
 #include <emscripten.h>
@@ -29,6 +34,35 @@ void wxDomRegisterWindow(int domId, wxWindowWasm *window)
 void wxDomUnregisterWindow(int domId)
 {
     gs_domWindows.erase(domId);
+}
+
+wxString wxDomBitmapToDataURL(const wxBitmap& bitmap)
+{
+    if ( !bitmap.IsOk() )
+        return wxString();
+
+    const wxImage image = bitmap.ConvertToImage();
+    if ( !image.IsOk() )
+        return wxString();
+
+    // Apps don't necessarily call wxInitAllImageHandlers(); register the
+    // PNG handler on demand and keep encode failures out of wxLog dialogs.
+    if ( !wxImage::FindHandler(wxBITMAP_TYPE_PNG) )
+        wxImage::AddHandler(new wxPNGHandler);
+
+    wxLogNull noLog;
+
+    wxMemoryOutputStream stream;
+    if ( !image.SaveFile(stream, wxBITMAP_TYPE_PNG) )
+        return wxString();
+
+    const size_t len = stream.GetSize();
+    wxMemoryBuffer buf;
+    stream.CopyTo(buf.GetWriteBuf(len), len);
+    buf.UngetWriteBuf(len);
+
+    return wxT("data:image/png;base64,") +
+           wxBase64Encode(buf.GetData(), buf.GetDataLen());
 }
 
 extern "C"

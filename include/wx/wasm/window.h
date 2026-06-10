@@ -21,7 +21,9 @@ enum wxDomEventKind
     wxDOM_EVENT_CHANGE = 3,
     wxDOM_EVENT_FOCUSIN = 4,
     wxDOM_EVENT_FOCUSOUT = 5,
-    wxDOM_EVENT_ENTER = 6
+    wxDOM_EVENT_ENTER = 6,
+    wxDOM_EVENT_SPIN_UP = 7,
+    wxDOM_EVENT_SPIN_DOWN = 8
 };
 #endif // !__WXUNIVERSAL__
 

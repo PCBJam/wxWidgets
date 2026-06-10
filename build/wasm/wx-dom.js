@@ -26,7 +26,8 @@
   window.wxDomEditableFocused = 0;
 
   // Mirror of wxDomEventKind in include/wx/wasm/window.h.
-  var EVT = { CLICK: 1, INPUT: 2, CHANGE: 3, FOCUSIN: 4, FOCUSOUT: 5, ENTER: 6 };
+  var EVT = { CLICK: 1, INPUT: 2, CHANGE: 3, FOCUSIN: 4, FOCUSOUT: 5,
+              ENTER: 6, SPIN_UP: 7, SPIN_DOWN: 8 };
 
   // Marks the bundle as DOM-port for tests/boot code.
   window.wxDomPort = true;
@@ -120,6 +121,45 @@
         root.multiple = true;
         break;
       }
+      case 'spinbutton': {
+        // vertical up/down button pair; clicks dispatch SPIN_UP/SPIN_DOWN
+        root = document.createElement('div');
+        root.dataset.wxSpin = '1';
+        var mk = function (txt, cls) {
+          var b = document.createElement('button');
+          b.textContent = txt;
+          b.className = cls;
+          b.style.cssText = 'flex:1;padding:0;margin:0;font-size:7px;' +
+                            'line-height:1;min-height:0;overflow:hidden;';
+          root.appendChild(b);
+          return b;
+        };
+        root.style.display = 'flex';
+        root.dataset.wxDisplay = 'flex';
+        root.style.flexDirection = 'column';
+        mk('▲', 'wx-spin-up');
+        mk('▼', 'wx-spin-down');
+        break;
+      }
+      case 'radiobox': {
+        // owns its item rows (unlike statbox chrome): fieldset + legend +
+        // one <label><input type=radio><span></span></label> per item,
+        // filled by wxDomSetItems.
+        root = document.createElement('fieldset');
+        root.style.border = '1px solid #b5b2aa';
+        root.style.borderRadius = '2px';
+        label = document.createElement('legend');
+        label.className = 'wx-label';
+        label.style.padding = '0 3px';
+        root.appendChild(label);
+        root.dataset.wxRadioBox = '1';
+        break;
+      }
+      case 'image': {
+        root = document.createElement('img');
+        root.dataset.wxChrome = '1'; // non-interactive like statbmp
+        break;
+      }
       default: {
         root = document.createElement(type);
         if (typeAttr) root.setAttribute('type', typeAttr);
@@ -174,7 +214,16 @@
     if (built.input) inputs.set(domId, built.input);
     if (built.label) labels.set(domId, built.label);
 
-    if (!el.dataset.wxChrome) {
+    if (el.dataset.wxSpin) {
+      el.querySelector('.wx-spin-up').addEventListener('click', function (ev) {
+        dispatch(domId, EVT.SPIN_UP);
+        ev.stopPropagation();
+      });
+      el.querySelector('.wx-spin-down').addEventListener('click', function (ev) {
+        dispatch(domId, EVT.SPIN_DOWN);
+        ev.stopPropagation();
+      });
+    } else if (!el.dataset.wxChrome) {
       el.addEventListener('click', function (ev) {
         dispatch(domId, EVT.CLICK);
         ev.stopPropagation();
@@ -274,15 +323,31 @@
     return el.getAttribute('aria-pressed') === 'true' ? 1 : 0;
   };
 
-  // Numeric state: gauge/slider value.
+  // Numeric state: gauge/slider value, select/radiobox selection index.
   window.wxDomSetIntValue = function (domId, value) {
     var el = inputs.get(domId) || controls.get(domId);
-    if (el) el.value = value;
+    if (!el) return;
+    if (el.tagName === 'SELECT') {
+      el.selectedIndex = value;
+    } else if (el.dataset && el.dataset.wxRadioBox) {
+      var radios = el.querySelectorAll('input[type=radio]');
+      if (radios[value]) radios[value].checked = true;
+    } else {
+      el.value = value;
+    }
   };
 
   window.wxDomGetIntValue = function (domId) {
     var el = inputs.get(domId) || controls.get(domId);
     if (!el) return 0;
+    if (el.tagName === 'SELECT') return el.selectedIndex;
+    if (el.dataset && el.dataset.wxRadioBox) {
+      var radios = el.querySelectorAll('input[type=radio]');
+      for (var i = 0; i < radios.length; i++) {
+        if (radios[i].checked) return i;
+      }
+      return -1;
+    }
     var v = parseInt(el.value, 10);
     return isNaN(v) ? 0 : v;
   };
@@ -303,6 +368,86 @@
   window.wxDomSetGroupName = function (domId, name) {
     var el = inputs.get(domId);
     if (el) el.name = name;
+  };
+
+  // Item lists for select-likes and radiobox; items arrive \x1f-joined
+  // (the unit separator can't occur in wx labels).
+  window.wxDomSetItems = function (domId, joined) {
+    var el = controls.get(domId);
+    if (!el) return;
+    var items = joined === '' ? [] : joined.split('\x1f');
+    if (el.tagName === 'SELECT') {
+      el.textContent = '';
+      items.forEach(function (it) {
+        var o = document.createElement('option');
+        o.textContent = it;
+        el.appendChild(o);
+      });
+    } else if (el.dataset.wxRadioBox) {
+      Array.prototype.forEach.call(el.querySelectorAll('label'), function (r) {
+        r.remove();
+      });
+      items.forEach(function (it) {
+        var row = document.createElement('label');
+        row.style.cssText =
+          'display:flex;align-items:center;margin:1px 4px;white-space:pre;';
+        var inp = document.createElement('input');
+        inp.type = 'radio';
+        inp.name = 'wxradiobox-' + domId;
+        inp.style.margin = '0 3px 0 0';
+        inp.addEventListener('change', function () {
+          dispatch(domId, EVT.CHANGE);
+        });
+        var sp = document.createElement('span');
+        sp.textContent = it;
+        row.appendChild(inp);
+        row.appendChild(sp);
+        el.appendChild(row);
+      });
+    }
+  };
+
+  // Multi-selection (listbox): per-index selected state; selected indices
+  // returned as a comma-joined string.
+  window.wxDomSetItemSelected = function (domId, index, on) {
+    var el = controls.get(domId);
+    if (el && el.tagName === 'SELECT' && el.options[index]) {
+      el.options[index].selected = !!on;
+    }
+  };
+
+  window.wxDomGetSelectedIndices = function (domId) {
+    var el = controls.get(domId);
+    if (!el || el.tagName !== 'SELECT') return '';
+    var out = [];
+    for (var i = 0; i < el.options.length; i++) {
+      if (el.options[i].selected) out.push(i);
+    }
+    return out.join(',');
+  };
+
+  // Bitmap content as a PNG data URL: <img> roots directly; buttons get a
+  // leading <img> child (note: wxDomSetText replaces children — C++ must
+  // set the image after the label). Explicit w/h from the wx bitmap size:
+  // images load asynchronously, so without them the measurement clone (and
+  // hence DoGetBestSize) would see a 0x0 image.
+  window.wxDomSetImage = function (domId, dataUrl, w, h) {
+    var el = controls.get(domId);
+    if (!el) return;
+    var img;
+    if (el.tagName === 'IMG') {
+      img = el;
+    } else {
+      img = el.querySelector('img.wx-btn-img');
+      if (!img) {
+        img = document.createElement('img');
+        img.className = 'wx-btn-img';
+        el.insertBefore(img, el.firstChild);
+      }
+    }
+    if (w > 0) { img.width = w; img.style.width = w + 'px'; }
+    if (h > 0) { img.height = h; img.style.height = h + 'px'; }
+    img.src = dataUrl;
   };
 
   window.wxDomSetEnabled = function (domId, enabled) {

@@ -74,6 +74,9 @@ public:
     virtual void SetSelection(int n) wxOVERRIDE;
     virtual int GetSelection() const wxOVERRIDE;
 
+    // wxEVT_RADIOBOX from the fieldset's radio rows' change
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 private:
     // Cached items and per-item state until the control becomes a real DOM
     // element.

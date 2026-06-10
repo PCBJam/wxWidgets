@@ -11,6 +11,8 @@
 
 #include "wx/statbmp.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxStaticBitmap::wxStaticBitmap()
 {
 }
@@ -37,17 +39,26 @@ bool wxStaticBitmap::Create(wxWindow *parent,
     if (!wxControl::Create(parent, id, pos, size, style, wxDefaultValidator, name))
         return false;
 
-    SetBitmap(label);
+    WasmCreateDomNode("image");
 
-    // TODO(dom-phase-2): create a real <img>/<canvas> element.
+    // pushes the initial bitmap to the <img> created above
+    SetBitmap(label);
 
     return true;
 }
 
 void wxStaticBitmap::SetBitmap(const wxBitmapBundle& bitmap)
 {
-    // TODO(dom-phase-2): render the bitmap into the DOM element.
     m_bitmapBundle = bitmap;
+
+    if (WasmGetDomId())
+    {
+        const wxBitmap bmp = m_bitmapBundle.GetBitmap(wxDefaultSize);
+        if (bmp.IsOk())
+            wxDomSetImageDataURL(WasmGetDomId(), wxDomBitmapToDataURL(bmp),
+                                 bmp.GetWidth(), bmp.GetHeight());
+    }
+
     InvalidateBestSize();
 }
 

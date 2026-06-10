@@ -55,6 +55,9 @@ public:
     virtual void SetSelection(int n) wxOVERRIDE;
     virtual int GetSelection() const wxOVERRIDE;
 
+    // wxEVT_CHOICE from the real <select>'s change
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 protected:
     virtual int DoInsertItems(const wxArrayStringsAdapter& items,
                               unsigned int pos,
@@ -75,6 +78,9 @@ protected:
     int            m_selection;
 
 private:
+    // Push the whole cached item list + selection to the DOM <select>.
+    void WasmSyncItems();
+
     wxDECLARE_DYNAMIC_CLASS(wxChoice);
 };
 

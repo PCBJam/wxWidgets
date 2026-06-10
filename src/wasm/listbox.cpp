@@ -11,7 +11,24 @@
 
 #include "wx/listbox.h"
 
+#include "wx/tokenzr.h"
+#include "wx/wasm/private/dom.h"
+
 #define INVALID_INDEX_MESSAGE wxT("invalid listbox index")
+
+// Parse wxDomGetSelectedIndices()'s comma-joined string ("" = none).
+static void wxParseSelectedIndices(const wxString& joined, wxArrayInt& out)
+{
+    out.clear();
+
+    wxStringTokenizer tok(joined, wxT(","));
+    while (tok.HasMoreTokens())
+    {
+        long n;
+        if (tok.GetNextToken().ToLong(&n))
+            out.push_back(n);
+    }
+}
 
 wxListBox::wxListBox()
 {
@@ -57,13 +74,37 @@ bool wxListBox::Create(wxWindow *parent, wxWindowID id,
     if (!wxControl::Create(parent, id, pos, size, style, validator, name))
         return false;
 
-    // TODO(dom-phase-2): create a real <select size=N multiple?> element and
-    // wire its change/dblclick events through wx_dom_event.
+    // TODO(dom-phase-3): single-selection (wxLB_SINGLE) listboxes still use
+    // the multiple <select>; switch on the style here.
+    WasmCreateDomNode("listbox");
 
+    // Append() goes through DoInsertItems() which pushes the items to the
+    // DOM <select>.
     if (n > 0)
         Append(n, choices);
 
     return true;
+}
+
+void wxListBox::WasmSyncItems()
+{
+    if (!WasmGetDomId())
+        return;
+
+    // Rebuild the whole <option> list; this wipes the browser's selection
+    // state, so re-apply the cached one.
+    wxDomSetItems(WasmGetDomId(), m_items);
+    WasmSyncSelection();
+}
+
+void wxListBox::WasmSyncSelection()
+{
+    if (!WasmGetDomId())
+        return;
+
+    // Push the whole cached selection state to the DOM <select>.
+    for (size_t i = 0; i < m_itemsSelected.size(); ++i)
+        wxDomSetItemSelected(WasmGetDomId(), i, m_itemsSelected[i] != 0);
 }
 
 bool wxListBox::Create(wxWindow *parent, wxWindowID id,
@@ -83,12 +124,31 @@ bool wxListBox::IsSelected(int n) const
 {
     wxCHECK_MSG(IsValid(n), false, INVALID_INDEX_MESSAGE);
 
+    // The user can change the selection directly in the browser, so the
+    // live <select> state is the truth when DOM-backed (the cache is
+    // refreshed on every CHANGE event).
+    if (WasmGetDomId())
+    {
+        wxArrayInt selections;
+        wxParseSelectedIndices(wxDomGetSelectedIndices(WasmGetDomId()),
+                               selections);
+        return selections.Index(n) != wxNOT_FOUND;
+    }
+
     return m_itemsSelected[n] != 0;
 }
 
 int wxListBox::GetSelections(wxArrayInt& aSelections) const
 {
     aSelections.clear();
+
+    // See IsSelected(): live state wins when DOM-backed.
+    if (WasmGetDomId())
+    {
+        wxParseSelectedIndices(wxDomGetSelectedIndices(WasmGetDomId()),
+                               aSelections);
+        return aSelections.size();
+    }
 
     for (size_t i = 0; i < m_itemsSelected.size(); ++i)
     {
@@ -115,14 +175,23 @@ void wxListBox::SetString(unsigned int n, const wxString& s)
 {
     wxCHECK_RET(IsValid(n), INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): update the item's DOM <option> label.
     m_items[n] = s;
+    WasmSyncItems();
 
     InvalidateBestSize();
 }
 
 int wxListBox::GetSelection() const
 {
+    // See IsSelected(): live state wins when DOM-backed.
+    if (WasmGetDomId())
+    {
+        wxArrayInt selections;
+        wxParseSelectedIndices(wxDomGetSelectedIndices(WasmGetDomId()),
+                               selections);
+        return selections.empty() ? wxNOT_FOUND : selections[0];
+    }
+
     for (size_t i = 0; i < m_itemsSelected.size(); ++i)
     {
         if (m_itemsSelected[i])
@@ -140,13 +209,13 @@ void wxListBox::DoSetFirstItem(int WXUNUSED(n))
 
 void wxListBox::DoSetSelection(int n, bool select)
 {
-    // TODO(dom-phase-2): reflect the selection on the DOM element.
-
     if (n == wxNOT_FOUND)
     {
         // deselect everything
         for (size_t i = 0; i < m_itemsSelected.size(); ++i)
             m_itemsSelected[i] = 0;
+
+        WasmSyncSelection();
         return;
     }
 
@@ -160,6 +229,8 @@ void wxListBox::DoSetSelection(int n, bool select)
     }
 
     m_itemsSelected[n] = select ? 1 : 0;
+
+    WasmSyncSelection();
 }
 
 int wxListBox::DoInsertItems(const wxArrayStringsAdapter& items,
@@ -170,12 +241,14 @@ int wxListBox::DoInsertItems(const wxArrayStringsAdapter& items,
     InvalidateBestSize();
     int n = DoInsertItemsInLoop(items, pos, clientData, type);
     UpdateOldSelections();
+    WasmSyncItems();
     return n;
 }
 
 int wxListBox::DoInsertOneItem(const wxString& item, unsigned int pos)
 {
-    // TODO(dom-phase-2): insert a DOM <option> element.
+    // only called from DoInsertItemsInLoop(); DoInsertItems() pushes the
+    // rebuilt item list to the DOM once the loop is done
     m_items.Insert(item, pos);
     m_itemsClientData.Insert(NULL, pos);
     m_itemsSelected.Insert(0, pos);
@@ -195,20 +268,56 @@ void *wxListBox::DoGetItemClientData(unsigned int n) const
 
 void wxListBox::DoClear()
 {
-    // TODO(dom-phase-2): remove all DOM <option> elements.
     m_items.Clear();
     m_itemsClientData.Clear();
     m_itemsSelected.Clear();
+
+    WasmSyncItems();
 }
 
 void wxListBox::DoDeleteOneItem(unsigned int pos)
 {
     wxCHECK_RET(IsValid(pos), INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): remove the item's DOM <option> element.
     m_items.RemoveAt(pos);
     m_itemsClientData.RemoveAt(pos);
     m_itemsSelected.RemoveAt(pos);
+
+    WasmSyncItems();
+}
+
+void wxListBox::OnDomEvent(wxDomEventKind kind)
+{
+    if (kind == wxDOM_EVENT_CHANGE)
+    {
+        // Pull the live selection into the cache and fire wxEVT_LISTBOX
+        // with the first selected index, like any port does for user
+        // selection.
+        wxArrayInt selections;
+        wxParseSelectedIndices(wxDomGetSelectedIndices(WasmGetDomId()),
+                               selections);
+
+        for (size_t i = 0; i < m_itemsSelected.size(); ++i)
+            m_itemsSelected[i] = 0;
+        for (size_t i = 0; i < selections.size(); ++i)
+        {
+            const int n = selections[i];
+            if (n >= 0 && n < static_cast<int>(m_itemsSelected.size()))
+                m_itemsSelected[n] = 1;
+        }
+
+        const int sel = selections.empty() ? wxNOT_FOUND : selections[0];
+
+        wxCommandEvent event(wxEVT_LISTBOX, GetId());
+        event.SetInt(sel);
+        if (sel != wxNOT_FOUND)
+            event.SetString(GetString(sel));
+        event.SetEventObject(this);
+        HandleWindowEvent(event);
+        return;
+    }
+
+    wxControl::OnDomEvent(kind);
 }
 
 #endif // wxUSE_LISTBOX

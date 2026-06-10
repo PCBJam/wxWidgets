@@ -55,6 +55,9 @@ public:
 
     virtual int GetSelection() const wxOVERRIDE;
 
+    // wxEVT_LISTBOX from the real <select multiple>'s change
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 protected:
     virtual void DoSetFirstItem(int n) wxOVERRIDE;
 
@@ -80,6 +83,10 @@ protected:
     wxArrayInt     m_itemsSelected;
 
 private:
+    // Push the whole cached item list (+ selection) to the DOM <select>.
+    void WasmSyncItems();
+    void WasmSyncSelection();
+
     wxDECLARE_DYNAMIC_CLASS(wxListBox);
 };
 

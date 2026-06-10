@@ -11,6 +11,8 @@
 
 #include "wx/radiobox.h"
 
+#include "wx/wasm/private/dom.h"
+
 #define INVALID_INDEX_MESSAGE wxT("invalid radio box index")
 
 wxIMPLEMENT_DYNAMIC_CLASS(wxRadioBox, wxControl);
@@ -98,9 +100,16 @@ bool wxRadioBox::Create(wxWindow *parent,
 
     SetMajorDim(majorDim == 0 ? n : majorDim, style);
 
-    // TODO(dom-phase-2): create a real <fieldset>/<legend> element with one
-    // <input type="radio"> per item and wire its change events through
-    // wx_dom_event.
+    // <fieldset> owning a <legend> and one radio row per item.
+    WasmCreateDomNode("radiobox");
+
+    if (WasmGetDomId())
+    {
+        wxDomSetText(WasmGetDomId(), GetLabelText());  // the <legend>
+        wxDomSetItems(WasmGetDomId(), m_items);
+        if (m_selection != wxNOT_FOUND)
+            wxDomSetIntValue(WasmGetDomId(), m_selection);
+    }
 
     return true;
 }
@@ -109,7 +118,7 @@ bool wxRadioBox::Enable(unsigned int n, bool enable)
 {
     wxCHECK_MSG(IsValid(n), false, INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): reflect the state on the item's DOM element.
+    // TODO(dom-phase-3): reflect the state on the item's DOM radio row.
     m_itemsEnabled[n] = enable ? 1 : 0;
 
     return true;
@@ -119,7 +128,7 @@ bool wxRadioBox::Show(unsigned int n, bool show)
 {
     wxCHECK_MSG(IsValid(n), false, INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): reflect the state on the item's DOM element.
+    // TODO(dom-phase-3): reflect the state on the item's DOM radio row.
     m_itemsShown[n] = show ? 1 : 0;
 
     return true;
@@ -155,8 +164,16 @@ void wxRadioBox::SetString(unsigned int n, const wxString& s)
 {
     wxCHECK_RET(IsValid(n), INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): update the item's DOM label.
     m_items[n] = s;
+
+    if (WasmGetDomId())
+    {
+        // Rebuilding the radio rows wipes the checked state, so re-apply
+        // the cached selection.
+        wxDomSetItems(WasmGetDomId(), m_items);
+        if (m_selection != wxNOT_FOUND)
+            wxDomSetIntValue(WasmGetDomId(), m_selection);
+    }
 
     InvalidateBestSize();
 }
@@ -165,13 +182,40 @@ void wxRadioBox::SetSelection(int n)
 {
     wxCHECK_RET(IsValid(n), INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): check the item's DOM radio input.
     m_selection = n;
+
+    if (WasmGetDomId())
+        wxDomSetIntValue(WasmGetDomId(), n);
 }
 
 int wxRadioBox::GetSelection() const
 {
+    // The user can change the selection directly in the browser, so the
+    // live checked row is the truth when DOM-backed (-1 == wxNOT_FOUND).
+    if (WasmGetDomId())
+        return wxDomGetIntValue(WasmGetDomId());
+
     return m_selection;
+}
+
+void wxRadioBox::OnDomEvent(wxDomEventKind kind)
+{
+    if (kind == wxDOM_EVENT_CHANGE)
+    {
+        // Pull the picked row into the cache and fire wxEVT_RADIOBOX,
+        // like any port does for user selection.
+        m_selection = wxDomGetIntValue(WasmGetDomId());
+
+        wxCommandEvent event(wxEVT_RADIOBOX, GetId());
+        event.SetInt(m_selection);
+        if (m_selection != wxNOT_FOUND)
+            event.SetString(GetString(m_selection));
+        event.SetEventObject(this);
+        HandleWindowEvent(event);
+        return;
+    }
+
+    wxControl::OnDomEvent(kind);
 }
 
 #endif // wxUSE_RADIOBOX

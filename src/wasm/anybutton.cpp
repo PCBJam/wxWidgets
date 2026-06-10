@@ -11,6 +11,8 @@
 
 #include "wx/anybutton.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxBitmap wxAnyButton::DoGetBitmap(State state) const
 {
     return m_bitmaps[state].GetBitmap(wxDefaultSize);
@@ -18,8 +20,20 @@ wxBitmap wxAnyButton::DoGetBitmap(State state) const
 
 void wxAnyButton::DoSetBitmap(const wxBitmapBundle& bitmap, State which)
 {
-    // TODO(dom-phase-2): render the bitmap into the DOM element.
     m_bitmaps[which] = bitmap;
+
+    // Push the normal-state bitmap to the DOM <button>'s leading <img>.
+    // Note: wxDomSetText replaces the element's children, so any SetLabel
+    // must come before the bitmap (wxButton::Create guarantees that order).
+    // TODO(dom-phase-3): reflect the other states (hover/pressed/disabled).
+    if (which == State_Normal && WasmGetDomId())
+    {
+        const wxBitmap bmp = m_bitmaps[which].GetBitmap(wxDefaultSize);
+        if (bmp.IsOk())
+            wxDomSetImageDataURL(WasmGetDomId(), wxDomBitmapToDataURL(bmp),
+                                 bmp.GetWidth(), bmp.GetHeight());
+    }
+
     InvalidateBestSize();
 }
 

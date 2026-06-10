@@ -28,6 +28,9 @@ public:
     virtual int GetValue() const wxOVERRIDE;
     virtual void SetValue(int val) wxOVERRIDE;
 
+    // wxEVT_SPIN_UP/wxEVT_SPIN_DOWN + wxEVT_SPIN from the ▲▼ button pair
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 private:
     int m_value;
 

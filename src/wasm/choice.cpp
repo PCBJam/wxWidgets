@@ -11,6 +11,8 @@
 
 #include "wx/choice.h"
 
+#include "wx/wasm/private/dom.h"
+
 #define INVALID_INDEX_MESSAGE wxT("invalid choice index")
 
 wxChoice::wxChoice() :
@@ -73,13 +75,26 @@ bool wxChoice::Create(wxWindow *parent, wxWindowID id,
     if (!wxControl::Create(parent, id, pos, size, style, validator, name))
         return false;
 
-    // TODO(dom-phase-2): create a real <select> element and wire its change
-    // event through wx_dom_event.
+    WasmCreateDomNode("choice");
 
+    // Append() goes through DoInsertItems() which pushes the items to the
+    // DOM <select>.
     if (n > 0)
         Append(n, choices);
 
     return true;
+}
+
+void wxChoice::WasmSyncItems()
+{
+    if (!WasmGetDomId())
+        return;
+
+    // Rebuild the whole <option> list; this wipes the browser's selection
+    // state, so re-apply the cached one (selectedIndex = -1 clears it for
+    // wxNOT_FOUND).
+    wxDomSetItems(WasmGetDomId(), m_items);
+    wxDomSetIntValue(WasmGetDomId(), m_selection);
 }
 
 unsigned int wxChoice::GetCount() const
@@ -98,20 +113,27 @@ void wxChoice::SetString(unsigned int n, const wxString& s)
 {
     wxCHECK_RET(IsValid(n), INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): update the item's DOM <option> label.
     m_items[n] = s;
+    WasmSyncItems();
 
     InvalidateBestSize();
 }
 
 void wxChoice::SetSelection(int n)
 {
-    // TODO(dom-phase-2): reflect the selection on the DOM element.
     m_selection = n;
+
+    if (WasmGetDomId())
+        wxDomSetIntValue(WasmGetDomId(), n);
 }
 
 int wxChoice::GetSelection() const
 {
+    // The user can change the selection directly in the browser, so the
+    // live selectedIndex is the truth when DOM-backed (-1 == wxNOT_FOUND).
+    if (WasmGetDomId())
+        return wxDomGetIntValue(WasmGetDomId());
+
     return m_selection;
 }
 
@@ -122,12 +144,17 @@ int wxChoice::DoInsertItems(const wxArrayStringsAdapter& items,
 {
     InvalidateBestSize();
 
-    return DoInsertItemsInLoop(items, pos, clientData, type);
+    const int ret = DoInsertItemsInLoop(items, pos, clientData, type);
+
+    WasmSyncItems();
+
+    return ret;
 }
 
 int wxChoice::DoInsertOneItem(const wxString& item, unsigned int pos)
 {
-    // TODO(dom-phase-2): insert a DOM <option> element.
+    // only called from DoInsertItemsInLoop(); DoInsertItems() pushes the
+    // rebuilt item list to the DOM once the loop is done
     m_items.Insert(item, pos);
     m_itemsClientData.Insert(NULL, pos);
 
@@ -150,17 +177,17 @@ void *wxChoice::DoGetItemClientData(unsigned int n) const
 
 void wxChoice::DoClear()
 {
-    // TODO(dom-phase-2): remove all DOM <option> elements.
     m_items.Clear();
     m_itemsClientData.Clear();
     m_selection = wxNOT_FOUND;
+
+    WasmSyncItems();
 }
 
 void wxChoice::DoDeleteOneItem(unsigned int pos)
 {
     wxCHECK_RET(IsValid(pos), INVALID_INDEX_MESSAGE);
 
-    // TODO(dom-phase-2): remove the item's DOM <option> element.
     m_items.RemoveAt(pos);
     m_itemsClientData.RemoveAt(pos);
 
@@ -168,6 +195,28 @@ void wxChoice::DoDeleteOneItem(unsigned int pos)
         m_selection = wxNOT_FOUND;
     else if (m_selection > static_cast<int>(pos))
         --m_selection;
+
+    WasmSyncItems();
+}
+
+void wxChoice::OnDomEvent(wxDomEventKind kind)
+{
+    if (kind == wxDOM_EVENT_CHANGE)
+    {
+        // Pull the picked index into the cache and fire wxEVT_CHOICE,
+        // like any port does for user selection.
+        m_selection = wxDomGetIntValue(WasmGetDomId());
+
+        wxCommandEvent event(wxEVT_CHOICE, GetId());
+        event.SetInt(m_selection);
+        if (m_selection >= 0)
+            event.SetString(GetString(m_selection));
+        event.SetEventObject(this);
+        HandleWindowEvent(event);
+        return;
+    }
+
+    wxControl::OnDomEvent(kind);
 }
 
 #endif // wxUSE_CHOICE

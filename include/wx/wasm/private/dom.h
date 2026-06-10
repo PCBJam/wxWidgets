@@ -14,6 +14,7 @@
 #include <emscripten.h>
 
 #include "wx/string.h"
+#include "wx/arrstr.h"
 
 class wxWindowWasm;
 
@@ -107,6 +108,52 @@ inline void wxDomSetGroupName(int domId, const wxString& name)
     EM_ASM({ wxDomSetGroupName($0, UTF8ToString($1)); },
            domId, (const char *)name.utf8_str());
 }
+
+// Item lists (select/radiobox): pass items joined with the \x1f unit
+// separator (cannot occur in wx labels).
+inline void wxDomSetItems(int domId, const wxArrayString& items)
+{
+    wxString joined;
+    for ( size_t i = 0; i < items.size(); i++ )
+    {
+        if ( i > 0 )
+            joined += wxT('\x1f');
+        joined += items[i];
+    }
+    EM_ASM({ wxDomSetItems($0, UTF8ToString($1)); },
+           domId, (const char *)joined.utf8_str());
+}
+
+inline void wxDomSetItemSelected(int domId, int index, bool selected)
+{
+    EM_ASM({ wxDomSetItemSelected($0, $1, $2); }, domId, index, selected);
+}
+
+// Selected indices of a multi-select listbox, comma-joined ("" = none).
+inline wxString wxDomGetSelectedIndices(int domId)
+{
+    char *s = (char *)EM_ASM_PTR({
+        return stringToNewUTF8(wxDomGetSelectedIndices($0));
+    }, domId);
+    wxString result = wxString::FromUTF8(s);
+    free(s);
+    return result;
+}
+
+// width/height are the wx bitmap dimensions: images load asynchronously,
+// so explicit sizes are required for correct best-size measurement.
+inline void wxDomSetImageDataURL(int domId, const wxString& dataUrl,
+                                 int width, int height)
+{
+    EM_ASM({ wxDomSetImage($0, UTF8ToString($1), $2, $3); },
+           domId, (const char *)dataUrl.utf8_str(), width, height);
+}
+
+class wxBitmap;
+
+// PNG data URL for a bitmap (implemented in src/wasm/domevents.cpp);
+// empty string if the bitmap is invalid or encoding fails.
+wxString wxDomBitmapToDataURL(const wxBitmap& bitmap);
 
 inline void wxDomSetShown(int domId, bool shown)
 {

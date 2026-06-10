@@ -11,6 +11,8 @@
 
 #include "wx/bmpbuttn.h"
 
+#include "wx/wasm/private/dom.h"
+
 wxBitmapButton::wxBitmapButton()
 {
 }
@@ -36,20 +38,33 @@ bool wxBitmapButton::Create(wxWindow *parent,
                             const wxValidator& validator,
                             const wxString& name)
 {
+    // wxBitmapButtonBase::Create() goes through wxButton::Create() which
+    // creates the "button" DOM node and sets its (empty) label.
     if (!wxBitmapButtonBase::Create(parent, id, pos, size, style,
                                     validator, name))
         return false;
 
-    // TODO(dom-phase-2): create a real <button> element showing the bitmap.
-
     // Show the initial bitmap and resize accordingly:
     if (bitmap.IsOk())
     {
+        // goes through wxAnyButton::DoSetBitmap() which pushes the bitmap
+        // to the DOM <button>'s <img>
         wxBitmapButtonBase::SetBitmapLabel(bitmap);
 
         // we need to adjust the size after setting the bitmap as it may be
         // too big for the default button size
         SetInitialSize(size);
+    }
+
+    // Push the label bitmap once more now that the whole Create chain ran:
+    // the image must always be set AFTER any SetLabel (wxDomSetText
+    // replaces the element's children, dropping the <img>).
+    if (WasmGetDomId())
+    {
+        const wxBitmap bmp = GetBitmapLabel();
+        if (bmp.IsOk())
+            wxDomSetImageDataURL(WasmGetDomId(), wxDomBitmapToDataURL(bmp),
+                                 bmp.GetWidth(), bmp.GetHeight());
     }
 
     return true;
