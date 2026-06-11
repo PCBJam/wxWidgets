@@ -92,11 +92,11 @@ public:
   // operations
   // ----------
     // remove one page from the notebook, and delete the page.
+    // (the Motif-era wxNotebookPage* overloads were removed: no other port
+    // has them and they make literal-0 page indices ambiguous)
   bool DeletePage(size_t nPage);
-  bool DeletePage(wxNotebookPage* page);
     // remove one page from the notebook, without deleting the page.
   bool RemovePage(size_t nPage);
-  bool RemovePage(wxNotebookPage* page);
   virtual wxWindow* DoRemovePage(size_t nPage);
 
     // remove all pages

@@ -35,7 +35,7 @@ public:
 #if wxUSE_MENUS
     virtual void DetachMenuBar() wxOVERRIDE;
     virtual void AttachMenuBar(wxMenuBar *menubar) wxOVERRIDE;
-    void PositionMenuBar();
+    virtual void PositionMenuBar() wxOVERRIDE;
 #endif // wxUSE_MENUS
 
 #if wxUSE_STATUSBAR

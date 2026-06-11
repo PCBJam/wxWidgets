@@ -301,14 +301,9 @@ bool wxNotebook::DeletePage(size_t nPage)
     return true;
 }
 
-bool wxNotebook::DeletePage(wxNotebookPage* page)
-{
-    int pagePos = FindPagePosition(page);
-    if (pagePos > -1)
-        return DeletePage(pagePos);
-    else
-        return false;
-}
+// NOTE: the Motif-era DeletePage/RemovePage(wxNotebookPage*) overloads were
+// removed: no other port has them (portable code can't call them) and they
+// make calls with a literal 0 page index ambiguous (null pointer constant).
 
 bool wxNotebook::RemovePage(size_t nPage)
 {
@@ -359,14 +354,6 @@ wxWindow* wxNotebook::DoRemovePage(size_t nPage)
     return pPage;
 }
 
-bool wxNotebook::RemovePage(wxNotebookPage* page)
-{
-    int pagePos = FindPagePosition(page);
-    if (pagePos > -1)
-        return RemovePage(pagePos);
-    else
-        return false;
-}
 
 // Find the position of the wxNotebookPage, -1 if not found.
 int wxNotebook::FindPagePosition(wxNotebookPage* page) const
