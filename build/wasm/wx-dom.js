@@ -594,6 +594,22 @@
     if (el) el.title = tip;
   };
 
+  // Insets in CSS px relative to the element's own box; all <= 0 clears.
+  // clip-path does not affect layout and clips hit-testing too, so rows
+  // scrolled out of a pane neither paint nor catch clicks.
+  window.wxDomSetClip = function (domId, top, right, bottom, left) {
+    var el = controls.get(domId);
+    if (!el) return;
+    if (top <= 0 && right <= 0 && bottom <= 0 && left <= 0) {
+      if (el.style.clipPath) el.style.clipPath = '';
+    } else {
+      el.style.clipPath = 'inset(' + Math.max(0, top) + 'px ' +
+                          Math.max(0, right) + 'px ' +
+                          Math.max(0, bottom) + 'px ' +
+                          Math.max(0, left) + 'px)';
+    }
+  };
+
   // ========== Menus & toolbars ==========
 
   var openMenuPopup = null;

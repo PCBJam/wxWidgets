@@ -231,6 +231,14 @@ inline void wxDomSetTooltip(int domId, const wxString& tip)
     EM_ASM({ wxDomSetTooltip($0, UTF8ToString($1)); }, domId, (const char *)tip.utf8_str());
 }
 
+// Clip the element to its visible part: clip-path inset() in px relative
+// to the element's own box (clips painting AND hit-testing); all <= 0
+// clears the clip.
+inline void wxDomSetClip(int domId, int top, int right, int bottom, int left)
+{
+    EM_ASM({ wxDomSetClip($0, $1, $2, $3, $4); }, domId, top, right, bottom, left);
+}
+
 // Intrinsic (content-driven) size of the live element: width/height packed
 // as (w << 16) | h. Used by DoGetBestSize before sizer layout.
 inline void wxDomGetIntrinsicSize(int domId, int *w, int *h)

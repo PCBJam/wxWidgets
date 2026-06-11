@@ -179,8 +179,17 @@ private:
     // JS-side element id for DOM-backed native controls (0 = none).
     int m_domId;
 
-    // Push the wx rect (in top-level-window coordinates) to the DOM element.
+    // Last clip-path insets pushed to the element (l,t,r,b packed in a
+    // wxRect) — skips redundant JS crossings; unclipped is the common case.
+    wxRect m_domClip;
+    bool m_domClipped;
+
+    // Push the wx rect (in top-level-window coordinates) to the DOM
+    // element, clipped to the intersection of the ancestor client rects
+    // (mirrors the paint-DC clip walk), then recurse into descendants.
     void UpdateDomGeometry();
+    void UpdateDomGeometryRecursive(const wxRect *ancestorClip);
+    void ComputeAncestorClip(wxRect *clip, bool *hasClip);
 
     // Push IsShownOnScreen() to this window's and all descendants' DOM
     // elements (a hidden ancestor — e.g. an unselected notebook page —

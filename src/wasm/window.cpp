@@ -321,6 +321,7 @@ void wxWindowWasm::Init()
     }
 
     m_domId = 0;
+    m_domClipped = false;
 #endif // !__WXUNIVERSAL__
 }
 
@@ -354,15 +355,102 @@ bool wxWindowWasm::WasmCreateDomNode(const char *tag, const char *typeAttr)
 
 void wxWindowWasm::UpdateDomGeometry()
 {
+    // The starting clip is the intersection of every non-TLW ancestor's
+    // client rect (TLW coords) — same semantics as the paint-DC clip walk
+    // in dcclient.cpp. The TLW box itself is excluded: frame bars live at
+    // negative client offsets and the container div's overflow:hidden
+    // already bounds the TLW.
+    wxRect clip;
+    bool hasClip = false;
+    ComputeAncestorClip(&clip, &hasClip);
+    UpdateDomGeometryRecursive(hasClip ? &clip : NULL);
+}
+
+void wxWindowWasm::ComputeAncestorClip(wxRect *clip, bool *hasClip)
+{
+    *hasClip = false;
+
+    const wxNonOwnedWindow *tlw = GetTopLevelWindow();
+    if ( !tlw )
+        return;
+
+    const wxPoint tlwOrigin = tlw->GetScreenPosition();
+
+    for ( const wxWindow *anc = GetParent();
+          anc && anc != tlw && !anc->IsTopLevel();
+          anc = anc->GetParent() )
+    {
+        const wxPoint clientTLW = anc->GetClientAreaOrigin() +
+                                  (anc->GetScreenPosition() - tlwOrigin);
+        const wxRect clientRect(clientTLW, anc->GetClientSize());
+
+        if ( !*hasClip )
+        {
+            *clip = clientRect;
+            *hasClip = true;
+        }
+        else
+        {
+            clip->Intersect(clientRect);
+        }
+    }
+}
+
+void wxWindowWasm::UpdateDomGeometryRecursive(const wxRect *ancestorClip)
+{
+    wxNonOwnedWindow *tlw = GetTopLevelWindow();
+    if ( !tlw )
+        return;
+
+    const wxPoint pos = GetScreenPosition() - tlw->GetScreenPosition();
+
     if ( m_domId )
     {
-        wxNonOwnedWindow *tlw = GetTopLevelWindow();
-        if ( tlw )
+        // Element is absolutely positioned inside the TLW container div.
+        wxDomSetRect(m_domId, pos.x, pos.y, m_width, m_height);
+
+        // Clip to the accumulated ancestor viewport (clip-path insets are
+        // relative to the element's own box). Cached: the common case is
+        // "unclipped", which must not cost a JS crossing per layout.
+        int t = 0, r = 0, b = 0, l = 0;
+        if ( ancestorClip )
         {
-            // Element is absolutely positioned inside the TLW container div.
-            const wxPoint pos = GetScreenPosition() - tlw->GetScreenPosition();
-            wxDomSetRect(m_domId, pos.x, pos.y, m_width, m_height);
+            const wxRect own(pos.x, pos.y, m_width, m_height);
+            wxRect vis = own;
+            vis.Intersect(*ancestorClip);
+            if ( vis.IsEmpty() )
+            {
+                t = m_height > 0 ? m_height : 1;
+            }
+            else
+            {
+                t = vis.y - own.y;
+                l = vis.x - own.x;
+                b = (own.y + own.height) - (vis.y + vis.height);
+                r = (own.x + own.width) - (vis.x + vis.width);
+            }
         }
+
+        const wxRect newClip(l, t, r, b); // abuse wxRect as a 4-int tuple
+        const bool clipped = t > 0 || r > 0 || b > 0 || l > 0;
+        if ( clipped != m_domClipped || (clipped && newClip != m_domClip) )
+        {
+            wxDomSetClip(m_domId, t, r, b, l);
+            m_domClip = newClip;
+            m_domClipped = clipped;
+        }
+    }
+
+    // Children are clipped by this window's client area as well (unless
+    // this is a TLW, whose children start unclipped — see above).
+    wxRect childClip;
+    const wxRect *childClipPtr = NULL;
+    if ( !IsTopLevel() )
+    {
+        childClip = wxRect(pos + GetClientAreaOrigin(), GetClientSize());
+        if ( ancestorClip )
+            childClip.Intersect(*ancestorClip);
+        childClipPtr = &childClip;
     }
 
     // DOM rects are TLW-relative, so when THIS window moves, every
@@ -372,7 +460,7 @@ void wxWindowWasm::UpdateDomGeometry()
           node; node = node->GetNext() )
     {
         wxWindowWasm *child = static_cast<wxWindowWasm *>(node->GetData());
-        child->UpdateDomGeometry();
+        child->UpdateDomGeometryRecursive(childClipPtr);
     }
 }
 
