@@ -11,7 +11,7 @@
 #include "wx/arrstr.h"
 #include "wx/vector.h"
 
-class WXDLLIMPEXP_CORE wxNotebook : public wxBookCtrlBase
+class WXDLLIMPEXP_CORE wxNotebook : public wxNotebookBase
 {
 public:
     wxNotebook();
@@ -44,6 +44,11 @@ public:
     virtual int ChangeSelection(size_t n) wxOVERRIDE
         { return DoSetSelection(n); }
     virtual bool DeleteAllPages() wxOVERRIDE;
+
+    // wxNotebookBase additions (no-ops: the DOM strip has no fixed-width
+    // tabs or padding knobs)
+    virtual void SetPadding(const wxSize& WXUNUSED(padding)) wxOVERRIDE { }
+    virtual void SetTabSize(const wxSize& WXUNUSED(sz)) wxOVERRIDE { }
 
     virtual wxSize CalcSizeFromPage(const wxSize& sizePage) const wxOVERRIDE;
 
