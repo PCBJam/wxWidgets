@@ -3755,6 +3755,7 @@ COND_TOOLKIT_WASM_GUI_HDR =  \
 	wx/wasm/listbox.h \
 	wx/wasm/menu.h \
 	wx/wasm/menuitem.h \
+	wx/wasm/notebook.h \
 	wx/wasm/private/dom.h \
 	wx/wasm/radiobox.h \
 	wx/wasm/radiobut.h \
@@ -6015,10 +6016,8 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS =  \
 	monodll_fontpickerg.o \
 	monodll_generic_listctrl.o \
 	monodll_mdig.o \
-	monodll_generic_notebook.o \
 	monodll_prntdlgg.o \
 	monodll_generic_statusbr.o \
-	monodll_tabg.o \
 	monodll_wasm_anybutton.o \
 	monodll_wasm_bmpbuttn.o \
 	monodll_wasm_button.o \
@@ -6033,6 +6032,7 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS =  \
 	monodll_wasm_listbox.o \
 	monodll_wasm_menu.o \
 	monodll_wasm_menuitem.o \
+	monodll_wasm_notebook.o \
 	monodll_wasm_radiobox.o \
 	monodll_wasm_radiobut.o \
 	monodll_wasm_scrolbar.o \
@@ -8153,10 +8153,8 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_1 =  \
 	monolib_fontpickerg.o \
 	monolib_generic_listctrl.o \
 	monolib_mdig.o \
-	monolib_generic_notebook.o \
 	monolib_prntdlgg.o \
 	monolib_generic_statusbr.o \
-	monolib_tabg.o \
 	monolib_wasm_anybutton.o \
 	monolib_wasm_bmpbuttn.o \
 	monolib_wasm_button.o \
@@ -8171,6 +8169,7 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_1 =  \
 	monolib_wasm_listbox.o \
 	monolib_wasm_menu.o \
 	monolib_wasm_menuitem.o \
+	monolib_wasm_notebook.o \
 	monolib_wasm_radiobox.o \
 	monolib_wasm_radiobut.o \
 	monolib_wasm_scrolbar.o \
@@ -10445,10 +10444,8 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_2 =  \
 	coredll_fontpickerg.o \
 	coredll_generic_listctrl.o \
 	coredll_mdig.o \
-	coredll_generic_notebook.o \
 	coredll_prntdlgg.o \
 	coredll_generic_statusbr.o \
-	coredll_tabg.o \
 	coredll_wasm_anybutton.o \
 	coredll_wasm_bmpbuttn.o \
 	coredll_wasm_button.o \
@@ -10463,6 +10460,7 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_2 =  \
 	coredll_wasm_listbox.o \
 	coredll_wasm_menu.o \
 	coredll_wasm_menuitem.o \
+	coredll_wasm_notebook.o \
 	coredll_wasm_radiobox.o \
 	coredll_wasm_radiobut.o \
 	coredll_wasm_scrolbar.o \
@@ -12310,10 +12308,8 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_3 =  \
 	corelib_fontpickerg.o \
 	corelib_generic_listctrl.o \
 	corelib_mdig.o \
-	corelib_generic_notebook.o \
 	corelib_prntdlgg.o \
 	corelib_generic_statusbr.o \
-	corelib_tabg.o \
 	corelib_wasm_anybutton.o \
 	corelib_wasm_bmpbuttn.o \
 	corelib_wasm_button.o \
@@ -12328,6 +12324,7 @@ COND_TOOLKIT_WASM___GUI_SRC_OBJECTS_3 =  \
 	corelib_wasm_listbox.o \
 	corelib_wasm_menu.o \
 	corelib_wasm_menuitem.o \
+	corelib_wasm_notebook.o \
 	corelib_wasm_radiobox.o \
 	corelib_wasm_radiobut.o \
 	corelib_wasm_scrolbar.o \
@@ -17139,8 +17136,14 @@ monodll_motif_window.o: $(srcdir)/src/motif/window.cpp $(MONODLL_ODEP)
 monodll_xmcombo.o: $(srcdir)/src/motif/xmcombo/xmcombo.c $(MONODLL_ODEP)
 	$(CCC) -c -o $@ $(MONODLL_CFLAGS) $(srcdir)/src/motif/xmcombo/xmcombo.c
 
+monodll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
 monodll_generic_statline.o: $(srcdir)/src/generic/statline.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/statline.cpp
+
+monodll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 monodll_msw_accel.o: $(srcdir)/src/msw/accel.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/msw/accel.cpp
@@ -17831,6 +17834,9 @@ monodll_wasm_menu.o: $(srcdir)/src/wasm/menu.cpp $(MONODLL_ODEP)
 
 monodll_wasm_menuitem.o: $(srcdir)/src/wasm/menuitem.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/menuitem.cpp
+
+monodll_wasm_notebook.o: $(srcdir)/src/wasm/notebook.cpp $(MONODLL_ODEP)
+	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/notebook.cpp
 
 monodll_wasm_radiobox.o: $(srcdir)/src/wasm/radiobox.cpp $(MONODLL_ODEP)
 	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/wasm/radiobox.cpp
@@ -21015,18 +21021,6 @@ monodll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@monodll_mdig.o: $(srcdir)/src/generic/mdig.cpp $(MONODLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
 
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monodll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONODLL_ODEP)
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONODLL_ODEP)
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monodll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONODLL_ODEP)
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
-
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monodll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONODLL_ODEP)
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
-
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@monodll_anybutton_osx.o: $(srcdir)/src/osx/anybutton_osx.cpp $(MONODLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONODLL_CXXFLAGS) $(srcdir)/src/osx/anybutton_osx.cpp
 
@@ -22710,8 +22704,14 @@ monolib_motif_window.o: $(srcdir)/src/motif/window.cpp $(MONOLIB_ODEP)
 monolib_xmcombo.o: $(srcdir)/src/motif/xmcombo/xmcombo.c $(MONOLIB_ODEP)
 	$(CCC) -c -o $@ $(MONOLIB_CFLAGS) $(srcdir)/src/motif/xmcombo/xmcombo.c
 
+monolib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
 monolib_generic_statline.o: $(srcdir)/src/generic/statline.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/statline.cpp
+
+monolib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 monolib_msw_accel.o: $(srcdir)/src/msw/accel.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/msw/accel.cpp
@@ -23402,6 +23402,9 @@ monolib_wasm_menu.o: $(srcdir)/src/wasm/menu.cpp $(MONOLIB_ODEP)
 
 monolib_wasm_menuitem.o: $(srcdir)/src/wasm/menuitem.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/menuitem.cpp
+
+monolib_wasm_notebook.o: $(srcdir)/src/wasm/notebook.cpp $(MONOLIB_ODEP)
+	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/notebook.cpp
 
 monolib_wasm_radiobox.o: $(srcdir)/src/wasm/radiobox.cpp $(MONOLIB_ODEP)
 	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/wasm/radiobox.cpp
@@ -26586,18 +26589,6 @@ monolib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@monolib_mdig.o: $(srcdir)/src/generic/mdig.cpp $(MONOLIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
 
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monolib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONOLIB_ODEP)
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(MONOLIB_ODEP)
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@monolib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONOLIB_ODEP)
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
-
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@monolib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(MONOLIB_ODEP)
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
-
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@monolib_anybutton_osx.o: $(srcdir)/src/osx/anybutton_osx.cpp $(MONOLIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(MONOLIB_CXXFLAGS) $(srcdir)/src/osx/anybutton_osx.cpp
 
@@ -28968,8 +28959,14 @@ coredll_motif_window.o: $(srcdir)/src/motif/window.cpp $(COREDLL_ODEP)
 coredll_xmcombo.o: $(srcdir)/src/motif/xmcombo/xmcombo.c $(COREDLL_ODEP)
 	$(CCC) -c -o $@ $(COREDLL_CFLAGS) $(srcdir)/src/motif/xmcombo/xmcombo.c
 
+coredll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
 coredll_generic_statline.o: $(srcdir)/src/generic/statline.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/statline.cpp
+
+coredll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 coredll_msw_accel.o: $(srcdir)/src/msw/accel.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/msw/accel.cpp
@@ -29660,6 +29657,9 @@ coredll_wasm_menu.o: $(srcdir)/src/wasm/menu.cpp $(COREDLL_ODEP)
 
 coredll_wasm_menuitem.o: $(srcdir)/src/wasm/menuitem.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/menuitem.cpp
+
+coredll_wasm_notebook.o: $(srcdir)/src/wasm/notebook.cpp $(COREDLL_ODEP)
+	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/notebook.cpp
 
 coredll_wasm_radiobox.o: $(srcdir)/src/wasm/radiobox.cpp $(COREDLL_ODEP)
 	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/wasm/radiobox.cpp
@@ -32262,18 +32262,6 @@ coredll_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@coredll_mdig.o: $(srcdir)/src/generic/mdig.cpp $(COREDLL_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
 
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@coredll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(COREDLL_ODEP)
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(COREDLL_ODEP)
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@coredll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(COREDLL_ODEP)
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
-
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@coredll_tabg.o: $(srcdir)/src/generic/tabg.cpp $(COREDLL_ODEP)
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
-
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@coredll_anybutton_osx.o: $(srcdir)/src/osx/anybutton_osx.cpp $(COREDLL_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(COREDLL_CXXFLAGS) $(srcdir)/src/osx/anybutton_osx.cpp
 
@@ -33498,8 +33486,14 @@ corelib_motif_window.o: $(srcdir)/src/motif/window.cpp $(CORELIB_ODEP)
 corelib_xmcombo.o: $(srcdir)/src/motif/xmcombo/xmcombo.c $(CORELIB_ODEP)
 	$(CCC) -c -o $@ $(CORELIB_CFLAGS) $(srcdir)/src/motif/xmcombo/xmcombo.c
 
+corelib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
+
 corelib_generic_statline.o: $(srcdir)/src/generic/statline.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/statline.cpp
+
+corelib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 corelib_msw_accel.o: $(srcdir)/src/msw/accel.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/msw/accel.cpp
@@ -34190,6 +34184,9 @@ corelib_wasm_menu.o: $(srcdir)/src/wasm/menu.cpp $(CORELIB_ODEP)
 
 corelib_wasm_menuitem.o: $(srcdir)/src/wasm/menuitem.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/menuitem.cpp
+
+corelib_wasm_notebook.o: $(srcdir)/src/wasm/notebook.cpp $(CORELIB_ODEP)
+	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/notebook.cpp
 
 corelib_wasm_radiobox.o: $(srcdir)/src/wasm/radiobox.cpp $(CORELIB_ODEP)
 	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/wasm/radiobox.cpp
@@ -36791,18 +36788,6 @@ corelib_sound_sdl.o: $(srcdir)/src/unix/sound_sdl.cpp $(CORELIB_ODEP)
 
 @COND_USE_GUI_1_WXUNIV_1@corelib_mdig.o: $(srcdir)/src/generic/mdig.cpp $(CORELIB_ODEP)
 @COND_USE_GUI_1_WXUNIV_1@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/mdig.cpp
-
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@corelib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(CORELIB_ODEP)
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_generic_notebook.o: $(srcdir)/src/generic/notebook.cpp $(CORELIB_ODEP)
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/notebook.cpp
-
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@corelib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(CORELIB_ODEP)
-@COND_TOOLKIT_MOTIF_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
-
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@corelib_tabg.o: $(srcdir)/src/generic/tabg.cpp $(CORELIB_ODEP)
-@COND_TOOLKIT_WASM_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/generic/tabg.cpp
 
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@corelib_anybutton_osx.o: $(srcdir)/src/osx/anybutton_osx.cpp $(CORELIB_ODEP)
 @COND_PLATFORM_MACOSX_1_TOOLKIT_OSX_COCOA_USE_GUI_1_WXUNIV_0@	$(CXXC) -c -o $@ $(CORELIB_CXXFLAGS) $(srcdir)/src/osx/anybutton_osx.cpp

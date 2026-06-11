@@ -198,10 +198,24 @@ inline void wxDomToolbarSetTools(int domId, const wxString& json)
            domId, (const char *)json.utf8_str());
 }
 
-// Command id of the last activated menu item / tool.
+// Command id of the last activated menu item / tool / tab index.
 inline int wxDomGetLastCommandId(int domId)
 {
     return EM_ASM_INT({ return wxDomGetLastCommandId($0); }, domId);
+}
+
+// Notebook tab strip: JSON [{label, selected}] (tab id == array index).
+inline void wxDomNotebookSetTabs(int domId, const wxString& json)
+{
+    EM_ASM({ wxDomNotebookSetTabs($0, UTF8ToString($1)); },
+           domId, (const char *)json.utf8_str());
+}
+
+// Height of the notebook's tab strip in px (clone-measured, works while
+// hidden).
+inline int wxDomNotebookStripHeight(int domId)
+{
+    return EM_ASM_INT({ return wxDomNotebookStripHeight($0); }, domId);
 }
 
 inline void wxDomSetShown(int domId, bool shown)

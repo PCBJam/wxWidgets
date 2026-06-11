@@ -25,7 +25,8 @@ enum wxDomEventKind
     wxDOM_EVENT_SPIN_UP = 7,
     wxDOM_EVENT_SPIN_DOWN = 8,
     wxDOM_EVENT_MENU = 9,
-    wxDOM_EVENT_TOOL = 10
+    wxDOM_EVENT_TOOL = 10,
+    wxDOM_EVENT_TAB = 11
 };
 #endif // !__WXUNIVERSAL__
 

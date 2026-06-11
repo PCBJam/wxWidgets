@@ -2116,10 +2116,8 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     src/generic/fontpickerg.cpp
     src/generic/listctrl.cpp
     src/generic/mdig.cpp
-    src/generic/notebook.cpp
     src/generic/prntdlgg.cpp
     src/generic/statusbr.cpp
-    src/generic/tabg.cpp
     src/wasm/anybutton.cpp
     src/wasm/bmpbuttn.cpp
     src/wasm/button.cpp
@@ -2134,6 +2132,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     src/wasm/listbox.cpp
     src/wasm/menu.cpp
     src/wasm/menuitem.cpp
+    src/wasm/notebook.cpp
     src/wasm/radiobox.cpp
     src/wasm/radiobut.cpp
     src/wasm/scrolbar.cpp
@@ -2164,6 +2163,7 @@ IMPORTANT: please read docs/tech/tn0016.txt before modifying this file!
     wx/wasm/listbox.h
     wx/wasm/menu.h
     wx/wasm/menuitem.h
+    wx/wasm/notebook.h
     wx/wasm/private/dom.h
     wx/wasm/radiobox.h
     wx/wasm/radiobut.h

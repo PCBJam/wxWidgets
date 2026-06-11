@@ -27,7 +27,8 @@
 
   // Mirror of wxDomEventKind in include/wx/wasm/window.h.
   var EVT = { CLICK: 1, INPUT: 2, CHANGE: 3, FOCUSIN: 4, FOCUSOUT: 5,
-              ENTER: 6, SPIN_UP: 7, SPIN_DOWN: 8, MENU: 9, TOOL: 10 };
+              ENTER: 6, SPIN_UP: 7, SPIN_DOWN: 8, MENU: 9, TOOL: 10,
+              TAB: 11 };
 
   // Marks the bundle as DOM-port for tests/boot code.
   window.wxDomPort = true;
@@ -199,6 +200,25 @@
         flexCenter(root);
         break;
       }
+      case 'notebook': {
+        // The root box covers the whole page area, so it is CHROME — it
+        // must never swallow mouse events meant for page content (canvas
+        // islands and sibling DOM controls). Only the tab strip inside is
+        // interactive (built by wxDomNotebookSetTabs).
+        root = document.createElement('div');
+        root.dataset.wxNotebook = '1';
+        root.dataset.wxChrome = '1';
+        var strip = document.createElement('div');
+        strip.className = 'wx-tab-strip';
+        strip.setAttribute('role', 'tablist');
+        strip.style.cssText =
+          'position:absolute;left:0;top:0;right:0;display:flex;' +
+          'align-items:flex-end;background:#d4d0c8;' +
+          'border-bottom:1px solid #808080;pointer-events:auto;' +
+          'overflow:hidden;';
+        root.appendChild(strip);
+        break;
+      }
       default: {
         root = document.createElement(type);
         if (typeAttr) root.setAttribute('type', typeAttr);
@@ -333,6 +353,11 @@
     el.style.top = y + 'px';
     el.style.width = w + 'px';
     el.style.height = h + 'px';
+    // Notebook tabs register their viewport rects in the e2e registry;
+    // unlike canvas tabs they don't repaint on move, so re-sync here.
+    if (el.dataset.wxNotebook && el._wxTabs) {
+      scheduleTabRegistry(domId, el);
+    }
   };
 
   // Label text: routed to the inner label element for composites
@@ -814,6 +839,96 @@
     var el = controls.get(domId);
     var v = el ? parseInt(el.dataset.wxLastCommand, 10) : NaN;
     return isNaN(v) ? -1 : v;
+  };
+
+  // ========== Notebook tab strip ==========
+
+  // (Re-)register the strip's tabs in the e2e registry: elementType 'tab',
+  // subType 'selected'/'button' — the same contract the canvas port's
+  // notebook keeps, so clickTab() works unchanged.
+  function scheduleTabRegistry(domId, el) {
+    requestAnimationFrame(function () {
+      var reg = window.wxElementRegistry;
+      if (!reg || !el.isConnected || !el._wxTabs) return;
+      var stale = [];
+      reg.renderedElements.forEach(function (info, key) {
+        if (String(key).indexOf(domId + ':tab:') === 0) stale.push(key);
+      });
+      stale.forEach(function (key) { reg.unregisterRendered(key); });
+      var buttons = el.querySelectorAll('.wx-tab-strip > button');
+      el._wxTabs.forEach(function (tab, idx) {
+        var btn = buttons[idx];
+        if (!btn) return;
+        registryRegister(domId + ':tab:' + idx, Object.assign({
+          elementType: 'tab',
+          subType: tab.selected ? 'selected' : 'button',
+          label: tab.label, tooltip: '', enabled: true,
+          parentId: String(domId), index: idx
+        }, rectInfo(btn)));
+      });
+    });
+  }
+
+  // tabsJson: [{label, selected}] — tab id == array index.
+  window.wxDomNotebookSetTabs = function (domId, tabsJson) {
+    var el = controls.get(domId);
+    if (!el || !el.dataset.wxNotebook) return;
+    var tabs;
+    try {
+      tabs = JSON.parse(tabsJson);
+    } catch (e) {
+      console.error('wxDomNotebookSetTabs: bad JSON: ' + e.message);
+      return;
+    }
+    var strip = el.querySelector('.wx-tab-strip');
+    if (!strip) return;
+    strip.textContent = '';
+    tabs.forEach(function (tab, idx) {
+      var btn = document.createElement('button');
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-selected', tab.selected ? 'true' : 'false');
+      btn.textContent = tab.label;
+      btn.style.cssText =
+        'font:inherit;margin:1px 0 0 1px;padding:2px 8px;' +
+        'border:1px solid #808080;border-bottom:none;' +
+        'border-radius:3px 3px 0 0;white-space:pre;' +
+        'overflow:hidden;text-overflow:ellipsis;' +
+        'flex:0 1 auto;min-width:0;cursor:default;' +
+        (tab.selected
+          ? 'background:#f5f4f2;font-weight:bold;position:relative;top:1px;'
+          : 'background:#c8c4bc;');
+      btn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        el.dataset.wxLastCommand = String(idx);
+        dispatch(domId, EVT.TAB);
+      });
+      strip.appendChild(btn);
+    });
+    el._wxTabs = tabs;
+    scheduleTabRegistry(domId, el);
+  };
+
+  // Tab strip height for the C++ client-area math; clone-measured so it
+  // works while the notebook (or an ancestor) is display:none.
+  window.wxDomNotebookStripHeight = function (domId) {
+    var el = controls.get(domId);
+    if (!el) return 0;
+    var strip = el.querySelector('.wx-tab-strip');
+    if (!strip) return 0;
+    var r = strip.getBoundingClientRect();
+    if (r.height > 0) return Math.ceil(r.height);
+    // hidden: measure a clone off-screen
+    var clone = strip.cloneNode(true);
+    clone.style.position = 'absolute';
+    clone.style.left = '-100000px';
+    clone.style.top = '0';
+    clone.style.right = 'auto';
+    clone.style.visibility = 'hidden';
+    clone.style.display = 'flex';
+    document.body.appendChild(clone);
+    var h = clone.getBoundingClientRect().height;
+    clone.remove();
+    return Math.max(0, Math.ceil(h));
   };
 
   // Intrinsic (content-driven) size, packed (w << 16) | h for EM_ASM_INT.
