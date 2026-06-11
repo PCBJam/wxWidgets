@@ -490,10 +490,18 @@ EM_BOOL KeyCallback(int eventType,
     // DOM port: while a DOM editable (<input>/<textarea>) owns browser
     // focus, the keystroke belongs to it — no wx dispatch, no
     // preventDefault, or typing would be swallowed. Escape still goes to
-    // wx so modal dialogs can close. (wx-dom.js maintains the flag.)
+    // wx so modal dialogs can close. The check is STATELESS
+    // (document.activeElement), not the focusin/focusout-maintained flag:
+    // Firefox does not fire focusout when a focused element is removed
+    // (e.g. a wizard page destroyed mid-typing), which left the flag
+    // stuck and swallowed every key for the rest of the session.
     if (EM_ASM_INT({
-            return (typeof window !== 'undefined' &&
-                    window.wxDomEditableFocused) ? 1 : 0;
+            if (typeof document === 'undefined') return 0;
+            var ae = document.activeElement;
+            return (ae && (ae.tagName === 'INPUT' ||
+                           ae.tagName === 'TEXTAREA' ||
+                           ae.tagName === 'SELECT' ||
+                           ae.isContentEditable)) ? 1 : 0;
         }))
     {
         if (strcmp(emscriptenEvent->key, "Escape") != 0)
