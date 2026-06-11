@@ -212,6 +212,11 @@
         break;
       }
     }
+    // Passive controls have no interactive DOM behavior of their own —
+    // left clicks on them belong to wx (KiCad binds LEFT_DOWN on labels).
+    if (root && (type === 'span' || type === 'gauge')) {
+      root.dataset.wxPassive = '1';
+    }
     return { root: root, input: input, label: label };
   }
 
@@ -842,4 +847,96 @@
     var h = Math.min(0xffff, Math.max(1, Math.ceil(rect.height)));
     return (w << 16) | h;
   };
+
+  // ========== Input forwarding: DOM layer → wx pipeline ==========
+  //
+  // The wx mouse pipeline (hit-testing, ENTER/LEAVE hover synthesis,
+  // wheel scrolling, capture) is fed by Emscripten callbacks on #canvas.
+  // DOM controls swallow browser events before #canvas sees them, so the
+  // pipeline goes blind whenever the pointer is over a DOM element.
+  // These document-level listeners (bubble phase) forward the events wx
+  // needs into wx_dom_mouse (src/wasm/domevents.cpp), which re-enters the
+  // SAME C++ path.
+  //
+  // Invariants (prevent double dispatch):
+  //  - events targeting #canvas take only the Emscripten path;
+  //  - events targeting DOM controls take only this path;
+  //  - LEFT clicks on interactive controls take only the native control
+  //    path (their click listeners + wx_dom_event); we forward left
+  //    clicks only for passive controls (dataset.wxPassive: statictext,
+  //    gauge), middle/right always.
+  // NOTE: listeners that stopPropagation on mousedown (menubar titles)
+  // intentionally opt out of forwarding.
+
+  var canvasRect = null;
+  window.addEventListener('resize', function () { canvasRect = null; });
+
+  function wxForwardMouse(ev, kind, deltaY) {
+    var c = Module['canvas'];
+    if (!c) return 0;
+    if (!canvasRect) canvasRect = c.getBoundingClientRect();
+    var mods = (ev.ctrlKey ? 1 : 0) | (ev.shiftKey ? 2 : 0) |
+               (ev.altKey ? 4 : 0) | (ev.metaKey ? 8 : 0);
+    try {
+      return Module['ccall']('wx_dom_mouse', 'number',
+        ['number', 'number', 'number', 'number',
+         'number', 'number', 'number', 'number'],
+        [kind,
+         Math.round(ev.clientX - canvasRect.left),
+         Math.round(ev.clientY - canvasRect.top),
+         ev.button | 0, ev.buttons | 0, ev.detail | 0, mods, deltaY || 0]);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function forwardTarget(ev) {
+    var t = ev.target;
+    if (!t || t === Module['canvas'] || !t.closest) return null;
+    if (t.closest('.wx-menu-popup')) return null;
+    return t.closest('.wx-dom-control');
+  }
+
+  document.addEventListener('mousemove', function (ev) {
+    if (forwardTarget(ev)) wxForwardMouse(ev, 1, 0);
+  });
+
+  document.addEventListener('mousedown', function (ev) {
+    var ctl = forwardTarget(ev);
+    if (!ctl) return;
+    if (ev.button !== 0 || ctl.dataset.wxPassive) wxForwardMouse(ev, 2, 0);
+  });
+
+  document.addEventListener('mouseup', function (ev) {
+    var ctl = forwardTarget(ev);
+    if (!ctl) return;
+    if (ev.button !== 0 || ctl.dataset.wxPassive) wxForwardMouse(ev, 3, 0);
+  });
+
+  document.addEventListener('wheel', function (ev) {
+    var ctl = forwardTarget(ev);
+    if (!ctl) return;
+    // A natively scrollable element under the cursor (textarea, multi-
+    // select, checklist) keeps its own wheel behavior.
+    for (var n = ev.target; n; n = n.parentElement) {
+      var oy = getComputedStyle(n).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') &&
+          n.scrollHeight > n.clientHeight) {
+        return;
+      }
+      if (n === ctl) break;
+    }
+    if (wxForwardMouse(ev, 4, ev.deltaY)) ev.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('contextmenu', function (ev) {
+    var ctl = forwardTarget(ev);
+    if (!ctl) return;
+    var t = ev.target;
+    var editable = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' ||
+                         t.isContentEditable);
+    // wx already received the right-click via the forwarded mousedown/up;
+    // suppress the browser menu except over editables (keep native paste).
+    if (!editable) ev.preventDefault();
+  });
 })();

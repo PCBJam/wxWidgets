@@ -547,9 +547,41 @@ int wxWindowWasm::GetScrollRange(int orient) const
     return m_scrollRange[wxScrollOrientIndex(orient)];
 }
 
-void wxWindowWasm::ScrollWindow(int WXUNUSED(dx), int WXUNUSED(dy),
-                                const wxRect *WXUNUSED(rect))
+void wxWindowWasm::ScrollWindow(int dx, int dy, const wxRect *rect)
 {
+    // Move children like the universal port does (src/univ/winuniv.cpp):
+    // wxScrollHelperBase relies on ScrollWindow physically moving child
+    // windows. Their moves flow through DoMoveWindow → UpdateDomGeometry,
+    // which repositions and re-clips the DOM subtree.
+    const wxPoint offset(dx, dy);
+
+    for ( wxWindowList::compatibility_iterator node = GetChildren().GetFirst();
+          node; node = node->GetNext() )
+    {
+        wxWindow *child = node->GetData();
+
+        // Univ semantics: with a rect and single-axis scrolling, move only
+        // children intersecting the scrolled shaft.
+        bool shouldMove = true;
+        if ( rect && (dx * dy == 0) )
+        {
+            const wxRect childRect = child->GetRect();
+            if ( dx == 0 )
+            {
+                shouldMove = childRect.GetLeft() <= rect->GetRight() &&
+                             childRect.GetRight() >= rect->GetLeft();
+            }
+            else // dy == 0
+            {
+                shouldMove = childRect.GetTop() <= rect->GetBottom() &&
+                             childRect.GetBottom() >= rect->GetTop();
+            }
+        }
+
+        if ( shouldMove )
+            child->Move(child->GetPosition() + offset, wxSIZE_ALLOW_MINUS_ONE);
+    }
+
     // No incremental blit support; repaint the whole window.
     Refresh();
 }
