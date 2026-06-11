@@ -254,6 +254,12 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
                 enterEvent.SetEventType(wxEVT_ENTER_WINDOW);
                 SendMouseEventToWindow(&enterEvent, g_mouseWindow);
             }
+
+#if !defined(__WXUNIVERSAL__) && wxUSE_TOOLTIPS
+            // Hover target changed: (re)arm the DOM-port tooltip layer.
+            extern void wxWasmTooltipOnHoverChange(wxWindow *win);
+            wxWasmTooltipOnHoverChange(g_mouseWindow);
+#endif
         }
 
         if (g_mouseWindow != NULL)

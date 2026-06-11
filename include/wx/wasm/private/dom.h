@@ -218,6 +218,19 @@ inline int wxDomNotebookStripHeight(int domId)
     return EM_ASM_INT({ return wxDomNotebookStripHeight($0); }, domId);
 }
 
+// The port-rendered tooltip layer (one #wx-tooltip div for everything —
+// DOM widgets and canvas islands alike). x/y in TLW/canvas coordinates.
+inline void wxDomTooltipShow(const wxString& text, int x, int y)
+{
+    EM_ASM({ wxDomTooltipShow(UTF8ToString($0), $1, $2); },
+           (const char *)text.utf8_str(), x, y);
+}
+
+inline void wxDomTooltipHide()
+{
+    EM_ASM({ wxDomTooltipHide(); });
+}
+
 inline void wxDomSetShown(int domId, bool shown)
 {
     EM_ASM({ wxDomSetShown($0, $1); }, domId, shown);

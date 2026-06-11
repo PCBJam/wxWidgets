@@ -801,7 +801,8 @@
       }
       var btn = document.createElement('button');
       btn.className = 'wx-tool';
-      btn.title = t.tooltip || t.label || '';
+      // same look as every other tooltip (no native title attribute)
+      tooltipHover(btn, function () { return t.tooltip || t.label || ''; });
       btn.style.cssText = 'padding:1px 3px;margin:1px;font:inherit;' +
                           'display:flex;align-items:center;';
       if (t.img) {
@@ -962,6 +963,92 @@
     var h = Math.min(0xffff, Math.max(1, Math.ceil(rect.height)));
     return (w << 16) | h;
   };
+
+  // ========== Tooltip layer ==========
+  //
+  // One port-rendered tooltip for everything: DOM-backed widgets AND
+  // canvas-island widgets (which have no element to carry a title
+  // attribute). Driven from C++ (src/wasm/tooltip.cpp) off the mouse
+  // pipeline's hover hit-test; toolbar buttons/menu titles use the
+  // JS-side tooltipHover() since they aren't wx windows.
+
+  var tooltipEl = null;
+  var tooltipHoverTimer = null;
+
+  function ensureTooltipEl() {
+    if (!tooltipEl) {
+      tooltipEl = document.createElement('div');
+      tooltipEl.id = 'wx-tooltip';
+      tooltipEl.style.cssText =
+        'position:fixed;z-index:20000;display:none;' +
+        'background:#ffffe1;color:#000;border:1px solid #000;' +
+        'padding:2px 4px;font:12px sans-serif;white-space:pre;' +
+        'pointer-events:none;max-width:400px;';
+      document.body.appendChild(tooltipEl);
+    }
+    return tooltipEl;
+  }
+
+  // x/y: #canvas-relative (wx screen) coordinates.
+  window.wxDomTooltipShow = function (text, x, y) {
+    if (!text) return;
+    var el = ensureTooltipEl();
+    var c = Module['canvas'];
+    var base = c ? c.getBoundingClientRect() : { left: 0, top: 0 };
+    el.textContent = text;
+    el.style.display = 'block';
+    var px = base.left + x + 2;
+    var py = base.top + y + 18;
+    el.style.left = '0px';
+    el.style.top = '0px';
+    var r = el.getBoundingClientRect();
+    if (px + r.width > window.innerWidth - 4) {
+      px = Math.max(4, window.innerWidth - r.width - 4);
+    }
+    if (py + r.height > window.innerHeight - 4) {
+      py = base.top + y - r.height - 6;
+    }
+    el.style.left = px + 'px';
+    el.style.top = py + 'px';
+  };
+
+  window.wxDomTooltipHide = function () {
+    if (tooltipEl) tooltipEl.style.display = 'none';
+    if (tooltipHoverTimer) {
+      clearTimeout(tooltipHoverTimer);
+      tooltipHoverTimer = null;
+    }
+  };
+
+  // Any press/keystroke/scroll dismisses the tooltip (capture phase so
+  // stopPropagation in control listeners can't keep it alive).
+  ['mousedown', 'keydown', 'wheel'].forEach(function (evName) {
+    document.addEventListener(evName, function () {
+      if (tooltipEl && tooltipEl.style.display !== 'none') {
+        tooltipEl.style.display = 'none';
+      }
+    }, true);
+  });
+
+  // Hover tooltips for JS-built surfaces that aren't wx windows
+  // (toolbar tool buttons). getText is read at fire time.
+  function tooltipHover(el, getText) {
+    el.addEventListener('mouseenter', function (ev) {
+      if (tooltipHoverTimer) clearTimeout(tooltipHoverTimer);
+      tooltipHoverTimer = setTimeout(function () {
+        var text = getText();
+        if (!text) return;
+        var c = Module['canvas'];
+        var base = c ? c.getBoundingClientRect() : { left: 0, top: 0 };
+        window.wxDomTooltipShow(text,
+                                Math.round(ev.clientX - base.left),
+                                Math.round(ev.clientY - base.top));
+      }, 600);
+    });
+    el.addEventListener('mouseleave', function () {
+      window.wxDomTooltipHide();
+    });
+  }
 
   // ========== Input forwarding: DOM layer → wx pipeline ==========
   //
