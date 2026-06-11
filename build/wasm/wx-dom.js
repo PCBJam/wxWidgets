@@ -700,7 +700,7 @@
     try {
       menus = JSON.parse(structureJson);
     } catch (e) {
-      console.error('wxDomMenuSetStructure: bad JSON', e);
+      console.error('wxDomMenuSetStructure: bad JSON: ' + e.message);
       return;
     }
     el.textContent = '';

@@ -118,13 +118,17 @@ static wxString DomMenuItemsToJson(const wxMenu *menu)
         else
             kind = "normal";
 
+        // The label is concatenated, NOT passed through wxString::Format:
+        // Format returns an empty string when vsnprintf rejects the
+        // argument (seen with KiCad menu labels), which silently emitted
+        // an empty item object and broke the whole JSON document.
+        json += wxString::Format(wxT("{\"id\":%d,\"kind\":\"%s\","),
+                                 item->GetId(), kind);
+        json += wxT("\"label\":\"");
+        // no mnemonics/accelerators in the browser menus (yet)
+        json += wxDomJsonEscape(item->GetItemLabelText());
         json += wxString::Format(
-            wxT("{\"id\":%d,\"label\":\"%s\",\"kind\":\"%s\",")
-            wxT("\"checked\":%s,\"enabled\":%s"),
-            item->GetId(),
-            // no mnemonics/accelerators in the browser menus (yet)
-            wxDomJsonEscape(item->GetItemLabelText()),
-            kind,
+            wxT("\",\"checked\":%s,\"enabled\":%s"),
             item->IsCheckable() && item->IsChecked() ? "true" : "false",
             item->IsEnabled() ? "true" : "false");
 

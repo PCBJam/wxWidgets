@@ -174,6 +174,8 @@ inline wxString wxDomJsonEscape(const wxString& s)
             out += wxT("\\t");
         else if ( c == wxT('\r') )
             out += wxT("\\r");
+        else if ( c.GetValue() < 0x20 )
+            out += wxString::Format(wxT("\\u%04x"), (unsigned)c.GetValue());
         else
             out += c;
     }
