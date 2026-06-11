@@ -310,9 +310,27 @@ void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
     event->SetPosition(mousePosition);
     wxWindow *window = GetMouseWindow(mousePosition);
 
-    if (window != NULL)
+    // Native ports route unhandled wheel events up the window hierarchy
+    // (GTK via GDK propagation, MSW via the focus window): a wheel over a
+    // label inside a scrolled pane must reach the scroll helper. wx mouse
+    // events don't propagate by themselves, so walk up explicitly until
+    // some window handles it. Each hop gets a fresh copy with positions
+    // in that window's client coordinates.
+    for ( ; window != NULL; window = window->GetParent() )
     {
-        SendMouseEventToWindow(event, window);
+        if ( window->IsEnabled() )
+        {
+            wxMouseEvent evt(*event);
+            evt.SetPosition(window->ScreenToClient(mousePosition));
+            evt.SetEventObject(window);
+            evt.SetId(window->GetId());
+
+            if ( window->HandleWindowEvent(evt) )
+                return;
+        }
+
+        if ( window->IsTopLevel() )
+            return;
     }
 }
 
