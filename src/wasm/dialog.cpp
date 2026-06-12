@@ -198,10 +198,11 @@ bool wxDialog::IsModal() const
 // with the "unwind" sentinel after the callback returns, surfacing as an
 // "Uncaught (in promise) unwind" page error in Chrome; with `await`, the
 // try/catch sees the rejection and stops the loop cleanly.
-EM_ASYNC_JS(int, startModal, (), {
+EM_ASYNC_JS(int, startModal, (int aCancelCode), {
     var timer = null;
     var stopped = false;
     var tickCount = 0;
+    var finish = null;   // resolves THIS modal exactly once
 
     var runEventLoop = function () {
         if (stopped) return;
@@ -211,33 +212,57 @@ EM_ASYNC_JS(int, startModal, (), {
             try {
                 await ccall('ProcessEvents', 'void', [], [], { async: true });
             } catch (e) {
-                // After asyncify state corruption from consecutive modals,
-                // ProcessEvents may fail. Stop the event loop to prevent
-                // cascading errors.
-                stopped = true;
-                if (timer !== null) {
-                    clearTimeout(timer);
-                    timer = null;
-                }
+                // The pump must NEVER stop without resolving: a stopped pump
+                // with an unresolved promise leaves this ShowModal parked
+                // forever (silent stall). Cancel the modal instead, loudly.
+                console.error('[wxWasm] modal event pump error - cancelling modal: ' + e);
+                if (finish) finish(aCancelCode);
                 return;
             }
             if (!stopped) runEventLoop();
         }, 17);
     };
 
-    const result = await new Promise((resolve, reject) => {
-        runEventLoop();
+    // EndModal resolves the INNERMOST live modal (LIFO), matching wx modal
+    // semantics. The previous single-slot resolver (Module._endModal = fn,
+    // delete after use) lost the middle resolver with 3+ nested modals: its
+    // EndModal resolved nothing and its ShowModal parked forever.
+    Module._wxModalResolvers = Module._wxModalResolvers || [];
+    if (typeof Module._endModal !== 'function') {
         Module._endModal = function(code) {
+            var stack = Module._wxModalResolvers;
+            if (stack && stack.length) {
+                (stack.pop())(code);
+            } else {
+                Module._pendingModalResult = code;
+            }
+        };
+    }
+
+    // EndModal fired before this loop started (stored as pending): consume it.
+    if (Module._pendingModalResult !== undefined) {
+        var pending = Module._pendingModalResult;
+        delete Module._pendingModalResult;
+        return pending;
+    }
+
+    const result = await new Promise((resolve) => {
+        finish = function(code) {
+            if (stopped) return;   // resolve exactly once
             stopped = true;
             if (timer !== null) {
                 clearTimeout(timer);
                 timer = null;
             }
+            // Self-cancel paths must remove our own entry (we may not be top
+            // of the stack if an inner modal is open above us).
+            var idx = Module._wxModalResolvers.indexOf(finish);
+            if (idx !== -1) Module._wxModalResolvers.splice(idx, 1);
             resolve(code);
         };
+        Module._wxModalResolvers.push(finish);
+        runEventLoop();
     });
-
-    delete Module._endModal;
 
     return result;
 });
@@ -271,7 +296,7 @@ int wxDialog::ShowModal()
 
     // Call the Asyncify-based modal event loop
     // This suspends the C++ stack until endModal() is called from EndModal()
-    int result = startModal();
+    int result = startModal(wxID_CANCEL);
 
     return result;
 }

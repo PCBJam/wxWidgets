@@ -54,6 +54,8 @@ static int s_wxRunDepth = 0;
 EM_ASYNC_JS(void, wxWasmRunNestedLoop, (), {
     var stopped = false;
     var timer = null;
+    var finish = null;   // resolves THIS nested loop exactly once
+
     var pump = function () {
         if (stopped) return;
         timer = setTimeout(async function () {
@@ -61,10 +63,12 @@ EM_ASYNC_JS(void, wxWasmRunNestedLoop, (), {
             try {
                 await ccall('ProcessEvents', 'void', [], [], { async: true });
             } catch (e) {
-                // Asyncify unwind/rewind hiccup: stop this pump cleanly rather
-                // than cascade errors (same guard as startModal).
-                stopped = true;
-                if (timer !== null) { clearTimeout(timer); timer = null; }
+                // The pump must NEVER stop without resolving: an unresolved
+                // promise leaves the nested DoRun (and the whole quasi-modal
+                // C++ stack under it) parked forever — a silent freeze. Exit
+                // the nested loop instead, loudly.
+                console.error('[wxWasm] nested loop pump error - exiting nested loop: ' + e);
+                if (finish) finish();
                 return;
             }
             if (!stopped) pump();
@@ -74,12 +78,18 @@ EM_ASYNC_JS(void, wxWasmRunNestedLoop, (), {
     Module._wxNestedLoopExit = Module._wxNestedLoopExit || [];
 
     await new Promise(function (resolve) {
-        pump();
-        Module._wxNestedLoopExit.push(function () {
+        finish = function () {
+            if (stopped) return;
             stopped = true;
             if (timer !== null) { clearTimeout(timer); timer = null; }
+            // Self-exit paths must remove our own entry (we may not be top of
+            // the stack if an inner loop is open above us).
+            var idx = Module._wxNestedLoopExit.indexOf(finish);
+            if (idx !== -1) Module._wxNestedLoopExit.splice(idx, 1);
             resolve();
-        });
+        };
+        Module._wxNestedLoopExit.push(finish);
+        pump();
     });
 });
 

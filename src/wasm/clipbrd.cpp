@@ -296,15 +296,15 @@ bool wxClipboard::IsSupported(const wxDataFormat& format)
             return true;
         }
 
-        // Try browser clipboard
-        if (js_isClipboardAPIAvailable())
-        {
-            int result = js_clipboardHasText();
-            if (result == 1)
-            {
-                return true;
-            }
-        }
+        // IsSupported is a synchronous-by-contract predicate that UI-update /
+        // paste-enable paths call repeatedly. It must NOT call
+        // js_clipboardHasText(): that EM_ASYNC_JS parks the stack for up to
+        // 2 s awaiting navigator.clipboard.readText() (permission-gated), and
+        // those long-parked Asyncify sleeps overlapping fiber swaps are the
+        // "index out of bounds" crash family (see docs/features/async/). Answer
+        // optimistically from the synchronous capability probe instead; the
+        // real (user-gesture-gated) read happens in GetData().
+        return js_isClipboardAPIAvailable() != 0;
     }
 
     return false;
