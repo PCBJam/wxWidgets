@@ -115,6 +115,8 @@ EM_ASYNC_JS(char*, js_readTextFromClipboard, (), {
 
 // Check if clipboard has text content using Asyncify
 // Returns: 0 = no text, 1 = has text, -1 = error/unavailable
+// NOTE: deliberately NOT called from IsSupported() — this suspends for up
+// to 2 s and must never run on the idle path (see IsSupported below).
 EM_ASYNC_JS(int, js_clipboardHasText, (), {
     if (typeof navigator === 'undefined' ||
         typeof navigator.clipboard === 'undefined') {
