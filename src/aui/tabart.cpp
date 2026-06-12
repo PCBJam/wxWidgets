@@ -28,6 +28,10 @@
 
 #include "wx/renderer.h"
 #include "wx/aui/auibook.h"
+
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
 #include "wx/aui/framemanager.h"
 #include "wx/aui/dockart.h"
 
@@ -287,7 +291,6 @@ void wxAuiGenericTabArt::DrawBackground(wxDC& dc,
 {
 #ifdef __EMSCRIPTEN__
     // Unregister previous tab elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     if (wnd)
         WasmUnregisterRenderedElementsByParent(wnd);
 #endif
@@ -389,34 +392,18 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
 
 #ifdef __EMSCRIPTEN__
     // Register AUI tab for element tracking
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
     if (wnd)
     {
-        wxPoint screenPos = wnd->GetScreenPosition();
-        int tabScreenX = screenPos.x + tab_x;
-        int tabScreenY = screenPos.y + tab_y;
-
         // Generate unique index from tab label (simple hash)
         int tabIndex = 0;
         for (size_t i = 0; i < page.caption.length(); i++)
             tabIndex = tabIndex * 31 + static_cast<int>(page.caption[i]);
         if (tabIndex < 0) tabIndex = -tabIndex;
 
-        WasmRegisterRenderedElement(
-            wnd,
-            "tab",
-            page.active ? "selected" : "button",
-            tabIndex,
-            page.caption,
-            page.caption,
-            tabScreenX, tabScreenY,
-            tab_width, tab_height,
-            true
-        );
+        wxWasmTrackElement(wnd, "tab",
+                           page.active ? "selected" : "button",
+                           tabIndex, page.caption, page.caption,
+                           wxRect(tab_x, tab_y, tab_width, tab_height));
     }
 #endif
 
@@ -1070,7 +1057,6 @@ void wxAuiSimpleTabArt::DrawBackground(wxDC& dc,
 {
 #ifdef __EMSCRIPTEN__
     // Unregister previous tab elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     if (wnd)
         WasmUnregisterRenderedElementsByParent(wnd);
 #endif
@@ -1134,34 +1120,18 @@ void wxAuiSimpleTabArt::DrawTab(wxDC& dc,
 
 #ifdef __EMSCRIPTEN__
     // Register AUI tab for element tracking
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
     if (wnd)
     {
-        wxPoint screenPos = wnd->GetScreenPosition();
-        int tabScreenX = screenPos.x + tab_x;
-        int tabScreenY = screenPos.y + tab_y;
-
         // Generate unique index from tab label (simple hash)
         int tabIndex = 0;
         for (size_t i = 0; i < page.caption.length(); i++)
             tabIndex = tabIndex * 31 + static_cast<int>(page.caption[i]);
         if (tabIndex < 0) tabIndex = -tabIndex;
 
-        WasmRegisterRenderedElement(
-            wnd,
-            "tab",
-            page.active ? "selected" : "button",
-            tabIndex,
-            page.caption,
-            page.caption,
-            tabScreenX, tabScreenY,
-            tab_width, tab_height,
-            true
-        );
+        wxWasmTrackElement(wnd, "tab",
+                           page.active ? "selected" : "button",
+                           tabIndex, page.caption, page.caption,
+                           wxRect(tab_x, tab_y, tab_width, tab_height));
     }
 #endif
 

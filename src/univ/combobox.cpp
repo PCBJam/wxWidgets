@@ -390,10 +390,7 @@ int wxComboBox::FindString(const wxString& s, bool bCase) const
 
 void wxComboBox::SetSelection(int n)
 {
-    // Match GTK behavior: silently ignore invalid indices instead of asserting.
-    // GTK's gtk_combo_box_set_active() gracefully handles out-of-range indices.
-    if ( n != wxNOT_FOUND && !IsValid(n) )
-        return;
+    wxCHECK_RET( (n == wxNOT_FOUND || IsValid(n)), wxT("invalid index in wxComboBox::Select") );
 
     GetLBox()->SetSelection(n);
 

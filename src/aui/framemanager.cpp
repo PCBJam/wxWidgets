@@ -22,6 +22,10 @@
 #if wxUSE_AUI
 
 #include "wx/aui/framemanager.h"
+
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
 #include "wx/aui/dockart.h"
 #include "wx/aui/floatpane.h"
 #include "wx/aui/tabmdi.h"
@@ -2684,17 +2688,8 @@ void wxAuiManager::Update()
 
 #ifdef __EMSCRIPTEN__
     // Update element registry with AUI parts
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
-
     // Clear existing parts for this manager (use frame as parent)
     WasmUnregisterRenderedElementsByParent(m_frame);
-
-    // Get frame screen position for offset calculation
-    wxPoint frameScreenPos = m_frame->GetScreenPosition();
 
     // Get dock art for caption height
     int captionHeight = m_art ? m_art->GetMetric(wxAUI_DOCKART_CAPTION_SIZE) : 20;
@@ -2708,93 +2703,48 @@ void wxAuiManager::Update()
         // Skip if not docked, not visible, or no caption
         if (!pane.IsDocked() || !pane.IsShown() || !pane.HasCaption()) continue;
 
-        // Get pane rect (this is relative to the frame)
+        // Pane rect is relative to the frame
         wxRect rect = pane.rect;
-
-        // Calculate screen position
-        int screenX = frameScreenPos.x + rect.x;
-        int screenY = frameScreenPos.y + rect.y;
+        const int buttonY = rect.y + (captionHeight - buttonSize) / 2;
 
         // Register the pane caption area
-        WasmRegisterRenderedElement(
-            m_frame,
-            "auipart",
-            "caption",
-            i,
-            pane.caption,
-            wxEmptyString,
-            screenX, screenY,
-            rect.width, captionHeight,
-            true
-        );
+        wxWasmTrackElement(m_frame, "auipart", "caption", i,
+                           pane.caption, wxEmptyString,
+                           wxRect(rect.x, rect.y, rect.width, captionHeight));
 
         // Register close button if present
         if (pane.HasCloseButton()) {
-            int buttonX = screenX + rect.width - buttonSize - 4;
-            int buttonY = screenY + (captionHeight - buttonSize) / 2;
-            WasmRegisterRenderedElement(
-                m_frame,
-                "auipart",
-                "close",
-                i * 10 + 1,
-                wxT("Close"),
-                wxEmptyString,
-                buttonX, buttonY,
-                buttonSize, buttonSize,
-                true
-            );
+            wxWasmTrackElement(m_frame, "auipart", "close", i * 10 + 1,
+                               wxT("Close"), wxEmptyString,
+                               wxRect(rect.x + rect.width - buttonSize - 4,
+                                      buttonY, buttonSize, buttonSize));
         }
 
         // Register pin button if present
         if (pane.HasPinButton()) {
-            int buttonX = screenX + rect.width - buttonSize * 2 - 8;
-            int buttonY = screenY + (captionHeight - buttonSize) / 2;
-            WasmRegisterRenderedElement(
-                m_frame,
-                "auipart",
-                "pin",
-                i * 10 + 2,
-                wxT("Pin"),
-                wxEmptyString,
-                buttonX, buttonY,
-                buttonSize, buttonSize,
-                true
-            );
+            wxWasmTrackElement(m_frame, "auipart", "pin", i * 10 + 2,
+                               wxT("Pin"), wxEmptyString,
+                               wxRect(rect.x + rect.width - buttonSize * 2 - 8,
+                                      buttonY, buttonSize, buttonSize));
         }
 
         // Register maximize button if present
         if (pane.HasMaximizeButton()) {
             int offset = (pane.HasCloseButton() ? 1 : 0) + (pane.HasPinButton() ? 1 : 0);
-            int buttonX = screenX + rect.width - buttonSize * (offset + 1) - 4 * (offset + 1);
-            int buttonY = screenY + (captionHeight - buttonSize) / 2;
-            WasmRegisterRenderedElement(
-                m_frame,
-                "auipart",
-                "maximize",
-                i * 10 + 3,
-                wxT("Maximize"),
-                wxEmptyString,
-                buttonX, buttonY,
-                buttonSize, buttonSize,
-                true
-            );
+            int buttonX = rect.x + rect.width - buttonSize * (offset + 1) - 4 * (offset + 1);
+            wxWasmTrackElement(m_frame, "auipart", "maximize", i * 10 + 3,
+                               wxT("Maximize"), wxEmptyString,
+                               wxRect(buttonX, buttonY,
+                                      buttonSize, buttonSize));
         }
 
         // Register the pane content area (below the caption)
-        int contentY = screenY + captionHeight;
         int contentHeight = rect.height - captionHeight;
         if (contentHeight > 0) {
-            WasmRegisterRenderedElement(
-                m_frame,
-                "auipart",
-                "content",
-                i * 10 + 4,
-                pane.caption,
-                wxEmptyString,
-                screenX, contentY,
-                rect.width, contentHeight,
-                true
-            );
+            wxWasmTrackElement(m_frame, "auipart", "content", i * 10 + 4,
+                               pane.caption, wxEmptyString,
+                               wxRect(rect.x, rect.y + captionHeight,
+                                      rect.width, contentHeight));
         }
     }
 #endif

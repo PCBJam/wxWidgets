@@ -33,6 +33,10 @@
 #endif
 
 #include "wx/generic/treectlg.h"
+
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
 #include "wx/imaglist.h"
 #include "wx/itemattr.h"
 
@@ -2849,15 +2853,6 @@ wxGenericTreeCtrl::PaintLevel(wxGenericTreeItem *item,
 
 #ifdef __EMSCRIPTEN__
         // Register tree item for element tracking
-        extern void WasmRegisterRenderedElement(
-            wxWindow* parent, const char* elementType, const char* subType,
-            int index, const wxString& label, const wxString& tooltip,
-            int screenX, int screenY, int width, int height, bool enabled);
-
-        // Get screen position
-        wxPoint screenPos = GetScreenPosition();
-
-        // Determine subtype based on item state
         const char* subType;
         if (item->IsExpanded())
             subType = "expanded";
@@ -2866,22 +2861,11 @@ wxGenericTreeCtrl::PaintLevel(wxGenericTreeItem *item,
         else
             subType = "leaf";
 
-        // Calculate screen coordinates
-        int itemScreenX = screenPos.x + item->GetX();
-        int itemScreenY = screenPos.y + item->GetY();
-
-        // Register the tree item using Y position as index for uniqueness
-        WasmRegisterRenderedElement(
-            this,
-            "treeitem",
-            subType,
-            item->GetY(),  // Use Y position as unique index
-            item->GetText(),
-            wxEmptyString,
-            itemScreenX, itemScreenY,
-            item->GetWidth(), h,
-            true  // Tree items are always enabled
-        );
+        // The Y position doubles as a unique index
+        wxWasmTrackElement(this, "treeitem", subType, item->GetY(),
+                           item->GetText(), wxEmptyString,
+                           wxRect(item->GetX(), item->GetY(),
+                                  item->GetWidth(), h));
 #endif
 
         if (HasFlag(wxTR_ROW_LINES))
@@ -3085,7 +3069,6 @@ void wxGenericTreeCtrl::OnPaint( wxPaintEvent &WXUNUSED(event) )
 
 #ifdef __EMSCRIPTEN__
     // Clear existing tree elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     WasmUnregisterRenderedElementsByParent(this);
 #endif
 

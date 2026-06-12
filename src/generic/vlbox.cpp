@@ -24,6 +24,10 @@
 
 #include "wx/vlbox.h"
 
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
+
 #ifndef WX_PRECOMP
     #include "wx/settings.h"
     #include "wx/dcclient.h"
@@ -454,7 +458,6 @@ void wxVListBox::OnPaint(wxPaintEvent& WXUNUSED(event))
 
 #ifdef __EMSCRIPTEN__
     // Clear previous element registrations for this window
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     WasmUnregisterRenderedElementsByParent(this);
 #endif
 
@@ -490,12 +493,6 @@ void wxVListBox::OnPaint(wxPaintEvent& WXUNUSED(event))
 
 #ifdef __EMSCRIPTEN__
             // Register vlistbox item for element tracking (used by combo dropdowns)
-            extern void WasmRegisterRenderedElement(
-                wxWindow* parent, const char* elementType, const char* subType,
-                int index, const wxString& label, const wxString& tooltip,
-                int screenX, int screenY, int width, int height, bool enabled);
-
-            wxPoint screenPos = GetScreenPosition();
             bool isSelected = IsSelected(line);
 
             // Get item string - default to index
@@ -508,17 +505,10 @@ void wxVListBox::OnPaint(wxPaintEvent& WXUNUSED(event))
                 itemLabel = popup->GetString(line);
 #endif
 
-            WasmRegisterRenderedElement(
-                this,
-                "listboxitem",
-                isSelected ? "selected" : "item",
-                static_cast<int>(line),
-                itemLabel,
-                wxEmptyString,
-                screenPos.x + rectRow.x, screenPos.y + rectRow.y,
-                rectRow.width, rectRow.height,
-                true
-            );
+            wxWasmTrackElement(this, "listboxitem",
+                               isSelected ? "selected" : "item",
+                               static_cast<int>(line), itemLabel,
+                               wxEmptyString, rectRow);
 #endif
         }
         else // no intersection

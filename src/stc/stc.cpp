@@ -34,6 +34,10 @@
 #include "wx/stc/stc.h"
 #include "wx/stc/private.h"
 
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
+
 #ifndef WX_PRECOMP
     #include "wx/wx.h"
 #endif // WX_PRECOMP
@@ -5199,28 +5203,14 @@ void wxStyledTextCtrl::OnPaint(wxPaintEvent& WXUNUSED(evt)) {
 
 #ifdef __EMSCRIPTEN__
     // Register the STC control for element tracking
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
     WasmUnregisterRenderedElementsByParent(this);
 
-    wxPoint screenPos = GetScreenPosition();
-    wxSize size = GetClientSize();
-
-    WasmRegisterRenderedElement(
-        this,
-        "styledtext",
-        GetReadOnly() ? "readonly" : "editable",
-        0,
-        GetName().IsEmpty() ? wxT("Editor") : GetName(),
-        wxEmptyString,
-        screenPos.x, screenPos.y,
-        size.GetWidth(), size.GetHeight(),
-        IsEnabled() && !GetReadOnly()
-    );
+    wxWasmTrackElement(this, "styledtext",
+                       GetReadOnly() ? "readonly" : "editable", 0,
+                       GetName().IsEmpty() ? wxT("Editor") : GetName(),
+                       wxEmptyString,
+                       wxRect(wxPoint(0, 0), GetClientSize()),
+                       IsEnabled() && !GetReadOnly());
 #endif
 }
 

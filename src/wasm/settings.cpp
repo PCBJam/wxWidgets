@@ -22,25 +22,9 @@ static wxFont gs_fontDefault(10, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTW
 
 wxColour wxSystemSettingsNative::GetColour(wxSystemColour index)
 {
-#ifdef __WXUNIVERSAL__
-    // The wxUniv theme overrides system colours for all widget drawing;
-    // this fallback is rarely consulted. Preserved as-is for the canvas port.
-    switch (index)
-    {
-        case wxSYS_COLOUR_WINDOW:
-        case wxSYS_COLOUR_INFOBK:
-        case wxSYS_COLOUR_MENU:
-            return *wxWHITE;
-            break;
-        default:
-            return *wxBLACK;
-            break;
-    }
-#else // native (DOM) port
-    // Classic light scheme, approximating the univ theme the canvas port
-    // draws with, so cross-port screenshots stay close. Default window
-    // backgrounds come from wxSYS_COLOUR_BTNFACE — without this, canvas
-    // islands and dialog bodies erase to black.
+    // Classic light scheme. Default window backgrounds come from
+    // wxSYS_COLOUR_BTNFACE — without this, canvas islands and dialog
+    // bodies erase to black.
     switch (index)
     {
         case wxSYS_COLOUR_WINDOW:
@@ -74,7 +58,6 @@ wxColour wxSystemSettingsNative::GetColour(wxSystemColour index)
             // text colours and everything else
             return *wxBLACK;
     }
-#endif // __WXUNIVERSAL__
 }
 
 wxFont wxSystemSettingsNative::GetFont(wxSystemFont WXUNUSED(index))

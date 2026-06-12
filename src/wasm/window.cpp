@@ -19,10 +19,8 @@
 #include "wx/nonownedwnd.h"
 #include "wx/wasm/private/display.h"
 
-#ifndef __WXUNIVERSAL__
 #include "wx/settings.h"
 #include "wx/wasm/private/dom.h"
-#endif
 
 #include <emscripten.h>
 
@@ -179,73 +177,12 @@ void wxWindowWasm::SetLabel(const wxString& label)
     }
 }
 
-// ----------------------------------------------------------------------------
-// Rendered Element Tracking (toolbar tools, menu items, splitter sashes, etc.)
-// ----------------------------------------------------------------------------
-
-// Register a rendered element (not a wxWindow, but drawn by a parent control)
-void WasmRegisterRenderedElement(
-    wxWindow* parent,
-    const char* elementType,  // "tool", "menuitem", "sash", "auipart"
-    const char* subType,      // e.g., "button", "separator", "caption"
-    int index,
-    const wxString& label,
-    const wxString& tooltip,
-    int screenX, int screenY,
-    int width, int height,
-    bool enabled)
-{
-    if (!parent) return;
-
-    uintptr_t parentId = reinterpret_cast<uintptr_t>(parent);
-
-    // Create unique ID: parentId:elementType:index
-    EM_ASM({
-        var id = $0.toString() + ':' + UTF8ToString($1) + ':' + $2;
-        wxRenderedElementRegister(
-            id,
-            $0.toString(),
-            UTF8ToString($1),
-            UTF8ToString($3),
-            UTF8ToString($4),
-            UTF8ToString($5),
-            $6, $7, $8, $9,
-            $10 ? true : false,
-            $2
-        );
-    },
-    parentId,
-    elementType,
-    index,
-    subType,
-    label.utf8_str().data(),
-    tooltip.utf8_str().data(),
-    screenX, screenY,
-    width, height,
-    enabled ? 1 : 0);
-}
-
-// Unregister all rendered elements for a parent
-void WasmUnregisterRenderedElementsByParent(wxWindow* parent)
-{
-    if (!parent) return;
-
-    uintptr_t parentId = reinterpret_cast<uintptr_t>(parent);
-
-    EM_ASM({
-        wxRenderedElementUnregisterByParent($0.toString());
-    }, parentId);
-}
+// Rendered-element tracking (grid cells, list rows, AUI parts...) lives in
+// src/wasm/elementtracker.cpp.
 
 // ----------------------------------------------------------------------------
 // wxWindowWasm
 // ----------------------------------------------------------------------------
-
-// in wxUniv/MSW this class is abstract because it doesn't have DoPopupMenu()
-// method
-#ifdef __WXUNIVERSAL__
-IMPLEMENT_ABSTRACT_CLASS(wxWindowWasm, wxWindowBase)
-#endif // __WXUNIVERSAL__
 
 wxWindowWasm::wxWindowWasm()
 {
@@ -266,14 +203,12 @@ wxWindowWasm::wxWindowWasm(wxWindow *parent,
 
 wxWindowWasm::~wxWindowWasm()
 {
-#ifndef __WXUNIVERSAL__
     if (m_domId)
     {
         wxDomUnregisterWindow(m_domId);
         wxDomDestroyControl(m_domId);
         m_domId = 0;
     }
-#endif
 
     // Unregister from JS tracking system before destruction
     UnregisterElement(this);
@@ -312,7 +247,6 @@ void wxWindowWasm::Init()
     m_selfNeedsPaint = true;
     m_isCreated = false;
 
-#ifndef __WXUNIVERSAL__
     for ( int orient = 0; orient < 2; orient++ )
     {
         m_scrollPos[orient] = 0;
@@ -322,10 +256,7 @@ void wxWindowWasm::Init()
 
     m_domId = 0;
     m_domClipped = false;
-#endif // !__WXUNIVERSAL__
 }
-
-#ifndef __WXUNIVERSAL__
 
 // ----------------------------------------------------------------------------
 // DOM-backed native controls
@@ -380,8 +311,10 @@ void wxWindowWasm::ComputeAncestorClip(wxRect *clip, bool *hasClip)
           anc && anc != tlw && !anc->IsTopLevel();
           anc = anc->GetParent() )
     {
-        const wxPoint clientTLW = anc->GetClientAreaOrigin() +
-                                  (anc->GetScreenPosition() - tlwOrigin);
+        // GetScreenPosition() is ClientToScreen(0,0), i.e. already the
+        // client-area origin — do NOT add GetClientAreaOrigin() again
+        // (that shifted clips down by the strip height for wxNotebook).
+        const wxPoint clientTLW = anc->GetScreenPosition() - tlwOrigin;
         const wxRect clientRect(clientTLW, anc->GetClientSize());
 
         if ( !*hasClip )
@@ -402,7 +335,13 @@ void wxWindowWasm::UpdateDomGeometryRecursive(const wxRect *ancestorClip)
     if ( !tlw )
         return;
 
-    const wxPoint pos = GetScreenPosition() - tlw->GetScreenPosition();
+    // GetScreenPosition() is the CLIENT-AREA origin (ClientToScreen(0,0)),
+    // which equals the top-left corner only while GetClientAreaOrigin() is
+    // (0,0). The element box needs the top-left: without the correction a
+    // wxNotebook's box (tab strip included) rendered a strip-height too
+    // low, overlapping its own page area.
+    const wxPoint pos = GetScreenPosition() - GetClientAreaOrigin()
+                        - tlw->GetScreenPosition();
 
     if ( m_domId )
     {
@@ -493,15 +432,10 @@ void wxWindowWasm::OnDomEvent(wxDomEventKind kind)
     }
 }
 
-#endif // !__WXUNIVERSAL__
-
-#ifndef __WXUNIVERSAL__
-
 // ----------------------------------------------------------------------------
-// Built-in scrollbars and popup menus: in universal mode the wxUniv wxWindow
-// layer implements these wxWindowBase pure virtuals; the native (DOM) build
-// must provide them here. State is cached so wxScrollHelper-style callers
-// behave consistently. TODO(dom-phase-2): render real scrollbars.
+// Built-in scrollbars and popup menus. State is cached so
+// wxScrollHelper-style callers behave consistently.
+// TODO(dom-phase-2): render real scrollbars.
 // ----------------------------------------------------------------------------
 
 namespace
@@ -601,8 +535,6 @@ void wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y,
     callback(DoPopupMenu(menu, x, y));
 }
 #endif // wxUSE_MENUS
-
-#endif // !__WXUNIVERSAL__
 
 bool wxWindowWasm::Create(wxWindow *parent,
                           wxWindowID id,
@@ -725,11 +657,9 @@ bool wxWindowWasm::Show(bool show)
         eventShow.SetEventObject(this);
         HandleWindowEvent(eventShow);
 
-#ifndef __WXUNIVERSAL__
         // Sync the whole DOM subtree: showing/hiding a container (e.g. a
         // notebook page) changes IsShownOnScreen() for every descendant.
         UpdateDomVisibility();
-#endif
 
         // Update visibility in element registry
         UpdateElementRegistry(this, false);
@@ -800,11 +730,9 @@ void wxWindowWasm::SetFocus()
         caret->OnSetFocus();
 #endif // wxUSE_CARET
 
-#ifndef __WXUNIVERSAL__
     // Keep browser focus in sync (no-op if the element already has it).
     if (m_domId)
         wxDomFocus(m_domId);
-#endif
 }
 
 void wxWindowWasm::KillFocus()
@@ -881,11 +809,9 @@ void wxWindowWasm::EraseBackgroundWindow()
 
     if (!HandleWindowEvent(eraseEvent))
     {
-#ifndef __WXUNIVERSAL__
-        // In universal mode the wxUniv wxWindow paints the background itself;
-        // the native (DOM) port has no such painter, so an unhandled erase
-        // must fill the canvas with the background colour — otherwise the
-        // window paints over uninitialised (black) pixels.
+        // An unhandled erase must fill the canvas with the background
+        // colour — otherwise the window paints over uninitialised
+        // (black) pixels.
         if (!HasTransparentBackground())
         {
             wxColour bg = GetBackgroundColour();
@@ -895,7 +821,6 @@ void wxWindowWasm::EraseBackgroundWindow()
             dc.SetBackground(wxBrush(bg));
             dc.Clear();
         }
-#endif // !__WXUNIVERSAL__
     }
 }
 
@@ -980,13 +905,11 @@ bool wxWindowWasm::SetFont(const wxFont& font)
 {
     m_font = font;
 
-#ifndef __WXUNIVERSAL__
     if (m_domId && font.IsOk())
     {
         wxDomSetFont(m_domId, font.GetNativeFontInfoDesc());
         InvalidateBestSize();
     }
-#endif
 
     return true;
 }
@@ -1262,9 +1185,7 @@ void wxWindowWasm::DoMoveWindow(int x, int y, int width, int height)
         // Update element position in JS registry
         UpdateElementRegistry(this, false);
 
-#ifndef __WXUNIVERSAL__
         UpdateDomGeometry();
-#endif
     }
 }
 
@@ -1275,10 +1196,8 @@ void wxWindowWasm::DoEnable(bool enable)
         KillFocus();
     }
 
-#ifndef __WXUNIVERSAL__
     if (m_domId)
         wxDomSetEnabled(m_domId, enable);
-#endif
 
     // Update enabled state in element registry
     UpdateElementRegistry(this, false);

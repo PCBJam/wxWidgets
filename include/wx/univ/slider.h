@@ -84,9 +84,6 @@ public:
     // is this a vertical slider?
     bool IsVert() const { return (GetWindowStyle() & wxSL_VERTICAL) != 0; }
 
-    // is slider direction inverted? (vertical sliders are naturally inverted)
-    bool IsInverted() const { return IsVert() != HasFlag(wxSL_INVERSE); }
-
     // get the slider orientation
     wxOrientation GetOrientation() const
         { return IsVert() ? wxVERTICAL : wxHORIZONTAL; }

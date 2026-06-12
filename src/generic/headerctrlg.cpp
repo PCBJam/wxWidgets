@@ -23,6 +23,10 @@
 
 #include "wx/headerctrl.h"
 
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
+
 #ifdef wxHAS_GENERIC_HEADERCTRL
 
 #include "wx/dcbuffer.h"
@@ -517,7 +521,6 @@ void wxHeaderCtrl::OnPaint(wxPaintEvent& WXUNUSED(event))
 
 #ifdef __EMSCRIPTEN__
     // Clear previous header element registrations
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     WasmUnregisterRenderedElementsByParent(this);
 #endif
 
@@ -581,23 +584,11 @@ void wxHeaderCtrl::OnPaint(wxPaintEvent& WXUNUSED(event))
 
 #ifdef __EMSCRIPTEN__
         // Register this column header for element tracking
-        extern void WasmRegisterRenderedElement(
-            wxWindow* parent, const char* elementType, const char* subType,
-            int index, const wxString& label, const wxString& tooltip,
-            int screenX, int screenY, int width, int height, bool enabled);
-
-        wxPoint screenPos = GetScreenPosition();
-        WasmRegisterRenderedElement(
-            this,
-            "columnheader",
-            col.IsSortKey() ? "sortable" : "normal",
-            static_cast<int>(idx),
-            col.GetTitle(),
-            wxEmptyString,
-            screenPos.x + xpos, screenPos.y,
-            colWidth, h,
-            IsEnabled()
-        );
+        wxWasmTrackElement(this, "columnheader",
+                           col.IsSortKey() ? "sortable" : "normal",
+                           static_cast<int>(idx), col.GetTitle(),
+                           wxEmptyString, wxRect(xpos, 0, colWidth, h),
+                           IsEnabled());
 #endif
 
         xpos += colWidth;

@@ -301,9 +301,14 @@ bool wxNotebook::DeletePage(size_t nPage)
     return true;
 }
 
-// NOTE: the Motif-era DeletePage/RemovePage(wxNotebookPage*) overloads were
-// removed: no other port has them (portable code can't call them) and they
-// make calls with a literal 0 page index ambiguous (null pointer constant).
+bool wxNotebook::DeletePage(wxNotebookPage* page)
+{
+    int pagePos = FindPagePosition(page);
+    if (pagePos > -1)
+        return DeletePage(pagePos);
+    else
+        return false;
+}
 
 bool wxNotebook::RemovePage(size_t nPage)
 {
@@ -354,6 +359,14 @@ wxWindow* wxNotebook::DoRemovePage(size_t nPage)
     return pPage;
 }
 
+bool wxNotebook::RemovePage(wxNotebookPage* page)
+{
+    int pagePos = FindPagePosition(page);
+    if (pagePos > -1)
+        return RemovePage(pagePos);
+    else
+        return false;
+}
 
 // Find the position of the wxNotebookPage, -1 if not found.
 int wxNotebook::FindPagePosition(wxNotebookPage* page) const
@@ -409,14 +422,7 @@ bool wxNotebook::InsertPage(size_t nPage,
     // some page must be selected: either this one or the first one if there is
     // still no selection
     if ( m_selection == -1 )
-    {
       ChangePage(-1, 0);
-
-      // Keep the tab view's own selection in sync (without activation
-      // events): otherwise the first user tab switch reports an old
-      // selection of -1 and the initial page is never hidden.
-      m_tabView->SetTabSelection(GetPageId(m_tabView, m_pages[0]), false);
-    }
 
     RefreshLayout(false);
 

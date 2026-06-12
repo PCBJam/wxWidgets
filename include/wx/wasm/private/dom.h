@@ -1,15 +1,12 @@
 /////////////////////////////////////////////////////////////////////////////
 // Name:        src/wasm/private/dom.h
-// Purpose:     C++ -> JS bridge for the WASM DOM port's native controls.
-//              Wraps the window.wxDom* functions defined in wx-dom.js
-//              (only loaded in DOM-port bundles; never in canvas builds).
+// Purpose:     C++ -> JS bridge for the WASM port's native DOM controls.
+//              Wraps the window.wxDom* functions defined in wx-dom.js.
 // Licence:     wxWindows licence
 /////////////////////////////////////////////////////////////////////////////
 
 #ifndef __WX_WASM_PRIVATE_DOM_H__
 #define __WX_WASM_PRIVATE_DOM_H__
-
-#ifndef __WXUNIVERSAL__
 
 #include <emscripten.h>
 
@@ -274,7 +271,5 @@ inline void wxDomGetIntrinsicSize(int domId, int *w, int *h)
     if ( w ) *w = (packed >> 16) & 0xffff;
     if ( h ) *h = packed & 0xffff;
 }
-
-#endif // !__WXUNIVERSAL__
 
 #endif // __WX_WASM_PRIVATE_DOM_H__

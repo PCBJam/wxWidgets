@@ -51,6 +51,10 @@
 #define __wxPG_SOURCE_FILE__
 
 #include "wx/propgrid/propgrid.h"
+
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
 #include "wx/propgrid/editors.h"
 
 #if wxPG_USE_RENDERER_NATIVE
@@ -2062,7 +2066,6 @@ int wxPropertyGrid::DoDrawItems( wxDC& dc,
 {
 #ifdef __EMSCRIPTEN__
     // Clear existing property grid elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     WasmUnregisterRenderedElementsByParent(const_cast<wxPropertyGrid*>(this));
 #endif
 
@@ -2506,19 +2509,6 @@ int wxPropertyGrid::DoDrawItems( wxDC& dc,
 
 #ifdef __EMSCRIPTEN__
         // Register property row for element tracking
-        extern void WasmRegisterRenderedElement(
-            wxWindow* parent, const char* elementType, const char* subType,
-            int index, const wxString& label, const wxString& tooltip,
-            int screenX, int screenY, int width, int height, bool enabled);
-
-        // Get screen position
-        wxPoint screenPos = const_cast<wxPropertyGrid*>(this)->GetScreenPosition();
-
-        // Get property label and value
-        wxString propLabel = p->GetLabel();
-        wxString propValue = p->GetDisplayedString();
-
-        // Determine subtype based on property state
         const char* subType;
         if (p->IsCategory())
             subType = "category";
@@ -2529,22 +2519,12 @@ int wxPropertyGrid::DoDrawItems( wxDC& dc,
         else
             subType = "property";
 
-        // Calculate screen coordinates
-        int propScreenX = screenPos.x + greyDepth;
-        int propScreenY = screenPos.y + y;
-
-        // Register the property row
-        WasmRegisterRenderedElement(
-            const_cast<wxPropertyGrid*>(this),
-            "proprow",
-            subType,
-            static_cast<int>(arrInd - 1),  // Use array index as unique id
-            propLabel,
-            propValue,
-            propScreenX, propScreenY,
-            cellX - greyDepth, lh,
-            p->IsEnabled()
-        );
+        wxWasmTrackElement(const_cast<wxPropertyGrid*>(this), "proprow",
+                           subType,
+                           static_cast<int>(arrInd - 1),  // unique id
+                           p->GetLabel(), p->GetDisplayedString(),
+                           wxRect(greyDepth, y, cellX - greyDepth, lh),
+                           p->IsEnabled());
 #endif
 
         y += lh;

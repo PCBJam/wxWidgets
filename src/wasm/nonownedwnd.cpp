@@ -66,15 +66,13 @@ bool wxNonOwnedWindow::Create(wxWindow *parent,
 
     wxTopLevelWindows.Append(this);
 
-#ifndef __WXUNIVERSAL__
     // The first TLW is the browser main window — the page itself — which
-    // has no hidden state. Apps need not ever call Show(true) on it (the
-    // canvas port renders regardless, and KiCad doesn't), so the DOM
-    // port's visibility sync must not treat it as a hidden root: children
-    // created before an explicit Show() would be stuck at display:none.
+    // has no hidden state. Apps need not ever call Show(true) on it
+    // (KiCad doesn't), so the visibility sync must not treat it as a
+    // hidden root: children created before an explicit Show() would be
+    // stuck at display:none.
     if (IsMainFrame())
         m_isShown = true;
-#endif
 
     //printf("CreateWindow: %d\n", m_cssId);
 

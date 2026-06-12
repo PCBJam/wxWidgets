@@ -105,9 +105,22 @@ void wxNotebook::WasmRebuildTabs()
 
     wxDomNotebookSetTabs(WasmGetDomId(), json);
 
-    // the strip may have rewrapped; re-measure lazily on next use
+    // The strip content changed — re-measure NOW. The page area's origin
+    // depends on the strip height, but the pages' wx-side (client)
+    // positions do not change with it, so no DoMoveWindow fires anywhere:
+    // if the height differs from what earlier layout used, the DOM
+    // projection and the element registry's screen rects go stale (pages
+    // rendered into / clipped by the strip area). Re-project explicitly.
+    const int oldStrip = m_stripHeight;
     m_stripHeight = -1;
-    InvalidateBestSize();
+    const int newStrip = StripHeight();
+    if ( newStrip != oldStrip )
+    {
+        InvalidateBestSize();
+        DoSize();                       // page sizes track the client area
+        UpdateDomGeometry();            // re-project positions + clips
+        UpdateChildrenDOMVisibility();  // refresh registry screen rects
+    }
 }
 
 // ----------------------------------------------------------------------------

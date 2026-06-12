@@ -15,6 +15,10 @@
 
 #include "wx/dataview.h"
 
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
+
 #ifdef wxHAS_GENERIC_DATAVIEWCTRL
 
 #ifndef WX_PRECOMP
@@ -2529,7 +2533,6 @@ void wxDataViewMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
 
 #ifdef __EMSCRIPTEN__
     // Clear existing dataview elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     WasmUnregisterRenderedElementsByParent(GetOwner());
 #endif
 
@@ -2977,16 +2980,7 @@ void wxDataViewMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
 #endif // wxUSE_DRAG_AND_DROP
 
 #ifdef __EMSCRIPTEN__
-    // Register dataview rows for element tracking
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
-    // Get screen position of the owner control
-    wxPoint screenPos = GetOwner()->GetScreenPosition();
-
-    // Register each visible row
+    // Register each visible row for element tracking
     unsigned int reg_line_start = first_line_start;
     for (unsigned int item = item_start; item < item_last; item++)
     {
@@ -3038,22 +3032,13 @@ void wxDataViewMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
         if (itemText.IsEmpty())
             itemText = wxString::Format("Row %u", item);
 
-        // Calculate screen coordinates
-        int itemScreenX = screenPos.x + x_start;
-        int itemScreenY = screenPos.y + reg_line_start;
-
-        // Register the dataview row
-        WasmRegisterRenderedElement(
-            GetOwner(),
-            "dataviewitem",
-            selected ? "selected" : "row",
-            static_cast<int>(item),
-            itemText,
-            wxString::Format("Row %u", item),
-            itemScreenX, itemScreenY,
-            x_last - x_start, line_height,
-            true  // DataView items are always enabled
-        );
+        // Register the dataview row (rect is owner-relative)
+        wxWasmTrackElement(GetOwner(), "dataviewitem",
+                           selected ? "selected" : "row",
+                           static_cast<int>(item), itemText,
+                           wxString::Format("Row %u", item),
+                           wxRect(x_start, reg_line_start,
+                                  x_last - x_start, line_height));
 
         reg_line_start += line_height;
     }

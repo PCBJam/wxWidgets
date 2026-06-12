@@ -15,6 +15,10 @@
 
 #include "wx/srchctrl.h"
 
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
+
 #ifndef WX_PRECOMP
     #include "wx/button.h"
     #include "wx/dcclient.h"
@@ -541,63 +545,26 @@ void wxSearchCtrl::LayoutControls()
 
 #ifdef __EMSCRIPTEN__
     // Register search control for element tracking
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
-    // Clear previous elements
     WasmUnregisterRenderedElementsByParent(this);
 
-    wxPoint screenPos = GetScreenPosition();
-    wxRect textRect = m_text->GetRect();
+    // The search text area
+    wxWasmTrackElement(this, "searchctrl", "textfield", 0,
+                       GetDescriptiveText().empty() ? wxT("Search")
+                                                    : GetDescriptiveText(),
+                       m_text->GetValue(), m_text->GetRect(), IsEnabled());
 
-    // Register the search text area
-    WasmRegisterRenderedElement(
-        this,
-        "searchctrl",
-        "textfield",
-        0,
-        GetDescriptiveText().empty() ? wxT("Search") : GetDescriptiveText(),
-        m_text->GetValue(),
-        screenPos.x + textRect.x, screenPos.y + textRect.y,
-        textRect.width, textRect.height,
-        IsEnabled()
-    );
-
-    // Register search button if visible
     if ( IsSearchButtonVisible() )
     {
-        wxRect searchRect = m_searchButton->GetRect();
-        WasmRegisterRenderedElement(
-            this,
-            "searchbutton",
-            "search",
-            1,
-            wxT("Search"),
-            wxEmptyString,
-            screenPos.x + searchRect.x, screenPos.y + searchRect.y,
-            searchRect.width, searchRect.height,
-            IsEnabled()
-        );
+        wxWasmTrackElement(this, "searchbutton", "search", 1,
+                           wxT("Search"), wxEmptyString,
+                           m_searchButton->GetRect(), IsEnabled());
     }
 
-    // Register cancel button if visible
     if ( IsCancelButtonVisible() )
     {
-        wxRect cancelRect = m_cancelButton->GetRect();
-        WasmRegisterRenderedElement(
-            this,
-            "searchbutton",
-            "cancel",
-            2,
-            wxT("Cancel"),
-            wxEmptyString,
-            screenPos.x + cancelRect.x, screenPos.y + cancelRect.y,
-            cancelRect.width, cancelRect.height,
-            IsEnabled()
-        );
+        wxWasmTrackElement(this, "searchbutton", "cancel", 2,
+                           wxT("Cancel"), wxEmptyString,
+                           m_cancelButton->GetRect(), IsEnabled());
     }
 #endif
 }

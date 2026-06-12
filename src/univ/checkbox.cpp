@@ -158,7 +158,7 @@ void wxCheckBox::DoDraw(wxControlRenderer *renderer)
 
     renderer->GetRenderer()->
         DrawCheckButton(dc,
-                        GetLabelText(),
+                        GetLabel(),
                         bitmap,
                         renderer->GetRect(),
                         flags,
@@ -183,7 +183,7 @@ wxSize wxCheckBox::DoGetBestClientSize() const
     wxClientDC dc(wxConstCast(this, wxCheckBox));
     dc.SetFont(GetFont());
     wxCoord width, height;
-    dc.GetMultiLineTextExtent(GetLabelText(), &width, &height);
+    dc.GetMultiLineTextExtent(GetLabel(), &width, &height);
 
     wxSize sizeBmp = GetBitmapSize();
     if ( height < sizeBmp.y )

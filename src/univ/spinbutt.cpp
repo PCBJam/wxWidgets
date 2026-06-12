@@ -186,15 +186,13 @@ wxSize wxSpinButton::DoGetBestClientSize() const
 {
     // a spin button has by default the same size as two scrollbar arrows put
     // together
-    wxSize size;
+    wxSize size = m_renderer->GetScrollbarArrowSize();
     if ( IsVertical() )
     {
-        size = m_renderer->GetScrollbarArrowSize(wxVERTICAL);
         size.y *= 2;
     }
     else
     {
-        size = m_renderer->GetScrollbarArrowSize(wxHORIZONTAL);
         size.x *= 2;
     }
 
@@ -284,56 +282,6 @@ void wxSpinButton::DoDraw(wxControlRenderer *renderer)
     wxDC& dc = renderer->GetDC();
     m_arrows.DrawArrow(wxScrollArrows::Arrow_First, dc, rectArrow1);
     m_arrows.DrawArrow(wxScrollArrows::Arrow_Second, dc, rectArrow2);
-
-#ifdef __EMSCRIPTEN__
-    // Register spin button arrows for element tracking
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
-    // Clear existing elements
-    WasmUnregisterRenderedElementsByParent(this);
-
-    // Get screen position
-    wxPoint screenPos = GetScreenPosition();
-
-    // Determine which arrow is up/down based on orientation
-    bool isVertical = IsVertical();
-    const char* firstType = isVertical ? "up" : "left";
-    const char* secondType = isVertical ? "down" : "right";
-
-    // Check if arrows are disabled
-    bool firstEnabled = !(GetArrowState(wxScrollArrows::Arrow_First) & wxCONTROL_DISABLED);
-    bool secondEnabled = !(GetArrowState(wxScrollArrows::Arrow_Second) & wxCONTROL_DISABLED);
-
-    // Register the first arrow (up/left - increment)
-    WasmRegisterRenderedElement(
-        this,
-        "spinbutton",
-        firstType,
-        0,
-        isVertical ? wxT("+") : wxT("-"),
-        isVertical ? wxT("Increment") : wxT("Decrement"),
-        screenPos.x + rectArrow1.x, screenPos.y + rectArrow1.y,
-        rectArrow1.width, rectArrow1.height,
-        firstEnabled
-    );
-
-    // Register the second arrow (down/right - decrement)
-    WasmRegisterRenderedElement(
-        this,
-        "spinbutton",
-        secondType,
-        1,
-        isVertical ? wxT("-") : wxT("+"),
-        isVertical ? wxT("Decrement") : wxT("Increment"),
-        screenPos.x + rectArrow2.x, screenPos.y + rectArrow2.y,
-        rectArrow2.width, rectArrow2.height,
-        secondEnabled
-    );
-#endif
 }
 
 // ----------------------------------------------------------------------------
@@ -342,40 +290,30 @@ void wxSpinButton::DoDraw(wxControlRenderer *renderer)
 
 void wxSpinButton::CalcArrowRects(wxRect *rect1, wxRect *rect2) const
 {
-    const wxCoord ARROW_WIDTH = 9;
-    const wxCoord ARROW_HEIGHT = 5;
-
+    // calculate the rectangles for both arrows: note that normally the 2
+    // arrows are adjacent to each other but if the total control width/height
+    // is odd, we can have 1 pixel between them
     wxRect rectTotal = GetClientRect();
 
+    *rect1 =
+    *rect2 = rectTotal;
     if ( IsVertical() )
     {
-        wxCoord h = rectTotal.height / 2;
-        wxCoord w = rectTotal.width;
+        rect1->height /= 2;
+        rect2->height /= 2;
 
-        rect1->x = rectTotal.x + (w - ARROW_WIDTH) / 2;
-        rect1->y = rectTotal.y + (h - ARROW_HEIGHT) / 2;
-        rect1->width = ARROW_WIDTH;
-        rect1->height = ARROW_HEIGHT;
-
-        rect2->x = rect1->x;
-        rect2->y = rect1->y + h;
-        rect2->width = ARROW_WIDTH;
-        rect2->height = ARROW_HEIGHT;
+        rect2->y += rect1->height;
+        if ( rectTotal.height % 2 )
+            rect2->y++;
     }
     else // horizontal
     {
-        wxCoord h = rectTotal.height;
-        wxCoord w = rectTotal.width / 2;
+        rect1->width /= 2;
+        rect2->width /= 2;
 
-        rect1->x = rectTotal.x + (w - ARROW_WIDTH) / 2;
-        rect1->y = rectTotal.y + (h - ARROW_HEIGHT) / 2;
-        rect1->width = ARROW_WIDTH;
-        rect1->height = ARROW_HEIGHT;
-
-        rect2->x = rect1->x + w;
-        rect2->y = rect1->y;
-        rect2->width = ARROW_WIDTH;
-        rect2->height = ARROW_HEIGHT;
+        rect2->x += rect1->width;
+        if ( rectTotal.width % 2 )
+            rect2->x++;
     }
 }
 

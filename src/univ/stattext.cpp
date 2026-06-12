@@ -75,8 +75,6 @@ void wxStaticText::SetLabel(const wxString& str)
 
     // draw as real label the abbreviated version of it
     WXSetVisibleLabel(GetEllipsizedLabel());
-
-    AutoResizeIfNecessary();
 }
 
 void wxStaticText::WXSetVisibleLabel(const wxString& str)
@@ -86,7 +84,7 @@ void wxStaticText::WXSetVisibleLabel(const wxString& str)
 
 wxString wxStaticText::WXGetVisibleLabel() const
 {
-    return wxControl::GetLabelText();
+    return wxControl::GetLabel();
 }
 
 /*

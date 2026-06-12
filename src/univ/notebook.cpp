@@ -500,41 +500,10 @@ void wxNotebook::DoDrawTab(wxDC& dc, const wxRect& rect, size_t n)
                      flags,
                      m_accels[n]
                    );
-
-#ifdef __EMSCRIPTEN__
-    // Register tab for element tracking
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
-    wxPoint screenPos = GetScreenPosition();
-    int tabScreenX = screenPos.x + rect.x;
-    int tabScreenY = screenPos.y + rect.y;
-    bool isSelected = ((int)n == m_selection);
-
-    WasmRegisterRenderedElement(
-        this,
-        "tab",
-        isSelected ? "selected" : "button",
-        static_cast<int>(n),
-        m_titles[n],
-        m_titles[n],
-        tabScreenX, tabScreenY,
-        rect.width, rect.height,
-        true
-    );
-#endif
 }
 
 void wxNotebook::DoDraw(wxControlRenderer *renderer)
 {
-#ifdef __EMSCRIPTEN__
-    // Clear existing tab elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
-    WasmUnregisterRenderedElementsByParent(this);
-#endif
-
     //wxRect rectUpdate = GetUpdateClientRect(); -- unused
 
     wxDC& dc = renderer->GetDC();

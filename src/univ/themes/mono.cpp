@@ -115,7 +115,6 @@ public:
 #if wxUSE_SLIDER
     virtual void DrawSliderShaft(wxDC& dc,
                                  const wxRect& rect,
-                                 double fracValue,
                                  int lenThumb,
                                  wxOrientation orient,
                                  int flags = 0,
@@ -171,8 +170,7 @@ public:
     virtual wxRect GetBorderDimensions(wxBorder border) const;
 
 #if wxUSE_SCROLLBAR
-    virtual wxSize GetScrollbarArrowSize(wxOrientation WXUNUSED(orientation)) const
-        { return GetStdBmpSize(); }
+    virtual wxSize GetScrollbarArrowSize() const { return GetStdBmpSize(); }
 #endif // wxUSE_SCROLLBAR
 
     virtual wxSize GetCheckBitmapSize() const { return GetStdBmpSize(); }
@@ -954,7 +952,6 @@ wxMenuGeometryInfo *wxMonoRenderer::GetMenuGeometry(wxWindow *WXUNUSED(win),
 
 void wxMonoRenderer::DrawSliderShaft(wxDC& WXUNUSED(dc),
                                      const wxRect& WXUNUSED(rect),
-                                     double WXUNUSED(fracValue),
                                      int WXUNUSED(lenThumb),
                                      wxOrientation WXUNUSED(orient),
                                      int WXUNUSED(flags),

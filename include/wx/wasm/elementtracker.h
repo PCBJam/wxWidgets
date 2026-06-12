@@ -1,8 +1,9 @@
 /////////////////////////////////////////////////////////////////////////////
 // Name:        wx/wasm/elementtracker.h
-// Purpose:     RAII helper for element tracking in WASM E2E tests
-// Author:      Claude Code
-// Created:     2025-12-30
+// Purpose:     Element tracking for WASM E2E tests: owner-drawn widgets
+//              (grid cells, list rows, AUI parts...) have no per-item DOM,
+//              so paint code reports their geometry to the JS registry
+//              (window.wxElementRegistry in wx.js) for the test harness.
 // Licence:     LGPL v2
 /////////////////////////////////////////////////////////////////////////////
 
@@ -14,42 +15,34 @@
 #include "wx/window.h"
 #include "wx/string.h"
 
-// Forward declarations (defined in src/wasm/window.cpp)
-void WasmRegisterRenderedElement(wxWindow*, const char*, const char*, int,
-    const wxString&, const wxString&, int, int, int, int, bool);
-void WasmUnregisterRenderedElementsByParent(wxWindow*);
+class wxGrid;
+class wxGenericListCtrl;
 
-// RAII helper for element tracking - auto-clears on construct
-class WasmElementTracker
-{
-public:
-    WasmElementTracker(wxWindow* parent) : m_parent(parent) {
-        WasmUnregisterRenderedElementsByParent(parent);
-    }
+// Low-level registration (implemented in src/wasm/elementtracker.cpp).
+// The registry id is "parentId:elementType:index"; coordinates are screen
+// coordinates.
+void WasmRegisterRenderedElement(wxWindow* parent, const char* elementType,
+    const char* subType, int index, const wxString& label,
+    const wxString& tooltip, int screenX, int screenY, int width, int height,
+    bool enabled);
+void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
 
-    void Add(const char* type, const char* subType, int index,
-             const wxString& label, const wxString& tooltip,
-             int screenX, int screenY, int width, int height,
-             bool enabled = true) {
-        WasmRegisterRenderedElement(m_parent, type, subType, index,
-            label, tooltip, screenX, screenY, width, height, enabled);
-    }
+// Convenience wrapper for the common case: the element rect is relative to
+// the parent's origin; the screen position is computed here so paint-site
+// hooks stay one-liners.
+void wxWasmTrackElement(wxWindow* parent, const char* elementType,
+    const char* subType, int index, const wxString& label,
+    const wxString& tooltip, const wxRect& rect, bool enabled = true);
 
-    // Convenience overload without tooltip
-    void Add(const char* type, const char* subType, int index,
-             const wxString& label,
-             int screenX, int screenY, int width, int height,
-             bool enabled = true) {
-        Add(type, subType, index, label, wxEmptyString,
-            screenX, screenY, width, height, enabled);
-    }
-
-    wxWindow* GetParent() const { return m_parent; }
-    wxPoint GetScreenPosition() const { return m_parent->GetScreenPosition(); }
-
-private:
-    wxWindow* m_parent;
-};
+// Typed helpers where the whole hook collapses to one call.
+#if wxUSE_GRID
+void wxWasmTrackGridCell(wxGrid* grid, int row, int col,
+                         const wxRect& cellRect);
+#endif
+#if wxUSE_LISTCTRL
+void wxWasmTrackListRow(wxGenericListCtrl* list, size_t line,
+                        const wxRect& rectLine, int devX, int devY);
+#endif
 
 #endif // __EMSCRIPTEN__
 #endif // _WX_WASM_ELEMENTTRACKER_H_

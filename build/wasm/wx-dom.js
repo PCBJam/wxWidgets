@@ -343,6 +343,16 @@
       controls.delete(domId);
       inputs.delete(domId);
       labels.delete(domId);
+      // drop this control's mirrored e2e-registry entries (tabs, spin
+      // arrows, text fields)
+      var reg = window.wxElementRegistry;
+      if (reg && reg.renderedElements) {
+        var stale = [];
+        reg.renderedElements.forEach(function (info, key) {
+          if (String(key).indexOf(domId + ':') === 0) stale.push(key);
+        });
+        stale.forEach(function (key) { reg.unregisterRendered(key); });
+      }
     }
   };
 
@@ -357,6 +367,12 @@
     // unlike canvas tabs they don't repaint on move, so re-sync here.
     if (el.dataset.wxNotebook && el._wxTabs) {
       scheduleTabRegistry(domId, el);
+    }
+    // Same for spin arrows and text fields (the canvas port published
+    // them from paint hooks; DOM controls don't repaint on move).
+    if (el.dataset.wxSpin || el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA') {
+      scheduleControlRegistry(domId, el);
     }
   };
 
@@ -867,6 +883,58 @@
           parentId: String(domId), index: idx
         }, rectInfo(btn)));
       });
+    });
+  }
+
+  // Mirror DOM-native controls the canvas port used to publish from its
+  // paint hooks as "rendered elements": spin arrows ('spinbutton',
+  // subType up/down) and text fields ('textctrl', subType
+  // singleline/multiline). Keeps clickSpinUp()/findSingleLineTextCtrl()
+  // and friends working against the same registry contract.
+  function scheduleControlRegistry(domId, el) {
+    requestAnimationFrame(function () {
+      var reg = window.wxElementRegistry;
+      if (!reg || !el.isConnected) return;
+      var stale = [];
+      reg.renderedElements.forEach(function (info, key) {
+        var k = String(key);
+        if (k.indexOf(domId + ':spinbutton:') === 0 ||
+            k.indexOf(domId + ':textctrl:') === 0) stale.push(key);
+      });
+      stale.forEach(function (key) { reg.unregisterRendered(key); });
+
+      if (el.dataset.wxSpin) {
+        var arrows = [
+          { sel: '.wx-spin-up', sub: 'up', idx: 0 },
+          { sel: '.wx-spin-down', sub: 'down', idx: 1 }
+        ];
+        arrows.forEach(function (a) {
+          var btn = el.querySelector(a.sel);
+          if (!btn) return;
+          registryRegister(domId + ':spinbutton:' + a.idx, Object.assign({
+            elementType: 'spinbutton', subType: a.sub,
+            label: '', tooltip: '', enabled: !btn.disabled,
+            parentId: String(domId), index: a.idx
+          }, rectInfo(btn)));
+        });
+        return;
+      }
+
+      // text fields: plain <input type=text|password> (a datalist combo
+      // is not a textctrl) and <textarea>
+      var isText = el.tagName === 'TEXTAREA' ||
+                   (el.tagName === 'INPUT' &&
+                    (el.type === 'text' || el.type === 'password') &&
+                    !el.hasAttribute('list'));
+      if (isText) {
+        registryRegister(domId + ':textctrl:0', Object.assign({
+          elementType: 'textctrl',
+          subType: el.tagName === 'TEXTAREA' ? 'multiline' : 'singleline',
+          label: el.getAttribute('aria-label') || '',
+          tooltip: '', enabled: !el.disabled,
+          parentId: String(domId), index: 0
+        }, rectInfo(el)));
+      }
     });
   }
 

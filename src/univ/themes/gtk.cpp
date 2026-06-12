@@ -141,7 +141,6 @@ public:
 #if wxUSE_SLIDER
     virtual void DrawSliderShaft(wxDC& dc,
                                  const wxRect& rect,
-                                 double fracValue,
                                  int lenThumb,
                                  wxOrientation orient,
                                  int flags = 0,
@@ -194,7 +193,7 @@ public:
 
     // geometry and hit testing
 #if wxUSE_SCROLLBAR
-    virtual wxSize GetScrollbarArrowSize(wxOrientation WXUNUSED(orientation)) const
+    virtual wxSize GetScrollbarArrowSize() const
         { return m_sizeScrollbarArrow; }
 #endif // wxUSE_SCROLLBAR
 
@@ -1501,7 +1500,6 @@ wxRect wxGTKRenderer::GetSliderShaftRect(const wxRect& rect,
 
 void wxGTKRenderer::DrawSliderShaft(wxDC& dc,
                                     const wxRect& rectOrig,
-                                    double WXUNUSED(fracValue),
                                     int WXUNUSED(lenThumb),
                                     wxOrientation WXUNUSED(orient),
                                     int flags,

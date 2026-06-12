@@ -21,6 +21,10 @@
 
 #include "wx/listctrl.h"
 
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
+
 #ifndef WX_PRECOMP
     #include "wx/scrolwin.h"
     #include "wx/timer.h"
@@ -2058,7 +2062,6 @@ void wxListMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
 
 #ifdef __EMSCRIPTEN__
     // Clear existing list elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     WasmUnregisterRenderedElementsByParent(GetListCtrl());
 #endif
 
@@ -2164,35 +2167,7 @@ void wxListMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
 
 #ifdef __EMSCRIPTEN__
             // Register list item row for element tracking
-            extern void WasmRegisterRenderedElement(
-                wxWindow* parent, const char* elementType, const char* subType,
-                int index, const wxString& label, const wxString& tooltip,
-                int screenX, int screenY, int width, int height, bool enabled);
-
-            // Get screen position
-            wxPoint screenPos = GetListCtrl()->GetScreenPosition();
-
-            // Get item text from first column as label
-            wxString itemText = GetListCtrl()->GetItemText(line, 0);
-            if (itemText.IsEmpty())
-                itemText = wxString::Format("Item %zu", line);
-
-            // Calculate screen coordinates
-            int itemScreenX = screenPos.x + rectLine.x - dev_x;
-            int itemScreenY = screenPos.y + rectLine.y - dev_y;
-
-            // Register the list row
-            WasmRegisterRenderedElement(
-                GetListCtrl(),
-                "listitem",
-                "row",
-                static_cast<int>(line),
-                itemText,
-                wxString::Format("Row %zu", line),
-                itemScreenX, itemScreenY,
-                rectLine.width, rectLine.height,
-                true  // List items are always enabled
-            );
+            wxWasmTrackListRow(GetListCtrl(), line, rectLine, dev_x, dev_y);
 #endif
         }
 

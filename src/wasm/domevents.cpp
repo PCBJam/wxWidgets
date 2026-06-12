@@ -8,8 +8,6 @@
 // For compilers that support precompilation, includes "wx.h".
 #include "wx/wxprec.h"
 
-#ifndef __WXUNIVERSAL__
-
 #include "wx/window.h"
 #include "wx/app.h"
 #include "wx/hashmap.h"
@@ -156,5 +154,3 @@ int EMSCRIPTEN_KEEPALIVE wx_dom_mouse(int kind, int x, int y,
 }
 
 } // extern "C"
-
-#endif // !__WXUNIVERSAL__

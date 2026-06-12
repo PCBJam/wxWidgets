@@ -20,12 +20,6 @@
 // wxPopupWindow
 // ----------------------------------------------------------------------------
 
-#ifdef __WXUNIVERSAL__
-wxBEGIN_EVENT_TABLE(wxPopupWindow, wxPopupWindowBase)
-    EVT_SIZE(wxPopupWindow::OnSize)
-wxEND_EVENT_TABLE()
-#endif
-
 wxPopupWindow::~wxPopupWindow()
 {
 }

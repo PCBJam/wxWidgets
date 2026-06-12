@@ -142,13 +142,6 @@ public:
     virtual int GetSelection() const wxOVERRIDE;
     virtual wxString GetStringSelection() const wxOVERRIDE;
 
-    // wxUniversal's wxComboBox deliberately does not derive from wxComboBoxBase
-    // (see the comment above the class declaration), so the base-class default
-    // for GetCurrentSelection() — which returns GetSelection() in upstream
-    // wx/combobox.h — isn't inherited. Provide the same default here so
-    // wxUniversal exposes a wxComboBoxBase-compatible API.
-    virtual int GetCurrentSelection() const { return GetSelection(); }
-
     // we have our own input handler and our own actions
     // (but wxComboCtrl already handled Popup/Dismiss)
     /*

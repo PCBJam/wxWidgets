@@ -429,7 +429,7 @@ void wxStdRenderer::DrawBorder(wxDC& dc,
             break;
 
         case wxBORDER_SIMPLE:
-            DrawStaticBorder(dc, &rect);
+            DrawRect(dc, &rect, m_penBlack);
             break;
 
         default:

@@ -37,6 +37,10 @@
 #include "wx/calctrl.h"
 #include "wx/generic/calctrlg.h"
 
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
+
 #define DEBUG_PAINT 0
 
 // ----------------------------------------------------------------------------
@@ -793,7 +797,6 @@ void wxGenericCalendarCtrl::OnPaint(wxPaintEvent& WXUNUSED(event))
 
 #ifdef __EMSCRIPTEN__
     // Clear existing calendar date elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
     WasmUnregisterRenderedElementsByParent(this);
 #endif
 
@@ -1027,31 +1030,14 @@ void wxGenericCalendarCtrl::OnPaint(wxPaintEvent& WXUNUSED(event))
                 dc.DrawText(dayStr, x, y + 1);
 
 #ifdef __EMSCRIPTEN__
-                // Register calendar date cell for element tracking
-                extern void WasmRegisterRenderedElement(
-                    wxWindow* parent, const char* elementType, const char* subType,
-                    int index, const wxString& label, const wxString& tooltip,
-                    int screenX, int screenY, int width, int height, bool enabled);
-
-                // Get screen position
-                wxPoint screenPos = GetScreenPosition();
-
-                // Calculate cell position (left edge of the cell column)
-                int cellX = screenPos.x + wd*m_widthCol + x0;
-                int cellY = screenPos.y + y;
-
-                // Register the calendar date
-                WasmRegisterRenderedElement(
-                    this,
-                    "datecell",
-                    isSel ? "selected" : "day",
-                    static_cast<int>((nWeek - 1) * 7 + wd),
-                    dayStr,
-                    date.FormatDate(),
-                    cellX, cellY,
-                    m_widthCol, m_heightRow,
-                    IsDateInRange(date)
-                );
+                // Register the calendar date cell for element tracking
+                wxWasmTrackElement(this, "datecell",
+                                   isSel ? "selected" : "day",
+                                   static_cast<int>((nWeek - 1) * 7 + wd),
+                                   dayStr, date.FormatDate(),
+                                   wxRect(wd*m_widthCol + x0, y,
+                                          m_widthCol, m_heightRow),
+                                   IsDateInRange(date));
 #endif
 
                 if ( !isSel && attr && attr->HasBorder() )

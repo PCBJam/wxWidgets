@@ -746,7 +746,6 @@ bool wxTextCtrl::Create(wxWindow *parent,
     RecalcFontMetrics();
     ChangeValue(value);
     SetInitialSize(size);
-    SetBackgroundColour(*wxWHITE);
 
     m_isEditable = !(style & wxTE_READONLY);
 
@@ -2402,23 +2401,6 @@ wxSize wxTextCtrl::DoGetBestClientSize() const
     rectText.width = w;
     rectText.height = h;
     wxRect rectTotal = GetRenderer()->GetTextTotalArea(this, rectText);
-    return wxSize(rectTotal.width, rectTotal.height);
-}
-
-wxSize wxTextCtrl::DoGetSizeFromTextSize(int xlen, int ylen) const
-{
-    wxRect rectText(0, 0, xlen, ylen);
-    wxRect rectTotal = GetRenderer()->GetTextTotalArea(this, rectText);
-
-    if (xlen == -1 || ylen == -1)
-    {
-          wxSize bestSize = DoGetBestClientSize();
-          if (xlen == -1)
-              rectTotal.width = bestSize.x;
-          if (ylen == -1)
-              rectTotal.height = bestSize.y;
-    }
-
     return wxSize(rectTotal.width, rectTotal.height);
 }
 
@@ -4297,37 +4279,6 @@ void wxTextCtrl::DoDraw(wxControlRenderer *renderer)
 
         m_hasCaret = true;
     }
-
-#ifdef __EMSCRIPTEN__
-    // Register text control area for element tracking
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
-    // Clear previous elements
-    WasmUnregisterRenderedElementsByParent(this);
-
-    wxPoint screenPos = GetScreenPosition();
-    wxRect textArea = GetRealTextArea();
-
-    // Use name if available, otherwise empty
-    wxString ctrlName = GetName();
-
-    // Register the text input area
-    WasmRegisterRenderedElement(
-        this,
-        "textctrl",
-        IsSingleLine() ? "singleline" : "multiline",
-        0,
-        ctrlName,
-        GetValue().Left(50),  // First 50 chars as tooltip
-        screenPos.x + textArea.x, screenPos.y + textArea.y,
-        textArea.width, textArea.height,
-        IsEnabled() && IsEditable()
-    );
-#endif
 }
 
 // ----------------------------------------------------------------------------

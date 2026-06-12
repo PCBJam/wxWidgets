@@ -11,7 +11,6 @@
 
 class wxNonOwnedWindow;
 
-#ifndef __WXUNIVERSAL__
 // DOM event kinds delivered from wx-dom.js via wx_dom_event()
 // (src/wasm/domevents.cpp) to wxWindowWasm::OnDomEvent overrides.
 enum wxDomEventKind
@@ -28,7 +27,6 @@ enum wxDomEventKind
     wxDOM_EVENT_TOOL = 10,
     wxDOM_EVENT_TAB = 11
 };
-#endif // !__WXUNIVERSAL__
 
 class WXDLLIMPEXP_CORE wxWindowWasm : public wxWindowBase
 {
@@ -83,10 +81,6 @@ public:
 
     virtual bool IsDoubleBuffered() const wxOVERRIDE { return true; }
 
-#ifndef __WXUNIVERSAL__
-    // In universal mode these wxWindowBase pure virtuals are implemented by
-    // the wxUniv wxWindow layer; in the native (DOM) build wxWindowWasm IS
-    // wxWindow, so it must provide them itself.
     virtual void SetScrollbar(int orient, int pos, int thumbvisible,
                               int range, bool refresh = true) wxOVERRIDE;
     virtual void SetScrollPos(int orient, int pos, bool refresh = true) wxOVERRIDE;
@@ -109,7 +103,6 @@ public:
 
     // DOM events (click/input/focus...) routed here by src/wasm/domevents.cpp.
     virtual void OnDomEvent(wxDomEventKind kind);
-#endif // !__WXUNIVERSAL__
 
     virtual WXWidget GetHandle() const wxOVERRIDE { return NULL; }
 
@@ -163,13 +156,19 @@ protected:
     // based on IsShownOnScreen() (used when parent visibility changes)
     void UpdateChildrenDOMVisibility();
 
+    // Push the wx rect (in top-level-window coordinates) to the DOM
+    // element, clipped to the intersection of the ancestor client rects
+    // (mirrors the paint-DC clip walk), then recurse into descendants.
+    // Protected so containers whose client-area origin can change without
+    // any child move (e.g. the notebook strip) can re-project explicitly.
+    void UpdateDomGeometry();
+
 private:
     void Init();
 
     int m_x, m_y;          // window position
     int m_width, m_height; // window size
 
-#ifndef __WXUNIVERSAL__
     // built-in scrollbar state caches (index 0 = horizontal, 1 = vertical);
     // honest enough for wxScrollHelper users until the DOM port renders
     // real scrollbars. TODO(dom-phase-2)
@@ -185,10 +184,6 @@ private:
     wxRect m_domClip;
     bool m_domClipped;
 
-    // Push the wx rect (in top-level-window coordinates) to the DOM
-    // element, clipped to the intersection of the ancestor client rects
-    // (mirrors the paint-DC clip walk), then recurse into descendants.
-    void UpdateDomGeometry();
     void UpdateDomGeometryRecursive(const wxRect *ancestorClip);
     void ComputeAncestorClip(wxRect *clip, bool *hasClip);
 
@@ -196,7 +191,6 @@ private:
     // elements (a hidden ancestor — e.g. an unselected notebook page —
     // must hide the whole DOM subtree).
     void UpdateDomVisibility();
-#endif // !__WXUNIVERSAL__
 
     wxString m_label;
 

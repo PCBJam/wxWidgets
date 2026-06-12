@@ -28,9 +28,6 @@ public:
     }
 
 protected:
-#ifdef __WXUNIVERSAL__
-    wxDECLARE_EVENT_TABLE();
-#endif
     wxDECLARE_DYNAMIC_CLASS(wxPopupWindow);
 };
 

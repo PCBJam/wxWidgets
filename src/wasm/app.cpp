@@ -255,8 +255,8 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
                 SendMouseEventToWindow(&enterEvent, g_mouseWindow);
             }
 
-#if !defined(__WXUNIVERSAL__) && wxUSE_TOOLTIPS
-            // Hover target changed: (re)arm the DOM-port tooltip layer.
+#if wxUSE_TOOLTIPS
+            // Hover target changed: (re)arm the DOM tooltip layer.
             extern void wxWasmTooltipOnHoverChange(wxWindow *win);
             wxWasmTooltipOnHoverChange(g_mouseWindow);
 #endif
@@ -510,8 +510,7 @@ EM_BOOL KeyCallback(int eventType,
 {
     //printf("KeyCallback: %d\n", eventType);
 
-#ifndef __WXUNIVERSAL__
-    // DOM port: while a DOM editable (<input>/<textarea>) owns browser
+    // While a DOM editable (<input>/<textarea>) owns browser
     // focus, the keystroke belongs to it — no wx dispatch, no
     // preventDefault, or typing would be swallowed. Escape still goes to
     // wx so modal dialogs can close. The check is STATELESS
@@ -531,7 +530,6 @@ EM_BOOL KeyCallback(int eventType,
         if (strcmp(emscriptenEvent->key, "Escape") != 0)
             return EM_FALSE;
     }
-#endif // !__WXUNIVERSAL__
 
     wxApp* app = static_cast<wxApp*>(userData);
     wxKeyEvent event;

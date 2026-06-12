@@ -23,6 +23,10 @@
 
 #include "wx/combo.h"
 
+#ifdef __EMSCRIPTEN__
+    #include "wx/wasm/elementtracker.h"
+#endif
+
 #ifndef WX_PRECOMP
     #include "wx/log.h"
     #include "wx/combobox.h"
@@ -332,42 +336,17 @@ void wxGenericComboCtrl::OnPaintEvent( wxPaintEvent& WXUNUSED(event) )
 
 #ifdef __EMSCRIPTEN__
     // Register combo/choice button for element tracking
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
-    extern void WasmRegisterRenderedElement(
-        wxWindow* parent, const char* elementType, const char* subType,
-        int index, const wxString& label, const wxString& tooltip,
-        int screenX, int screenY, int width, int height, bool enabled);
-
-    // Clear previous elements
     WasmUnregisterRenderedElementsByParent(this);
 
-    wxPoint screenPos = GetScreenPosition();
+    // The dropdown button area
+    wxWasmTrackElement(this, "combobutton",
+                       IsPopupShown() ? "open" : "closed", 0,
+                       GetValue(), GetName(), m_btnArea, IsEnabled());
 
-    // Register the dropdown button area
-    WasmRegisterRenderedElement(
-        this,
-        "combobutton",
-        IsPopupShown() ? "open" : "closed",
-        0,
-        GetValue(),
-        GetName(),
-        screenPos.x + m_btnArea.x, screenPos.y + m_btnArea.y,
-        m_btnArea.width, m_btnArea.height,
-        IsEnabled()
-    );
-
-    // Register the text/selection area for clicking
-    WasmRegisterRenderedElement(
-        this,
-        "combotextarea",
-        HasFlag(wxCB_READONLY) ? "readonly" : "editable",
-        1,
-        GetValue(),
-        GetName(),
-        screenPos.x + m_tcArea.x, screenPos.y + m_tcArea.y,
-        m_tcArea.width, m_tcArea.height,
-        IsEnabled()
-    );
+    // The text/selection area for clicking
+    wxWasmTrackElement(this, "combotextarea",
+                       HasFlag(wxCB_READONLY) ? "readonly" : "editable", 1,
+                       GetValue(), GetName(), m_tcArea, IsEnabled());
 #endif
 
     delete dcPtr;

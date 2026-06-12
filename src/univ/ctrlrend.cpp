@@ -69,12 +69,13 @@ void wxControlRenderer::DrawLabel()
     m_dc.SetFont(m_window->GetFont());
     m_dc.SetTextForeground(m_window->GetForegroundColour());
 
-    if ( !m_window->GetLabel().empty() )
+    wxString label = m_window->GetLabel();
+    if ( !label.empty() )
     {
         wxControl *ctrl = wxStaticCast(m_window, wxControl);
 
         m_renderer->DrawLabel(m_dc,
-                              ctrl->GetLabelText(),
+                              label,
                               m_rect,
                               m_window->GetStateFlags(),
                               ctrl->GetAlignment(),
@@ -89,7 +90,8 @@ void wxControlRenderer::DrawButtonLabel(const wxBitmap& bitmap,
     m_dc.SetFont(m_window->GetFont());
     m_dc.SetTextForeground(m_window->GetForegroundColour());
 
-    if ( !m_window->GetLabel().empty() || bitmap.IsOk() )
+    wxString label = m_window->GetLabel();
+    if ( !label.empty() || bitmap.IsOk() )
     {
         wxRect rectLabel = m_rect;
         if ( bitmap.IsOk() )
@@ -100,7 +102,7 @@ void wxControlRenderer::DrawButtonLabel(const wxBitmap& bitmap,
         wxControl *ctrl = wxStaticCast(m_window, wxControl);
 
         m_renderer->DrawButtonLabel(m_dc,
-                                    ctrl->GetLabelText(),
+                                    label,
                                     bitmap,
                                     rectLabel,
                                     m_window->GetStateFlags(),
@@ -118,7 +120,7 @@ void wxControlRenderer::DrawFrame()
     wxControl *ctrl = wxStaticCast(m_window, wxControl);
 
     m_renderer->DrawFrame(m_dc,
-                          ctrl->GetLabelText(),
+                          m_window->GetLabel(),
                           m_rect,
                           m_window->GetStateFlags(),
                           ctrl->GetAlignment(),
@@ -354,12 +356,6 @@ void wxControlRenderer::DoDrawItems(const wxListBox *lbox,
 #endif
                                     )
 {
-#ifdef __EMSCRIPTEN__
-    // Clear existing listbox elements before redrawing
-    extern void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
-    WasmUnregisterRenderedElementsByParent(const_cast<wxListBox*>(lbox));
-#endif
-
     // prepare for the drawing: calc the initial position
     wxCoord lineHeight = lbox->GetLineHeight();
 
@@ -417,43 +413,6 @@ void wxControlRenderer::DoDrawItems(const wxListBox *lbox,
         {
             m_renderer->DrawItem(m_dc, lbox->GetString(n), rect, flags);
         }
-
-#ifdef __EMSCRIPTEN__
-        // Register listbox item for element tracking
-        extern void WasmRegisterRenderedElement(
-            wxWindow* parent, const char* elementType, const char* subType,
-            int index, const wxString& label, const wxString& tooltip,
-            int screenX, int screenY, int width, int height, bool enabled);
-
-        // Get screen position
-        wxPoint screenPos = const_cast<wxListBox*>(lbox)->GetScreenPosition();
-
-        // Determine subtype based on item state
-        const char* subType;
-        if (flags & wxCONTROL_SELECTED)
-            subType = "selected";
-        else if (flags & wxCONTROL_FOCUSED)
-            subType = "focused";
-        else
-            subType = "item";
-
-        // Calculate screen coordinates
-        int itemScreenX = screenPos.x + rect.x;
-        int itemScreenY = screenPos.y + rect.y;
-
-        // Register the listbox item
-        WasmRegisterRenderedElement(
-            const_cast<wxListBox*>(lbox),
-            "listboxitem",
-            subType,
-            static_cast<int>(n),
-            lbox->GetString(n),
-            wxEmptyString,
-            itemScreenX, itemScreenY,
-            rect.width, rect.height,
-            true  // Listbox items are always enabled
-        );
-#endif
 
         rect.y += lineHeight;
     }
