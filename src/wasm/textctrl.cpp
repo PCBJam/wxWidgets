@@ -16,7 +16,6 @@
 wxTextCtrl::wxTextCtrl()
 {
     m_modified = false;
-    m_inDomInput = false;
 }
 
 wxTextCtrl::wxTextCtrl(wxWindow *parent, wxWindowID id,
@@ -27,7 +26,6 @@ wxTextCtrl::wxTextCtrl(wxWindow *parent, wxWindowID id,
                        const wxString& name)
 {
     m_modified = false;
-    m_inDomInput = false;
 
     Create(parent, id, value, pos, size, style, validator, name);
 }
@@ -83,7 +81,7 @@ void wxTextCtrl::WriteText(const wxString& text)
 
     // WriteText/AppendText mutate the cache directly (not via DoSetValue),
     // so push the result into the DOM element here.
-    if (WasmGetDomId() && !m_inDomInput)
+    if (WasmGetDomId())
         wxDomSetValue(WasmGetDomId(), GetValue());
 
     MarkDirty();
@@ -93,9 +91,10 @@ void wxTextCtrl::DoSetValue(const wxString& value, int flags)
 {
     wxTextEntry::DoSetValue(value, flags);
 
-    // push into the DOM element — unless the new value just came FROM the
-    // element ('input' event), where echoing it back would move the caret
-    if (WasmGetDomId() && !m_inDomInput)
+    // Push the programmatic value into the DOM element. (The 'input' event path
+    // goes through wxTextEntry::DoSetValue directly, bypassing this push, so we
+    // never echo a value that just came FROM the element.)
+    if (WasmGetDomId())
         wxDomSetValue(WasmGetDomId(), value);
 
     // setting the value programmatically resets the modified flag, as if the
@@ -109,12 +108,13 @@ void wxTextCtrl::OnDomEvent(wxDomEventKind kind)
     {
         case wxDOM_EVENT_INPUT:
         {
-            // Pull the typed text into the wxTextEntry cache and fire
-            // wxEVT_TEXT, like any port does for user edits.
-            m_inDomInput = true;
+            // The element already holds the typed text, so update the wx cache
+            // and fire wxEVT_TEXT WITHOUT echoing the value back into the DOM:
+            // call the base DoSetValue directly (the wxTextCtrl override would
+            // push). This keeps no in-dom-input flag, so a wxEVT_TEXT handler
+            // that throws cannot wedge later programmatic SetValue/ChangeValue.
             const wxString value = wxDomGetValue(WasmGetDomId());
-            DoSetValue(value, SetValue_SendEvent);
-            m_inDomInput = false;
+            wxTextEntry::DoSetValue(value, SetValue_SendEvent);
             m_modified = true;
             return;
         }

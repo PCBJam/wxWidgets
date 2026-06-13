@@ -83,6 +83,27 @@ void wxWasmTooltipOnHoverChange(wxWindow *win)
         gs_tooltipTimer->StartOnce(wxDOM_TOOLTIP_DELAY_MS);
 }
 
+// Called from ~wxWindowWasm: a window being destroyed must not remain the hover
+// target, or the pending tooltip timer would dereference a freed window.
+void wxWasmTooltipForgetWindow(wxWindow *win)
+{
+    if ( gs_hoverWindow == win )
+    {
+        gs_hoverWindow = NULL;
+        if ( gs_tooltipTimer )
+            gs_tooltipTimer->Stop();
+        wxDomTooltipHide();
+    }
+}
+
+// Test/diagnostic hook (tests/apps/standalone/tooltip-lifetime): exposes the
+// current hover target so a test can assert the pointer never outlives its
+// window. Not used by any production code path.
+wxWindow *wxWasmTooltipDebugHoverWindow()
+{
+    return gs_hoverWindow;
+}
+
 // ----------------------------------------------------------------------------
 // wxToolTip
 // ----------------------------------------------------------------------------

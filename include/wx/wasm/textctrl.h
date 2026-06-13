@@ -53,9 +53,6 @@ protected:
 private:
     bool m_modified;
 
-    // guards against echoing DOM 'input' events back into the element
-    bool m_inDomInput;
-
     wxDECLARE_DYNAMIC_CLASS(wxTextCtrl);
 };
 

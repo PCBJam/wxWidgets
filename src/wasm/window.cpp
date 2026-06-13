@@ -223,6 +223,12 @@ wxWindowWasm::~wxWindowWasm()
     {
         gs_focusWindow = NULL;
     }
+#if wxUSE_TOOLTIPS
+    // Drop the hovered-window pointer too, so a pending tooltip timer can't
+    // fire on this freed window (src/wasm/tooltip.cpp).
+    extern void wxWasmTooltipForgetWindow(wxWindow *win);
+    wxWasmTooltipForgetWindow(static_cast<wxWindow *>(this));
+#endif
     if (gs_nextFocusWindow == this)
     {
         gs_nextFocusWindow = NULL;
