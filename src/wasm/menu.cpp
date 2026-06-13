@@ -254,8 +254,12 @@ void wxMenuBar::Attach(wxFrame *frame)
 
 void wxMenuBar::Detach()
 {
-    // the DOM node is left in place: the frame owns the bar's positioning
-    // and window destruction handles the cleanup
+    // Here the menu bar is a real child window of the frame (Attach() calls
+    // Create(frame)), so unlink it from the parent's child list: the base
+    // Detach() only clears m_parent, which would leave a dangling child entry in
+    // the frame once the bar is destroyed. The DOM node lives until destruction.
+    if ( wxWindow* parent = GetParent() )
+        parent->RemoveChild(this);
 
     wxMenuBarBase::Detach();
 }
