@@ -25,7 +25,8 @@ enum wxDomEventKind
     wxDOM_EVENT_SPIN_DOWN = 8,
     wxDOM_EVENT_MENU = 9,
     wxDOM_EVENT_TOOL = 10,
-    wxDOM_EVENT_TAB = 11
+    wxDOM_EVENT_TAB = 11,
+    wxDOM_EVENT_SCROLL = 12
 };
 
 class WXDLLIMPEXP_CORE wxWindowWasm : public wxWindowBase
@@ -179,6 +180,14 @@ private:
     // JS-side element id for DOM-backed native controls (0 = none).
     int m_domId;
 
+    // JS-side ids of the built-in scrollbar gutter elements rendered along
+    // this window's client edges (index 0 = horizontal, 1 = vertical;
+    // 0 = none). These are NOT wx child windows: they are auxiliary DOM
+    // nodes owned directly by this window, lazily created by SetScrollbar()
+    // when range > thumb, so ScrollWindow()'s child-move walk never touches
+    // them (a scrollbar stays put while its content scrolls). TODO(dom-phase-2)
+    int m_scrollbarDom[2];
+
     // Last clip-path insets pushed to the element (l,t,r,b packed in a
     // wxRect) — skips redundant JS crossings; unclipped is the common case.
     wxRect m_domClip;
@@ -186,6 +195,20 @@ private:
 
     void UpdateDomGeometryRecursive(const wxRect *ancestorClip);
     void ComputeAncestorClip(wxRect *clip, bool *hasClip);
+
+    // Built-in scrollbar gutters (m_scrollbarDom). EnsureScrollbarDom lazily
+    // creates the gutter element for an orientation (0=H, 1=V);
+    // PositionScrollbarDom places/clips the existing gutters along this
+    // window's client edges given its top-left in TLW coords (called from
+    // UpdateDomGeometryRecursive); DestroyScrollbarDom tears them down.
+    void EnsureScrollbarDom(int orientIndex);
+    void PositionScrollbarDom(const wxPoint& tlwTopLeft,
+                              const wxRect *ancestorClip);
+    // Recompute this window's gutter geometry/visibility from its current
+    // position + IsShownOnScreen() (for visibility changes without a move,
+    // e.g. a notebook page becoming the active tab).
+    void RefreshScrollbarGeometry();
+    void DestroyScrollbarDom();
 
     // Push IsShownOnScreen() to this window's and all descendants' DOM
     // elements (a hidden ancestor — e.g. an unselected notebook page —

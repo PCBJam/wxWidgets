@@ -81,22 +81,18 @@ wxMenuItem *wxMenu::DoRemove(wxMenuItem *item)
     return ret;
 }
 
-// ----------------------------------------------------------------------------
-// wxMenuBar
-// ----------------------------------------------------------------------------
-
-#if wxUSE_MENUBAR
-
-// Serializes a menu's items (recursing into submenus) to the JSON array
-// consumed by wxDomMenuSetStructure: [{id,label,kind,checked,enabled,items}]
+// Serializes this menu's items (recursing into submenus) to the JSON array
+// consumed by the DOM menu popups: [{id,label,kind,checked,enabled,items}]
 // with kind one of "normal" | "separator" | "check" | "radio" | "submenu".
-static wxString DomMenuItemsToJson(const wxMenu *menu)
+// Defined outside #if wxUSE_MENUBAR so wxWindowWasm::DoPopupMenu() can use it
+// for standalone context menus.
+wxString wxMenu::WasmItemsToJson() const
 {
     wxString json(wxT("["));
 
     bool first = true;
     for (wxMenuItemList::compatibility_iterator
-            node = menu->GetMenuItems().GetFirst();
+            node = GetMenuItems().GetFirst();
          node;
          node = node->GetNext())
     {
@@ -133,7 +129,7 @@ static wxString DomMenuItemsToJson(const wxMenu *menu)
             item->IsEnabled() ? "true" : "false");
 
         if (item->GetSubMenu())
-            json += wxT(",\"items\":") + DomMenuItemsToJson(item->GetSubMenu());
+            json += wxT(",\"items\":") + item->GetSubMenu()->WasmItemsToJson();
 
         json += wxT("}");
     }
@@ -142,6 +138,12 @@ static wxString DomMenuItemsToJson(const wxMenu *menu)
 
     return json;
 }
+
+// ----------------------------------------------------------------------------
+// wxMenuBar
+// ----------------------------------------------------------------------------
+
+#if wxUSE_MENUBAR
 
 wxMenuBar::wxMenuBar()
 {
@@ -278,7 +280,7 @@ void wxMenuBar::WasmRebuildMenus()
 
         json += wxString::Format(wxT("{\"title\":\"%s\",\"items\":"),
                                  wxDomJsonEscape(GetMenuLabelText(pos)));
-        json += DomMenuItemsToJson(GetMenu(pos));
+        json += GetMenu(pos)->WasmItemsToJson();
         json += wxT("}");
     }
 

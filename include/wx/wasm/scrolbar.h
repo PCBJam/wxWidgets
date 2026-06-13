@@ -35,6 +35,9 @@ public:
                               int range, int pageSize,
                               bool refresh = true) wxOVERRIDE;
 
+    // Drag/track events from the DOM scrollbar widget (wxDOM_EVENT_SCROLL).
+    virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
 protected:
     virtual wxSize DoGetBestSize() const wxOVERRIDE;
 

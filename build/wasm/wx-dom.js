@@ -28,7 +28,14 @@
   // Mirror of wxDomEventKind in include/wx/wasm/window.h.
   var EVT = { CLICK: 1, INPUT: 2, CHANGE: 3, FOCUSIN: 4, FOCUSOUT: 5,
               ENTER: 6, SPIN_UP: 7, SPIN_DOWN: 8, MENU: 9, TOOL: 10,
-              TAB: 11 };
+              TAB: 11, SCROLL: 12 };
+
+  // Last pointer position in viewport (clientX/Y) coordinates — read by
+  // wxShowContextMenu when DoPopupMenu is invoked "at the mouse" (the KiCad
+  // canvas right-click case passes wxDefaultCoord). Tracked on every pointer
+  // event below, including over the GAL canvas (where forwardTarget is null).
+  var lastPointerClientX = 0;
+  var lastPointerClientY = 0;
 
   // Marks the bundle as DOM-port for tests/boot code.
   window.wxDomPort = true;
@@ -111,6 +118,34 @@
       case 'slider': {
         root = document.createElement('input');
         root.type = 'range';
+        break;
+      }
+      case 'scrollbar': {
+        // Custom track+thumb (a native <input type=range> can't express a
+        // proportional thumb). Drag handlers are wired in wxDomCreateControl
+        // once the domId is known; metrics arrive via wxDomSetScrollbar.
+        // typeAttr "v" = vertical, "h" = horizontal.
+        root = document.createElement('div');
+        root.dataset.wxScrollbar = '1';
+        var sbVertical = (typeAttr === 'v');
+        root.style.background = '#e8e8e8';
+        root.style.userSelect = 'none';
+        var sbTrack = document.createElement('div');
+        sbTrack.className = 'wx-sb-track';
+        sbTrack.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;';
+        var sbThumb = document.createElement('div');
+        sbThumb.className = 'wx-sb-thumb';
+        sbThumb.style.cssText =
+          'position:absolute;background:#a0a0a0;border:1px solid #808080;' +
+          'border-radius:2px;box-sizing:border-box;touch-action:none;' +
+          'display:none;' +
+          (sbVertical ? 'left:0;right:0;top:0;height:0;'
+                      : 'top:0;bottom:0;left:0;width:0;');
+        sbTrack.appendChild(sbThumb);
+        root.appendChild(sbTrack);
+        root._wxSb = { pos: 0, thumb: 0, range: 0, page: 0,
+                       vertical: sbVertical, dragging: false, phase: 1,
+                       dragStart: 0, dragStartOffset: 0 };
         break;
       }
       case 'choice': {
@@ -287,6 +322,8 @@
         dispatch(domId, EVT.SPIN_DOWN);
         ev.stopPropagation();
       });
+    } else if (el.dataset.wxScrollbar) {
+      wireScrollbar(domId, el);
     } else if (!el.dataset.wxChrome) {
       el.addEventListener('click', function (ev) {
         dispatch(domId, EVT.CLICK);
@@ -374,6 +411,12 @@
         el.tagName === 'TEXTAREA') {
       scheduleControlRegistry(domId, el);
     }
+    // Scrollbars re-flow the thumb to the new track length, then re-publish
+    // their drag targets to the e2e registry.
+    if (el.dataset.wxScrollbar) {
+      layoutScrollbar(el);
+      scheduleScrollbarRegistry(domId, el);
+    }
   };
 
   // Label text: routed to the inner label element for composites
@@ -426,6 +469,13 @@
       var dl = document.getElementById(el.dataset.wxDatalist);
       var opt = dl && dl.options[value];
       if (opt) el.value = opt.value;
+    } else if (el.dataset && el.dataset.wxScrollbar) {
+      // scrollbar thumb position (wxScrollBar::SetThumbPosition). Ignore
+      // programmatic moves mid-drag — the user owns the thumb then.
+      if (el._wxSb && !el._wxSb.dragging) {
+        el._wxSb.pos = value;
+        layoutScrollbar(el);
+      }
     } else {
       el.value = value;
     }
@@ -434,6 +484,9 @@
   window.wxDomGetIntValue = function (domId) {
     var el = inputs.get(domId) || controls.get(domId);
     if (!el) return 0;
+    if (el.dataset && el.dataset.wxScrollbar) {
+      return el._wxSb ? el._wxSb.pos : 0;
+    }
     if (el.tagName === 'SELECT') return el.selectedIndex;
     if (el.dataset && el.dataset.wxRadioBox) {
       var radios = el.querySelectorAll('input[type=radio]');
@@ -471,6 +524,170 @@
       el.max = maxVal;
     }
   };
+
+  // ========== Scrollbars (track + draggable thumb) ==========
+  //
+  // One shared widget backs both the standalone wxScrollBar and a wxWindow's
+  // built-in gutters. C++ feeds (pos, thumb, range, page) + orientation via
+  // wxDomSetScrollbar; drags report position + phase back through
+  // wxDOM_EVENT_SCROLL (read with wxDomGetIntValue / wxDomGetScrollPhase).
+  //
+  // wx scrollbar semantics: `thumb` is the visible portion (the thumb's
+  // proportion of the track is thumb/range), `pos` ranges 0..range-thumb,
+  // and `page` is the track-click step. Auto-hide when thumb >= range.
+
+  // Position the thumb for the current metrics; auto-hide when nothing scrolls.
+  function layoutScrollbar(el) {
+    var sb = el._wxSb;
+    if (!sb) return;
+    var track = el.querySelector('.wx-sb-track');
+    var thumb = el.querySelector('.wx-sb-thumb');
+    if (!track || !thumb) return;
+
+    var trackPx = sb.vertical ? track.clientHeight : track.clientWidth;
+    if (sb.range <= 0 || sb.thumb <= 0 || sb.thumb >= sb.range || trackPx <= 0) {
+      thumb.style.display = 'none';
+      return;
+    }
+    thumb.style.display = 'block';
+
+    var thumbPx = Math.min(trackPx,
+                           Math.max(12, Math.round(trackPx * sb.thumb / sb.range)));
+    var scrollable = sb.range - sb.thumb;
+    var pos = Math.max(0, Math.min(sb.pos, scrollable));
+    var offsetPx = scrollable > 0
+      ? Math.round((trackPx - thumbPx) * pos / scrollable) : 0;
+
+    if (sb.vertical) {
+      thumb.style.top = offsetPx + 'px';
+      thumb.style.height = thumbPx + 'px';
+    } else {
+      thumb.style.left = offsetPx + 'px';
+      thumb.style.width = thumbPx + 'px';
+    }
+  }
+
+  // Map a thumb offset (px along the track) back to a scrollbar position.
+  function scrollbarPosFromOffset(el, offsetPx) {
+    var sb = el._wxSb;
+    var track = el.querySelector('.wx-sb-track');
+    var thumb = el.querySelector('.wx-sb-thumb');
+    var trackPx = sb.vertical ? track.clientHeight : track.clientWidth;
+    var thumbPx = sb.vertical ? thumb.offsetHeight : thumb.offsetWidth;
+    var span = trackPx - thumbPx;
+    var scrollable = sb.range - sb.thumb;
+    if (span <= 0 || scrollable <= 0) return 0;
+    return Math.max(0, Math.min(scrollable, Math.round(offsetPx / span * scrollable)));
+  }
+
+  function wireScrollbar(domId, el) {
+    var sb = el._wxSb;
+    var track = el.querySelector('.wx-sb-track');
+    var thumb = el.querySelector('.wx-sb-thumb');
+
+    thumb.addEventListener('pointerdown', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      sb.dragging = true;
+      try { thumb.setPointerCapture(ev.pointerId); } catch (e) {}
+      sb.dragStart = sb.vertical ? ev.clientY : ev.clientX;
+      sb.dragStartOffset = sb.vertical ? thumb.offsetTop : thumb.offsetLeft;
+    });
+    thumb.addEventListener('pointermove', function (ev) {
+      if (!sb.dragging) return;
+      var delta = (sb.vertical ? ev.clientY : ev.clientX) - sb.dragStart;
+      var newPos = scrollbarPosFromOffset(el, sb.dragStartOffset + delta);
+      if (newPos !== sb.pos) {
+        sb.pos = newPos;
+        layoutScrollbar(el);
+        sb.phase = 0; // thumbtrack
+        dispatch(domId, EVT.SCROLL);
+      }
+    });
+    var endDrag = function (ev) {
+      if (!sb.dragging) return;
+      sb.dragging = false;
+      try { thumb.releasePointerCapture(ev.pointerId); } catch (e) {}
+      sb.phase = 1; // thumbrelease
+      dispatch(domId, EVT.SCROLL);
+    };
+    thumb.addEventListener('pointerup', endDrag);
+    thumb.addEventListener('pointercancel', endDrag);
+
+    // Track click outside the thumb = page step toward the click.
+    track.addEventListener('pointerdown', function (ev) {
+      if (ev.target === thumb || sb.range <= sb.thumb) return;
+      var rect = track.getBoundingClientRect();
+      var clickPos = sb.vertical ? (ev.clientY - rect.top) : (ev.clientX - rect.left);
+      var thumbStart = sb.vertical ? thumb.offsetTop : thumb.offsetLeft;
+      var dir = clickPos < thumbStart ? -1 : 1;
+      var scrollable = sb.range - sb.thumb;
+      var step = sb.page > 0 ? sb.page : sb.thumb;
+      var newPos = Math.max(0, Math.min(scrollable, sb.pos + dir * step));
+      if (newPos !== sb.pos) {
+        sb.pos = newPos;
+        layoutScrollbar(el);
+        sb.phase = 2; // page step
+        dispatch(domId, EVT.SCROLL);
+      }
+    });
+  }
+
+  // Push metrics from C++ (wxScrollBar / wxWindow built-in scrollbars).
+  window.wxDomSetScrollbar = function (domId, pos, thumb, range, page) {
+    var el = controls.get(domId);
+    if (!el || !el._wxSb) return;
+    var sb = el._wxSb;
+    sb.thumb = thumb;
+    sb.range = range;
+    sb.page = page;
+    if (!sb.dragging) sb.pos = pos; // the user owns the thumb mid-drag
+    layoutScrollbar(el);
+    scheduleScrollbarRegistry(domId, el);
+  };
+
+  // Phase of the last scroll interaction: 0 track, 1 release, 2 page.
+  window.wxDomGetScrollPhase = function (domId) {
+    var el = controls.get(domId);
+    return el && el._wxSb ? (el._wxSb.phase | 0) : 0;
+  };
+
+  // Publish the thumb ('slider') and track ('slidertrack') to the e2e
+  // registry so Playwright's dragSliderTo() can drag a scrollbar unchanged.
+  // dragSliderTo reads screenX/screenY off the track, so map them explicitly
+  // (rectInfo only carries x/y).
+  function scheduleScrollbarRegistry(domId, el) {
+    requestAnimationFrame(function () {
+      var reg = window.wxElementRegistry;
+      if (!reg || !el.isConnected || !el._wxSb) return;
+      var stale = [];
+      reg.renderedElements.forEach(function (info, key) {
+        var k = String(key);
+        if (k.indexOf(domId + ':slider:') === 0 ||
+            k.indexOf(domId + ':slidertrack:') === 0) stale.push(key);
+      });
+      stale.forEach(function (key) { reg.unregisterRendered(key); });
+
+      var track = el.querySelector('.wx-sb-track');
+      var thumb = el.querySelector('.wx-sb-thumb');
+      if (!track || !thumb || thumb.style.display === 'none') return;
+      var sub = el._wxSb.vertical ? 'vertical' : 'horizontal';
+      var tr = track.getBoundingClientRect();
+      var th = thumb.getBoundingClientRect();
+      registryRegister(domId + ':slidertrack:0', {
+        elementType: 'slidertrack', subType: sub, label: '', tooltip: '',
+        enabled: true, parentId: String(domId), index: 0,
+        screenX: tr.x, screenY: tr.y, width: tr.width, height: tr.height,
+        centerX: tr.x + tr.width / 2, centerY: tr.y + tr.height / 2
+      });
+      registryRegister(domId + ':slider:0', {
+        elementType: 'slider', subType: sub, label: '', tooltip: '',
+        enabled: true, parentId: String(domId), index: 0,
+        screenX: th.x, screenY: th.y, width: th.width, height: th.height,
+        centerX: th.x + th.width / 2, centerY: th.y + th.height / 2
+      });
+    });
+  }
 
   // HTML radio exclusivity groups via the name attribute (wx groups are
   // defined by wxRB_GROUP chains; C++ passes a stable per-group name).
@@ -687,22 +904,13 @@
              centerX: r.x + r.width / 2, centerY: r.y + r.height / 2 };
   }
 
-  // Builds and shows the popup for one menu's items below `anchor`.
-  // items: [{id,label,kind:'normal'|'separator'|'check'|'radio'|'submenu',
-  //          checked,enabled,items}]
-  function showMenuPopup(domId, anchor, items, registryParent) {
-    closeMenuPopup();
-    var pop = document.createElement('div');
-    pop.className = 'wx-menu-popup';
-    var a = anchor.getBoundingClientRect();
-    pop.style.cssText =
-      'position:absolute;z-index:10000;background:#d4d0c8;' +
-      'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
-      'padding:2px;white-space:pre;min-width:120px;' +
-      'left:' + (a.left + window.scrollX) + 'px;' +
-      'top:' + (a.bottom + window.scrollY) + 'px;';
-    pop.style.font = anchor.style.font || getComputedStyle(anchor).font;
-
+  // Builds the item rows of a menu popup into `pop` (shared by the menubar
+  // popups and the standalone context menu). items:
+  // [{id,label,kind:'normal'|'separator'|'check'|'radio'|'submenu',
+  //   checked,enabled,items}]. onChoose(id) fires for a leaf row click;
+  // reopenSubmenu(row, subItems) handles a submenu row. Each row is
+  // published to the e2e registry under registryParent as 'menuitem'.
+  function buildMenuItemRows(pop, items, registryParent, onChoose, reopenSubmenu) {
     items.forEach(function (it, idx) {
       if (it.kind === 'separator') {
         var sep = document.createElement('div');
@@ -727,14 +935,10 @@
         row.addEventListener('click', function (ev) {
           ev.stopPropagation();
           if (it.kind === 'submenu') {
-            // simple inline expansion: replace popup with the submenu
-            showMenuPopup(domId, row, it.items || [], registryParent);
+            reopenSubmenu(row, it.items || []);
             return;
           }
-          var bar = controls.get(domId);
-          if (bar) bar.dataset.wxLastCommand = String(it.id);
-          closeMenuPopup();
-          dispatch(domId, EVT.MENU);
+          onChoose(it.id);
         });
       }
       pop.appendChild(row);
@@ -749,10 +953,155 @@
         }, rectInfo(row)));
       });
     });
+  }
+
+  // Builds and shows the popup for one menubar menu's items below `anchor`.
+  function showMenuPopup(domId, anchor, items, registryParent) {
+    closeMenuPopup();
+    var pop = document.createElement('div');
+    pop.className = 'wx-menu-popup';
+    var a = anchor.getBoundingClientRect();
+    pop.style.cssText =
+      'position:absolute;z-index:10000;background:#d4d0c8;' +
+      'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
+      'padding:2px;white-space:pre;min-width:120px;' +
+      'left:' + (a.left + window.scrollX) + 'px;' +
+      'top:' + (a.bottom + window.scrollY) + 'px;';
+    pop.style.font = anchor.style.font || getComputedStyle(anchor).font;
+
+    buildMenuItemRows(pop, items, registryParent,
+      function (id) {
+        var bar = controls.get(domId);
+        if (bar) bar.dataset.wxLastCommand = String(id);
+        closeMenuPopup();
+        dispatch(domId, EVT.MENU);
+      },
+      function (row, subItems) {
+        // simple inline expansion: replace popup with the submenu
+        showMenuPopup(domId, row, subItems, registryParent);
+      });
 
     document.body.appendChild(pop);
     openMenuPopup = pop;
   }
+
+  // ========== Context menu (wxWindow::PopupMenu -> DoPopupMenu) ==========
+  //
+  // Shows a standalone popup at a viewport point and BLOCKS the synchronous
+  // C++ DoPopupMenu via the same ProcessEvents pump wxDialog::ShowModal uses
+  // (src/wasm/dialog.cpp): the EM_ASYNC_JS wxDomPopupMenuModal in
+  // src/wasm/window.cpp awaits the returned Promise, which resolves with the
+  // chosen command id (-1 = cancelled). json: the wxMenu serialized by
+  // wxMenu::WasmItemsToJson(). x/y in viewport px, or -1 (wxDefaultCoord) to
+  // use the last pointer position (the KiCad canvas right-click case).
+  Module['wxShowContextMenu'] = function (json, invokerDomId, x, y) {
+    var items;
+    try {
+      items = JSON.parse(json);
+    } catch (e) {
+      console.error('wxShowContextMenu: bad JSON: ' + e.message);
+      return Promise.resolve(-1);
+    }
+
+    var vx = x, vy = y;
+    if (x === -1 || y === -1) {
+      vx = lastPointerClientX;
+      vy = lastPointerClientY;
+    } else {
+      var inv = controls.get(invokerDomId);
+      if (inv) {
+        var ir = inv.getBoundingClientRect();
+        vx = ir.left + x; vy = ir.top + y;
+      } else if (Module['canvas']) {
+        var cr = Module['canvas'].getBoundingClientRect();
+        vx = cr.left + x; vy = cr.top + y;
+      }
+    }
+
+    closeMenuPopup(); // a context menu supersedes any open menubar popup
+
+    var pop = document.createElement('div');
+    pop.className = 'wx-menu-popup';
+    pop.style.cssText =
+      'position:fixed;z-index:10000;background:#d4d0c8;' +
+      'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
+      'padding:2px;white-space:pre;min-width:120px;left:0;top:0;';
+    if (Module['canvas']) {
+      pop.style.font = getComputedStyle(Module['canvas']).font;
+    }
+
+    return new Promise(function (resolve) {
+      var settled = false;
+      function settle(id) {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('mousedown', onOutside, true);
+        document.removeEventListener('keydown', onKey, true);
+        if (pop.parentNode) pop.remove();
+        if (openMenuPopup === pop) openMenuPopup = null;
+        // Drop the popup's e2e-registry entries so the dismissal is observable
+        // (the rows are gone from the DOM; their geometry is now stale).
+        var reg = window.wxElementRegistry;
+        if (reg && reg.unregisterRenderedByParent)
+          reg.unregisterRenderedByParent('popupmenu');
+        resolve(id);
+      }
+      function onOutside(ev) { if (!pop.contains(ev.target)) settle(-1); }
+      function onKey(ev) {
+        if (ev.key === 'Escape') { ev.stopPropagation(); settle(-1); }
+      }
+
+      // reopenSubmenu rebuilds the rows in place for a chosen submenu.
+      function makeReopen() {
+        return function (row, subItems) {
+          pop.textContent = '';
+          buildMenuItemRows(pop, subItems, 'popupmenu',
+            function (id) { settle(id); }, makeReopen());
+        };
+      }
+      buildMenuItemRows(pop, items, 'popupmenu',
+        function (id) { settle(id); }, makeReopen());
+
+      document.body.appendChild(pop);
+      openMenuPopup = pop;
+
+      // Clamp to the viewport: flip left/up when overflowing an edge.
+      var w = pop.offsetWidth, h = pop.offsetHeight;
+      var L = vx, T = vy;
+      if (L + w > window.innerWidth) L = Math.max(0, vx - w);
+      if (T + h > window.innerHeight) T = Math.max(0, vy - h);
+      pop.style.left = L + 'px';
+      pop.style.top = T + 'px';
+
+      document.addEventListener('mousedown', onOutside, true);
+      document.addEventListener('keydown', onKey, true);
+
+      // Pump wx while the popup is open so the suspended coroutine stack
+      // (DoPopupMenu is called from inside a tool) stays parked and the app
+      // keeps painting. Must NEVER stop without resolving (a pending Promise
+      // would freeze the parked stack) — any error cancels the menu loudly.
+      (function pump() {
+        if (settled) return;
+        setTimeout(function () {
+          if (settled) return;
+          var p;
+          try {
+            p = Module['ccall']('ProcessEvents', 'void', [], [], { async: true });
+          } catch (e) {
+            console.error('[wxWasm] context menu pump error: ' + e);
+            settle(-1);
+            return;
+          }
+          Promise.resolve(p).then(
+            function () { if (!settled) pump(); },
+            function (e) {
+              console.error('[wxWasm] context menu pump error: ' + e);
+              settle(-1);
+            });
+        }, 17);
+      })();
+    });
+  };
 
   // structureJson: [{title, items:[...]}, ...] (schema above)
   window.wxDomMenuSetStructure = function (domId, structureJson) {
@@ -1166,6 +1515,17 @@
     if (t.closest('.wx-menu-popup')) return null;
     return t.closest('.wx-dom-control');
   }
+
+  // Track the pointer everywhere (capture phase, including over the GAL
+  // canvas where forwardTarget is null) so a "popup at the mouse" context
+  // menu lands at the cursor.
+  function trackPointer(ev) {
+    lastPointerClientX = ev.clientX;
+    lastPointerClientY = ev.clientY;
+  }
+  document.addEventListener('mousemove', trackPointer, true);
+  document.addEventListener('mousedown', trackPointer, true);
+  document.addEventListener('contextmenu', trackPointer, true);
 
   document.addEventListener('mousemove', function (ev) {
     if (forwardTarget(ev)) wxForwardMouse(ev, 1, 0);

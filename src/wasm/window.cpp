@@ -210,6 +210,8 @@ wxWindowWasm::~wxWindowWasm()
         m_domId = 0;
     }
 
+    DestroyScrollbarDom();
+
     // Unregister from JS tracking system before destruction
     UnregisterElement(this);
 
@@ -258,6 +260,7 @@ void wxWindowWasm::Init()
         m_scrollPos[orient] = 0;
         m_scrollThumb[orient] = 0;
         m_scrollRange[orient] = 0;
+        m_scrollbarDom[orient] = 0;
     }
 
     m_domId = 0;
@@ -386,6 +389,10 @@ void wxWindowWasm::UpdateDomGeometryRecursive(const wxRect *ancestorClip)
         }
     }
 
+    // Built-in scrollbar gutters (if any) ride along this window's client
+    // edges in the same TLW coordinate space — reproject + reclip them too.
+    PositionScrollbarDom(pos, ancestorClip);
+
     // Children are clipped by this window's client area as well (unless
     // this is a TLW, whose children start unclipped — see above).
     wxRect childClip;
@@ -414,6 +421,14 @@ void wxWindowWasm::UpdateDomVisibility()
     if ( m_domId )
         wxDomSetShown(m_domId, IsShownOnScreen());
 
+    // Built-in scrollbar gutters track the owning window's visibility too: a
+    // wxScrolledWindow on a notebook page that's just become the active tab
+    // needs its gutters (re)shown and positioned. The m_domId line above only
+    // covers the window's own node, not the auxiliary gutter elements, and a
+    // pure show/hide doesn't move the window (so the geometry walk that would
+    // otherwise reposition them never runs).
+    RefreshScrollbarGeometry();
+
     for ( wxWindowList::compatibility_iterator node = GetChildren().GetFirst();
           node; node = node->GetNext() )
     {
@@ -431,6 +446,40 @@ void wxWindowWasm::OnDomEvent(wxDomEventKind kind)
             if ( gs_focusWindow != this && CanAcceptFocus() )
                 SetFocus();
             break;
+
+        case wxDOM_EVENT_SCROLL:
+        {
+            // A built-in scrollbar gutter dragged: discriminate which one by
+            // the firing element id, then drive wxScrollHelperBase via a
+            // wxScrollWinEvent (it calls SetScrollPos + ScrollWindow, so the
+            // existing child-move path runs unchanged).
+            const int firedId = wxDomCurrentEventDomId();
+            int i = -1;
+            if ( firedId && firedId == m_scrollbarDom[1] )
+                i = 1;
+            else if ( firedId && firedId == m_scrollbarDom[0] )
+                i = 0;
+            if ( i < 0 )
+                break;
+
+            const int pos = wxDomGetIntValue(firedId);
+            const int phase = wxDomGetScrollPhase(firedId);
+            m_scrollPos[i] = pos;
+
+            const int orient = (i == 1) ? wxVERTICAL : wxHORIZONTAL;
+
+            wxScrollWinEvent track(wxEVT_SCROLLWIN_THUMBTRACK, pos, orient);
+            track.SetEventObject(this);
+            HandleWindowEvent(track);
+
+            if ( phase == 1 ) // thumbrelease: settle on the final position
+            {
+                wxScrollWinEvent rel(wxEVT_SCROLLWIN_THUMBRELEASE, pos, orient);
+                rel.SetEventObject(this);
+                HandleWindowEvent(rel);
+            }
+            break;
+        }
 
         default:
             // Controls override for click/input/change behavior.
@@ -460,13 +509,38 @@ void wxWindowWasm::SetScrollbar(int orient, int pos, int thumbvisible,
     m_scrollThumb[i] = thumbvisible;
     m_scrollRange[i] = range;
 
+    // Built-in gutter: appear only when the content overflows the viewport
+    // (range > thumb), mirroring native scrollbar auto-hide. wx uses
+    // thumbvisible as the gutter's page size.
+    if ( range > thumbvisible && range > 0 )
+    {
+        EnsureScrollbarDom(i);
+        if ( m_scrollbarDom[i] )
+        {
+            wxDomSetScrollbar(m_scrollbarDom[i], pos, thumbvisible, range,
+                              thumbvisible);
+            // Reproject/show the gutter at the (possibly new) client edge.
+            UpdateDomGeometry();
+        }
+    }
+    else if ( m_scrollbarDom[i] )
+    {
+        wxDomSetShown(m_scrollbarDom[i], false);
+    }
+
     if ( refresh )
         Refresh();
 }
 
 void wxWindowWasm::SetScrollPos(int orient, int pos, bool refresh)
 {
-    m_scrollPos[wxScrollOrientIndex(orient)] = pos;
+    const int i = wxScrollOrientIndex(orient);
+    m_scrollPos[i] = pos;
+
+    // Cheap thumb move (no geometry walk). The JS widget ignores this while
+    // the user is actively dragging, so it never fights the drag.
+    if ( m_scrollbarDom[i] )
+        wxDomSetIntValue(m_scrollbarDom[i], pos);
 
     if ( refresh )
         Refresh();
@@ -526,13 +600,165 @@ void wxWindowWasm::ScrollWindow(int dx, int dy, const wxRect *rect)
     Refresh();
 }
 
-#if wxUSE_MENUS
-bool wxWindowWasm::DoPopupMenu(wxMenu *WXUNUSED(menu), int WXUNUSED(x),
-                               int WXUNUSED(y))
+// ----------------------------------------------------------------------------
+// Built-in scrollbar gutters: auxiliary DOM elements owned by this window
+// (m_scrollbarDom), reusing the same 'scrollbar' widget as wxScrollBar. They
+// are NOT wx children, so ScrollWindow()'s child-move walk never touches them.
+// ----------------------------------------------------------------------------
+
+void wxWindowWasm::EnsureScrollbarDom(int i)
 {
-    // TODO(dom-phase-5): DOM popup menus.
-    wxFAIL_MSG(wxT("DoPopupMenu not implemented in the DOM port yet"));
-    return false;
+    if ( m_scrollbarDom[i] )
+        return;
+
+    wxNonOwnedWindow *tlw = GetTopLevelWindow();
+    if ( !tlw )
+        return;
+
+    const int id = wxDomCreateControl(tlw->GetCSSId(), "scrollbar",
+                                      i == 1 ? "v" : "h");
+    if ( id == 0 )
+        return;
+
+    m_scrollbarDom[i] = id;
+    wxDomRegisterWindow(id, this);
+}
+
+void wxWindowWasm::PositionScrollbarDom(const wxPoint& tlwTopLeft,
+                                        const wxRect *ancestorClip)
+{
+    if ( !m_scrollbarDom[0] && !m_scrollbarDom[1] )
+        return;
+
+    const int metric = wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, this);
+    const int sbWidth = metric > 0 ? metric : 17;
+
+    const wxSize client = GetClientSize();
+    const wxPoint clientTL = tlwTopLeft + GetClientAreaOrigin();
+
+    for ( int i = 0; i < 2; i++ )
+    {
+        if ( !m_scrollbarDom[i] )
+            continue;
+
+        const bool needed = m_scrollRange[i] > m_scrollThumb[i] &&
+                            m_scrollRange[i] > 0;
+        const bool shown = needed && IsShownOnScreen();
+        wxDomSetShown(m_scrollbarDom[i], shown);
+        if ( !shown )
+            continue;
+
+        // Vertical gutter rides the right edge; horizontal the bottom edge.
+        wxRect r;
+        if ( i == 1 )
+            r = wxRect(clientTL.x + client.x - sbWidth, clientTL.y,
+                       sbWidth, client.y);
+        else
+            r = wxRect(clientTL.x, clientTL.y + client.y - sbWidth,
+                       client.x, sbWidth);
+
+        wxDomSetRect(m_scrollbarDom[i], r.x, r.y, r.width, r.height);
+
+        // Clip to the ancestor viewport (same inset math as m_domId).
+        int t = 0, rr = 0, b = 0, l = 0;
+        if ( ancestorClip )
+        {
+            wxRect vis = r;
+            vis.Intersect(*ancestorClip);
+            if ( vis.IsEmpty() )
+            {
+                t = r.height > 0 ? r.height : 1;
+            }
+            else
+            {
+                t = vis.y - r.y;
+                l = vis.x - r.x;
+                b = (r.y + r.height) - (vis.y + vis.height);
+                rr = (r.x + r.width) - (vis.x + vis.width);
+            }
+        }
+        wxDomSetClip(m_scrollbarDom[i], t, rr, b, l);
+    }
+}
+
+void wxWindowWasm::RefreshScrollbarGeometry()
+{
+    if ( !m_scrollbarDom[0] && !m_scrollbarDom[1] )
+        return;
+
+    wxNonOwnedWindow *tlw = GetTopLevelWindow();
+    if ( !tlw )
+        return;
+
+    const wxPoint pos = GetScreenPosition() - GetClientAreaOrigin()
+                        - tlw->GetScreenPosition();
+    wxRect clip;
+    bool hasClip = false;
+    ComputeAncestorClip(&clip, &hasClip);
+    PositionScrollbarDom(pos, hasClip ? &clip : NULL);
+}
+
+void wxWindowWasm::DestroyScrollbarDom()
+{
+    for ( int i = 0; i < 2; i++ )
+    {
+        if ( m_scrollbarDom[i] )
+        {
+            wxDomUnregisterWindow(m_scrollbarDom[i]);
+            wxDomDestroyControl(m_scrollbarDom[i]);
+            m_scrollbarDom[i] = 0;
+        }
+    }
+}
+
+#if wxUSE_MENUS
+
+// Shows the DOM context menu and BLOCKS (pumping wx events) until an item is
+// chosen or the menu is dismissed, returning the chosen command id (-1 =
+// cancelled). The whole modal lifetime lives in JS (Module.wxShowContextMenu),
+// mirroring wxDialog::ShowModal's startModal: no C++ object's destructor needs
+// to survive the Asyncify suspension (which is unreliable here).
+EM_ASYNC_JS(int, wxDomPopupMenuModal,
+            (const char *json, int invokerDomId, int x, int y), {
+    return await Module['wxShowContextMenu'](UTF8ToString(json),
+                                             invokerDomId, x, y);
+});
+
+bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
+{
+    wxCHECK_MSG(menu, false, wxT("DoPopupMenu: NULL menu"));
+
+    // Build the JSON before suspending: no wxString may need to outlive the
+    // Asyncify park (destructors don't reliably run across it).
+    const wxString json = menu->WasmItemsToJson();
+
+    // x/y are client coords of this window, OR wxDefaultCoord meaning "at the
+    // mouse position" — passed through as -1 so JS uses the last pointer.
+    const int vx = (x == wxDefaultCoord) ? -1 : x;
+    const int vy = (y == wxDefaultCoord) ? -1 : y;
+
+    const int chosenId =
+        wxDomPopupMenuModal(json.utf8_str(), WasmGetDomId(), vx, vy);
+
+    if ( chosenId < 0 )
+        return false; // cancelled
+
+    // Dispatch like wxMenuBar::OnDomEvent: toggle checkables, then SendEvent
+    // from the menu that actually contains the item (routes wxEVT_MENU up to
+    // the invoking window set by wxWindowBase::PopupMenu).
+    wxMenu *containing = NULL;
+    wxMenuItem *item = menu->FindItem(chosenId, &containing);
+    if ( !item )
+        return false;
+
+    const bool checkable = item->IsCheckable();
+    if ( checkable )
+        item->Toggle();
+
+    if ( containing )
+        containing->SendEvent(chosenId, checkable ? item->IsChecked() : -1);
+
+    return true;
 }
 
 void wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y,

@@ -19,6 +19,12 @@ class wxWindowWasm;
 void wxDomRegisterWindow(int domId, wxWindowWasm *window);
 void wxDomUnregisterWindow(int domId);
 
+// The domId of the element whose event is currently being dispatched (set by
+// wx_dom_event before calling OnDomEvent). Lets a window that owns auxiliary
+// DOM elements — e.g. built-in scrollbar gutters — tell which one fired.
+// Implemented in src/wasm/domevents.cpp.
+int wxDomCurrentEventDomId();
+
 // Creates an absolutely positioned element of the given tag inside the
 // top-level window's container div. Returns a JS-side dom id (> 0) or 0.
 inline int wxDomCreateControl(int tlwCssId, const char *tag, const char *typeAttr)
@@ -97,6 +103,23 @@ inline int wxDomGetIntValue(int domId)
 inline void wxDomSetRange(int domId, int minVal, int maxVal)
 {
     EM_ASM({ wxDomSetRange($0, $1, $2); }, domId, minVal, maxVal);
+}
+
+// Scrollbar widget metrics (track + draggable thumb) — see the 'scrollbar'
+// control in wx-dom.js. pos/thumb/range/page are wx scrollbar units; the
+// thumb is proportional to page/range and auto-hides when range <= page.
+// The current position is read back through wxDomGetIntValue().
+inline void wxDomSetScrollbar(int domId, int pos, int thumb, int range, int page)
+{
+    EM_ASM({ wxDomSetScrollbar($0, $1, $2, $3, $4); },
+           domId, pos, thumb, range, page);
+}
+
+// Phase of the last scrollbar interaction reported via wxDOM_EVENT_SCROLL:
+// 0 = thumbtrack (dragging), 1 = thumbrelease (drag ended), 2 = page step.
+inline int wxDomGetScrollPhase(int domId)
+{
+    return EM_ASM_INT({ return wxDomGetScrollPhase($0); }, domId);
 }
 
 // HTML radio exclusivity: same group name = browser-exclusive group.

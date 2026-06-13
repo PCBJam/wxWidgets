@@ -38,6 +38,16 @@ void wxDomUnregisterWindow(int domId)
     gs_domWindows.erase(domId);
 }
 
+// domId of the element whose event is currently being dispatched (see the
+// declaration in wx/wasm/private/dom.h). Lets a window owning auxiliary DOM
+// elements (built-in scrollbar gutters) discriminate which one fired.
+static int gs_currentEventDomId = 0;
+
+int wxDomCurrentEventDomId()
+{
+    return gs_currentEventDomId;
+}
+
 wxString wxDomBitmapToDataURL(const wxBitmap& bitmap)
 {
     if ( !bitmap.IsOk() )
@@ -84,7 +94,9 @@ void EMSCRIPTEN_KEEPALIVE wx_dom_event(int domId, int kind)
     if ( !window->IsEnabled() )
         return;
 
+    gs_currentEventDomId = domId;
     window->OnDomEvent(static_cast<wxDomEventKind>(kind));
+    gs_currentEventDomId = 0;
 }
 
 // Mouse events forwarded from the DOM layer (wx-dom.js document-level

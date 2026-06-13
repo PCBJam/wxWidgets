@@ -15,6 +15,12 @@ public:
     wxMenu(long style = 0);
     wxMenu(const wxString& title, long style = 0);
 
+    // Serializes this menu's items (recursing submenus) to the JSON consumed
+    // by the DOM menu popups: [{id,label,kind,checked,enabled,items}].
+    // Available without wxUSE_MENUBAR so context-menu DoPopupMenu() can reuse
+    // the same serializer the menubar uses.
+    wxString WasmItemsToJson() const;
+
 protected:
     virtual wxMenuItem *DoAppend(wxMenuItem *item) wxOVERRIDE;
     virtual wxMenuItem *DoInsert(size_t pos, wxMenuItem *item) wxOVERRIDE;
