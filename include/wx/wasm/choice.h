@@ -59,6 +59,14 @@ public:
     virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
 
 protected:
+    // Floor the DOM-measured best size with a font-derived control height. A
+    // <select>'s block-size only resolves once it has been laid out, but the
+    // best size is often queried earlier (e.g. wxAuiToolBar freezes a
+    // control's min size at AddControl time, and panel sizers query it during
+    // construction). The measured height then comes back ~0, which the layout
+    // pins — collapsing toolbar dropdowns and overlapping stacked combos.
+    virtual wxSize DoGetBestSize() const wxOVERRIDE;
+
     // DOM node type built by Create(); wxComboBox overrides to get an
     // editable <input>+<datalist> instead of the <select>.
     virtual const char *WasmDomNodeType() const { return "choice"; }

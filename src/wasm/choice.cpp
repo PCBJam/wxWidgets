@@ -85,6 +85,25 @@ bool wxChoice::Create(wxWindow *parent, wxWindowID id,
     return true;
 }
 
+wxSize wxChoice::DoGetBestSize() const
+{
+    wxSize best = wxControl::DoGetBestSize();
+
+    // A <select>'s width comes from intrinsic content sizing (available
+    // without layout), but its height only resolves once the element is laid
+    // out. Best size is frequently queried before that — wxAuiToolBar freezes
+    // a control's min size at AddControl time, and panel sizers measure during
+    // construction — so the DOM reports ~0 height and the layout pins the
+    // control to an unusable sliver (collapsed toolbar dropdowns, overlapping
+    // stacked combos). Floor the height to a font-derived control height,
+    // which is correct regardless of when best size is measured.
+    const int minHeight = GetCharHeight() + 8;
+    if (best.y < minHeight)
+        best.y = minHeight;
+
+    return best;
+}
+
 void wxChoice::WasmSyncItems()
 {
     if (!WasmGetDomId())
