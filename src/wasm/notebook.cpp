@@ -239,6 +239,29 @@ void wxNotebook::UpdateSelectedPage(size_t newsel)
     WasmRebuildTabs();
 }
 
+void wxNotebook::WasmRelayoutSelectedPage()
+{
+    // After a page change, re-assert the selected page's geometry. Two things
+    // conspire to leave a scrolled child (e.g. KiCad's layer list) collapsed:
+    //  - wxBookCtrlBase::DoSetSelection() fires wxEVT_NOTEBOOK_PAGE_CHANGED
+    //    LAST, and a handler may shrink the page (KiCad calls page->Fit()),
+    //    collapsing a wxScrolledWindow's viewport to zero height;
+    //  - DoSetSize() only emits wxEVT_SIZE (which drives auto-Layout) when the
+    //    size actually changes, so resizing the page back to the page area is a
+    //    no-op that never re-runs the sizer.
+    // Force the page back to the full page area and re-run its sizer, then
+    // re-project the DOM rects + clip-paths for the now-correct subtree.
+    if ( m_selection == wxNOT_FOUND || (size_t)m_selection >= GetPageCount() )
+        return;
+
+    if ( wxWindow* const page = GetPage(m_selection) )
+    {
+        page->SetSize(GetPageRect());
+        page->Layout();
+        UpdateDomGeometry();
+    }
+}
+
 wxBookCtrlEvent* wxNotebook::CreatePageChangingEvent() const
 {
     return new wxBookCtrlEvent(wxEVT_NOTEBOOK_PAGE_CHANGING,
@@ -257,7 +280,14 @@ void wxNotebook::OnDomEvent(wxDomEventKind kind)
         const int idx = wxDomGetLastCommandId(WasmGetDomId());
 
         if ( idx >= 0 && (size_t)idx < GetPageCount() && idx != m_selection )
+        {
             SetSelection(idx);
+            // SetSelection() has now run the full page-change sequence,
+            // including any wxEVT_NOTEBOOK_PAGE_CHANGED handler that resized
+            // the page. Re-assert the page geometry so a collapsed scrolled
+            // child is restored. (See WasmRelayoutSelectedPage.)
+            WasmRelayoutSelectedPage();
+        }
 
         SetFocus();
         return;

@@ -79,6 +79,10 @@ private:
     // push [{label, selected}] to the JS tab strip (wholesale rebuild)
     void WasmRebuildTabs();
 
+    // re-assert the selected page's size/layout after a page change (restores
+    // a scrolled child collapsed by a PAGE_CHANGED handler's Fit())
+    void WasmRelayoutSelectedPage();
+
     wxArrayString m_titles;
     wxVector<int> m_images;
     mutable int m_stripHeight; // measured lazily; -1 = unknown
