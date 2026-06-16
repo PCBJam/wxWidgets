@@ -114,6 +114,11 @@ void wxApp::GetMouseState(wxMouseState *mouseState)
     *mouseState = m_mouseState;
 }
 
+void wxApp::SetMousePosition(const wxPoint& screenPos)
+{
+    m_mouseState.SetPosition(screenPos);
+}
+
 wxWindow *wxApp::GetMouseWindow(const wxPoint& position) const
 {
     wxWindow *captureWindow = wxWindow::GetCapture();

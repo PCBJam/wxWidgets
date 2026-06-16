@@ -34,6 +34,10 @@ public:
 
     void GetMousePosition(int *x, int *y);
     void GetMouseState(wxMouseState *mouseState);
+    // Update the cached mouse position. The browser cannot move the OS pointer,
+    // so wxWindow::WarpPointer() calls this to keep wxGetMousePosition() in sync
+    // with a programmatic warp (matching desktop, where the real pointer moves).
+    void SetMousePosition(const wxPoint& screenPos);
     wxWindow *GetMouseWindow(const wxPoint& position) const;
 
     // Internal use only

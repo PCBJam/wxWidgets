@@ -990,14 +990,17 @@ void wxWindowWasm::KillFocus()
     HandleWindowEvent(event);
 }
 
-void wxWindowWasm::WarpPointer(int WXUNUSED(x), int WXUNUSED(y))
+void wxWindowWasm::WarpPointer(int x, int y)
 {
-    // Programmatic cursor warping is impossible in the browser, so this is a
-    // no-op. It used to wxFAIL_MSG, but KiCad calls WarpPointer during normal
-    // operations (e.g. view setup while loading a schematic); in a DEBUG build
-    // that fired an assert on every call, spamming the log and running the
-    // assert-handler path, which can reach an unsupported (null) function in the
-    // wasm port and abort the caller. Silently ignoring is the correct behavior.
+    // The browser cannot move the OS pointer, so we cannot warp it physically.
+    // But wx and KiCad treat WarpPointer as authoritative: after warping they
+    // read the position back via wxGetMousePosition(). On desktop the real
+    // pointer move keeps that read in sync; here we must update the cached mouse
+    // position ourselves. Without this, KiCad's arrow-key cursor nudge (which
+    // warps the pointer then re-reads it) never moves, so a grabbed item won't
+    // follow the arrow keys and snaps to the stale cursor on grab (pcbnew #9).
+    // (x, y) are client coords of this window; the cache holds screen coords.
+    wxTheApp->SetMousePosition(ClientToScreen(wxPoint(x, y)));
 }
 
 void wxWindowWasm::Refresh(bool WXUNUSED(eraseBackground), const wxRect *WXUNUSED(rect))
