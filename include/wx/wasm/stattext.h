@@ -33,6 +33,10 @@ protected:
     virtual wxString WXGetVisibleLabel() const wxOVERRIDE;
     virtual void WXSetVisibleLabel(const wxString& str) wxOVERRIDE;
 
+    // Re-ellipsize the (possibly truncated) label after the sizer assigns the
+    // control its real width. See stattext.cpp for the rationale.
+    void OnSize(wxSizeEvent& event);
+
 private:
     // the label currently shown (possibly ellipsized)
     wxString m_visibleLabel;
