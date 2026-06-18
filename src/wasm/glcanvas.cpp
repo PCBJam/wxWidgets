@@ -527,7 +527,11 @@ void wxGLCanvas::ConvertWXAttrsToWebGL(const wxGLAttributes& dispAttrs,
     attrs.stencil = false;
     attrs.antialias = true;
     attrs.premultipliedAlpha = true;
-    attrs.preserveDrawingBuffer = false;
+    // Keep the drawing buffer after compositing. The 3D viewer raytraces a static
+    // frame and then stops redrawing; without this the buffer is cleared once the
+    // render settles, so screenshots/read-back (and an idle re-composite) capture an
+    // empty canvas even though the frame rendered correctly.
+    attrs.preserveDrawingBuffer = true;
     attrs.powerPreference = EM_WEBGL_POWER_PREFERENCE_DEFAULT;
     attrs.failIfMajorPerformanceCaveat = false;
     attrs.majorVersion = 2;  // WebGL 2.0 by default
