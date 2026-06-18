@@ -819,7 +819,16 @@ if (typeof navigator !== 'undefined') {
     canvas.className = 'gl-canvas';
     canvas.style.position = 'absolute';
     canvas.style.display = 'none';  // Always start hidden until properly positioned
-    canvas.style.zIndex = '100';  // Above 2D canvas
+    // A GL canvas created while another is already on screen belongs to a SECONDARY
+    // top-level window (e.g. the 3D viewer). The shared 2D #canvas is painted above
+    // the GL canvases and is only kept transparent over the MAIN window's canvas
+    // region, so a secondary GL canvas is otherwise hidden behind #canvas's window
+    // fill. Lift it above #canvas. (Pop-up menus are DOM and stack above regardless;
+    // only a modal dialog drawn on #canvas over this canvas would be occluded — rare
+    // for the 3D viewer.)
+    var hasVisibleGL = false;
+    glCanvasMap.forEach(function (c) { if (c.style.display !== 'none') hasVisibleGL = true; });
+    canvas.style.zIndex = hasVisibleGL ? '2147483647' : '100';
     canvas.style.pointerEvents = 'none';  // Don't intercept clicks - let main canvas handle events
     document.getElementById('window-container').appendChild(canvas);
     glCanvasMap.set(id, canvas);
