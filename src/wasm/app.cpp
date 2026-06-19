@@ -15,6 +15,7 @@
 #include "wx/log.h"
 #include "wx/nonownedwnd.h"
 #include "wx/toplevel.h"
+#include "wx/utils.h"
 #include "wx/window.h"
 
 #include "wx/private/eventloopsourcesmanager.h"
@@ -297,6 +298,41 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
                 if (g_mouseWindow->IsEnabled() && !toolbarClick)
                 {
                     g_mouseWindow->SetFocus();
+                }
+            }
+        }
+
+        // Refresh the cursor on mouse motion by consulting wxEVT_SET_CURSOR
+        // handlers. The window-change path above only updates the cursor when the
+        // hovered WINDOW changes, and only from that window's static GetCursor();
+        // regions painted inside a single window set their cursor through the
+        // wxEVT_SET_CURSOR event instead (e.g. wxAuiManager paints a resize cursor
+        // over a dock sash, which lives in the managed frame, not a child window).
+        // Walk up like the native ports' HandleSetCursor and apply the cursor only
+        // when a handler actually supplies one, so windows that manage their own
+        // cursor (the GAL canvas, plain controls, busy cursor) are left untouched.
+        if (g_mouseWindow != NULL &&
+            event->GetEventType() == wxEVT_MOTION &&
+            !wxIsBusy())
+        {
+            for (wxWindow *win = g_mouseWindow; win != NULL; win = win->GetParent())
+            {
+                const wxPoint clientPt = win->ScreenToClient(mousePosition);
+                wxSetCursorEvent setCursorEvent(clientPt.x, clientPt.y);
+                setCursorEvent.SetEventObject(win);
+
+                if (win->GetEventHandler()->ProcessEvent(setCursorEvent))
+                {
+                    if (setCursorEvent.HasCursor())
+                    {
+                        wxSetCursor(setCursorEvent.GetCursor());
+                    }
+                    break;
+                }
+
+                if (win->IsTopLevel())
+                {
+                    break;
                 }
             }
         }

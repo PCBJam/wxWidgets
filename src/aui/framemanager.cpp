@@ -777,7 +777,12 @@ unsigned int wxAuiManager::GetFlags() const
 
 // With Core Graphics on Mac or GTK 3, it's not possible to show sash feedback,
 // so we'll always use live update instead.
-#if defined(__WXMAC__) || defined(__WXGTK3__)
+//
+// The WASM/DOM port paints AUI into a Canvas2D "island"; wxScreenDC + wxXOR
+// (the non-live sash resize hint, DrawResizeHint) neither composites nor erases
+// there, so a non-live drag smears an un-erasable grey stipple across the pane
+// and shows no real preview. Treat Emscripten like Mac/GTK3 and always live-resize.
+#if defined(__WXMAC__) || defined(__WXGTK3__) || defined(__EMSCRIPTEN__)
     #define wxUSE_AUI_LIVE_RESIZE_ALWAYS 1
 #else
     #define wxUSE_AUI_LIVE_RESIZE_ALWAYS 0
