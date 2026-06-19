@@ -259,12 +259,6 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
                 enterEvent.SetEventType(wxEVT_ENTER_WINDOW);
                 SendMouseEventToWindow(&enterEvent, g_mouseWindow);
             }
-
-#if wxUSE_TOOLTIPS
-            // Hover target changed: (re)arm the DOM tooltip layer.
-            extern void wxWasmTooltipOnHoverChange(wxWindow *win);
-            wxWasmTooltipOnHoverChange(g_mouseWindow);
-#endif
         }
 
         if (g_mouseWindow != NULL)
@@ -306,6 +300,17 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
                 }
             }
         }
+
+#if wxUSE_TOOLTIPS
+        // Re-evaluate the tooltip AFTER the motion has been dispatched to the
+        // hovered window, so per-item widgets that update their own tooltip on
+        // wxEVT_MOTION (e.g. wxAuiToolBar::OnMotion) have set the current text.
+        // Driven on every move (not just window changes), since a toolbar's tool
+        // buttons are islands within one wxWindow; the tooltip layer ignores
+        // no-op changes so the show delay isn't restarted on every pixel.
+        extern void wxWasmTooltipOnHoverChange(wxWindow *win);
+        wxWasmTooltipOnHoverChange(g_mouseWindow);
+#endif
     }
 }
 

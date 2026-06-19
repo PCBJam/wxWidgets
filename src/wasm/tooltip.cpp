@@ -33,6 +33,11 @@ const int wxDOM_TOOLTIP_DELAY_MS = 600;
 
 wxWindow *gs_hoverWindow = NULL;
 
+// Last resolved (effective tooltip window, text). Hover updates that don't change
+// either are ignored, so a jitter over the same tool doesn't restart the delay.
+wxWindow *gs_lastEffWin = NULL;
+wxString gs_lastText;
+
 // MSW-style inheritance: a window without its own tooltip shows the
 // first non-TLW ancestor's one (KiCad's row panels rely on this).
 wxWindow *FindTooltipWindow(wxWindow *win)
@@ -73,13 +78,28 @@ void wxWasmTooltipOnHoverChange(wxWindow *win)
 {
     gs_hoverWindow = win;
 
+    // Resolve the effective tooltip (inherited from the first non-TLW ancestor)
+    // and its current text. wxAuiToolBar and other per-item widgets update their
+    // own tooltip text on wxEVT_MOTION without changing the hovered wxWindow, so
+    // we key off (window, text) rather than the window identity alone.
+    wxWindow *eff = FindTooltipWindow(win);
+    const wxString text = eff ? eff->GetToolTipText() : wxString();
+
+    // No relevant change: leave any pending timer / shown tooltip untouched so a
+    // jitter over the same tool doesn't endlessly restart the show delay.
+    if ( eff == gs_lastEffWin && text == gs_lastText )
+        return;
+
+    gs_lastEffWin = eff;
+    gs_lastText = text;
+
     if ( !gs_tooltipTimer )
         gs_tooltipTimer = new wxWasmTooltipTimer;
 
     gs_tooltipTimer->Stop();
     wxDomTooltipHide();
 
-    if ( FindTooltipWindow(win) )
+    if ( eff && !text.empty() )
         gs_tooltipTimer->StartOnce(wxDOM_TOOLTIP_DELAY_MS);
 }
 
@@ -87,6 +107,14 @@ void wxWasmTooltipOnHoverChange(wxWindow *win)
 // target, or the pending tooltip timer would dereference a freed window.
 void wxWasmTooltipForgetWindow(wxWindow *win)
 {
+    // Drop cached pointers so a pending timer can't read a freed window and a
+    // stale (window, text) can't suppress a later genuine update.
+    if ( gs_lastEffWin == win )
+    {
+        gs_lastEffWin = NULL;
+        gs_lastText.clear();
+    }
+
     if ( gs_hoverWindow == win )
     {
         gs_hoverWindow = NULL;
