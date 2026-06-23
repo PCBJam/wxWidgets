@@ -598,39 +598,46 @@ if (typeof navigator !== 'undefined') {
       var newWidth = width * scaleFactor;
       var newHeight = height * scaleFactor;
 
-      // Only resize the canvas when the pixel dimensions actually change.
-      // Assigning canvas.width/height clears the canvas to transparent (true in
-      // both Chrome and Firefox, even when the value is unchanged). A
+      // Only RE-ASSIGN canvas.width/height when the pixel dimensions actually
+      // change. Assigning canvas.width/height clears the canvas to transparent
+      // (true in both Chrome and Firefox, even when the value is unchanged). A
       // position-only move — e.g. dragging a dialog by its title bar — keeps the
       // same size, and a move does not schedule a repaint of the window's own
       // content (DoMoveWindow only refreshes the parent). Clearing here would
       // therefore leave the canvas transparent, exposing the black `.window`
       // div behind it until some later repaint. See pcbjam #22.
+      //
+      // Everything below the guard must run UNCONDITIONALLY: a freshly created
+      // window's canvas defaults to 300x150, so when a modal's first
+      // setWindowRect happens to match that size the guard is false — and if the
+      // context/imageData init lived inside the guard, windowData.context would
+      // stay null and the next paint (createWindowContext) would throw
+      // "Cannot read properties of null (reading 'depth')", cancelling the modal.
       if (canvas.width !== newWidth || canvas.height !== newHeight) {
         canvas.width = newWidth;
         canvas.height = newHeight;
         canvas.style.width = width + 'px';
         canvas.style.height = height + 'px';
-
-        windowData.width = canvas.width;
-        windowData.height = canvas.height;
-
-        if (windowData.width > 0 && windowData.height > 0) {
-          windowData.imageData = new ImageData(windowData.width, windowData.height);
-        } else {
-          windowData.imageData = null;
-        }
-
-        var ctx = canvas.getContext('2d');
-        ctx.lineJoin = "round";
-        ctx.lineCap = "round";
-        ctx.imageSmoothingEnabled = false;
-        ctx.textBaseline = 'alphabetic';
-        ctx.depth = 0;
-        ctx.stack = [];
-
-        windowData.context = ctx;
       }
+
+      windowData.width = canvas.width;
+      windowData.height = canvas.height;
+
+      if (windowData.width > 0 && windowData.height > 0) {
+        windowData.imageData = new ImageData(windowData.width, windowData.height);
+      } else {
+        windowData.imageData = null;
+      }
+
+      var ctx = canvas.getContext('2d');
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.imageSmoothingEnabled = false;
+      ctx.textBaseline = 'alphabetic';
+      ctx.depth = 0;
+      ctx.stack = [];
+
+      windowData.context = ctx;
     }
   };
 
