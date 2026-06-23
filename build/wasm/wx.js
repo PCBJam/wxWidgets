@@ -515,6 +515,17 @@ if (typeof navigator !== 'undefined') {
       window.id = 'window-' + id;
       window.style.display = isVisible ? 'block' : 'none';
 
+      // Popup/transient windows (toolbar palettes, color pickers, etc.) are
+      // floating overlays. Position them relative to the viewport instead of
+      // absolutely within #window-container — the container is not at the
+      // viewport origin (it sits below other page content), so an absolutely
+      // positioned popup lands far from its intended screen coordinates and is
+      // effectively unreachable. `fixed` makes the screen coords passed to
+      // setWindowRect map straight to viewport coords, independent of layout.
+      if (classList && (' ' + classList + ' ').indexOf(' popup ') !== -1) {
+        window.style.position = 'fixed';
+      }
+
       if (needsCanvas) {
         canvas = document.createElement('canvas');
         canvas.className = 'window-canvas';
