@@ -37,28 +37,21 @@ extern "C" {
 // Event loops via Asyncify (top-level and nested quasi-modal)
 // ----------------------------------------------------------------------------
 //
-// Both the top-level main loop and nested Run()s (e.g. DIALOG_SHIM::ShowQuasiModal()
-// from a drawing tool) keep their C++ stack alive by SUSPENDING it via Asyncify,
-// never by emscripten_set_main_loop's simulate_infinite_loop=1, which throws an
-// "unwind" to ABANDON the stack. That throw is fatal under native wasm-EH: the
+// Neither loop uses emscripten_set_main_loop's simulate_infinite_loop=1, which throws
+// an "unwind" to ABANDON the C++ stack: that throw is fatal under native wasm-EH (the
 // compiler's catch_all cleanup pads catch the foreign exception and run destructors
-// that tear down the main frame before it paints (docs/features/wasm-exceptions/
-// 08+09). Asyncify's return-based unwind saves the stack without running cleanup, so
-// the frame survives, and it behaves identically under -fexceptions and
-// -fwasm-exceptions.
+// that tear down the main frame before it paints — docs/features/wasm-exceptions/08+09).
 //
-//   * top level (DoRun depth 0): wxWasmParkMainLoop() suspends the stack and drives
-//     ProcessEvents from a requestAnimationFrame pump (vsync-aligned).
-//   * nested (DoRun depth >0): wxWasmRunNestedLoop() suspends and drives ProcessEvents
-//     from a JS setTimeout pump.
-//
-// Both drive ProcessEvents via the ASYNC ccall, which is Asyncify-aware and so works
-// while the C++ stack is parked. emscripten_set_main_loop is NOT used: its rAF
-// callback calls ProcessEvents synchronously, which cannot drive a parked runtime
-// (the loop dies after a few frames — the white-background bug; see 09).
-//
-// Resolvers for both live on one LIFO (Module._wxNestedLoopExit) so inner loops exit
-// before outer ones; ScheduleExit() pops the innermost.
+//   * top level (DoRun depth 0): a plain C++ while-loop runs ProcessEvents() on the real
+//     main C stack and yields ONE animation frame per tick via wxWasmYieldToBrowser (an
+//     Asyncify suspend that COMPLETES each frame). Because nothing is permanently
+//     suspended, a tool-coroutine fiber swap inside ProcessEvents runs from a clean
+//     stack. A permanent handleAsync park here instead aborts coroutine swaps with
+//     "cannot stop an async operation in flight" (docs/features/async/13).
+//   * nested (DoRun depth >0): wxWasmRunNestedLoop() suspends the stack and drives
+//     ProcessEvents from a JS setTimeout pump (rAF isn't usable from a nested context).
+//     Nested resolvers live on a LIFO (Module._wxNestedLoopExit); ScheduleExit() pops
+//     the innermost. The top-level loop instead just sets m_shouldExit.
 
 // Depth of nested wxGUIEventLoop::DoRun() calls. 0 = none running; 1 = the
 // top-level main loop; >1 = a nested (quasi-modal) loop.
@@ -113,43 +106,14 @@ EM_JS(void, wxWasmExitNestedLoop, (), {
     }
 });
 
-// Top-level main-loop pump: drives ProcessEvents from a requestAnimationFrame loop
-// (vsync) via the ASYNC ccall — Asyncify-aware, so it works even though main's C++
-// stack is parked here. (emscripten_set_main_loop's rAF callback calls ProcessEvents
-// SYNCHRONOUSLY and cannot drive a parked runtime; it stalls after a few frames — see
-// docs/features/wasm-exceptions/09.) Differs from wxWasmRunNestedLoop only in rAF vs
-// setTimeout; joins the same LIFO so ScheduleExit()/wxWasmExitNestedLoop() resolves it.
-EM_ASYNC_JS(void, wxWasmParkMainLoop, (), {
-    var stopped = false;
-    var finish = null;
-
-    var pump = function () {
-        if (stopped) return;
-        requestAnimationFrame(async function () {
-            if (stopped) return;
-            try {
-                await ccall('ProcessEvents', 'void', [], [], { async: true });
-            } catch (e) {
-                console.error('[wxWasm] main loop pump error: ' + e);
-                if (finish) finish();
-                return;
-            }
-            if (!stopped) pump();
-        });
-    };
-
-    Module._wxNestedLoopExit = Module._wxNestedLoopExit || [];
-    await new Promise(function (resolve) {
-        finish = function () {
-            if (stopped) return;
-            stopped = true;
-            var idx = Module._wxNestedLoopExit.indexOf(finish);
-            if (idx !== -1) Module._wxNestedLoopExit.splice(idx, 1);
-            resolve();
-        };
-        Module._wxNestedLoopExit.push(finish);
-        pump();
-    });
+// Top-level main loop: yield to the browser for ONE animation frame, then return. It is
+// called in a plain C++ while-loop in DoRun (below), so ProcessEvents() runs on the real
+// main C stack and each Asyncify suspension COMPLETES every frame — unlike a permanent
+// handleAsync park, which is "in flight" for the app's whole life and makes a tool-
+// coroutine fiber swap abort ("cannot stop an async operation in flight"). With this
+// per-frame yield the slot is free whenever ProcessEvents runs (docs/features/async/13).
+EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
+    await new Promise(function (resolve) { requestAnimationFrame(resolve); });
 });
 
 // ----------------------------------------------------------------------------
@@ -162,10 +126,13 @@ void wxGUIEventLoop::ScheduleExit(int WXUNUSED(rc))
 
     m_shouldExit = true;
 
-    // Resolve the innermost loop's Asyncify pump (the top-level rAF pump or a nested
-    // setTimeout pump) so its DoRun resumes and returns. finish() sets stopped=true
-    // first, so the pump stops scheduling before the teardown runs.
-    wxWasmExitNestedLoop();
+    // The top-level loop is a plain while-loop that checks m_shouldExit (above). A nested
+    // (quasi-modal) loop is the Asyncify setTimeout pump — resolve it so its DoRun resumes
+    // and returns.
+    if ( s_wxRunDepth > 1 )
+    {
+        wxWasmExitNestedLoop();
+    }
 }
 
 bool wxGUIEventLoop::Pending() const
@@ -229,11 +196,15 @@ int wxGUIEventLoop::DoRun()
         topWindow->Refresh();
     }
 
-    // Suspend the C++ stack here; ProcessEvents is driven by the rAF pump inside
-    // wxWasmParkMainLoop. No throw (abandoning the stack is fatal under native
-    // wasm-EH) and no emscripten_set_main_loop (its synchronous rAF can't drive a
-    // parked runtime). The pump resolves on ScheduleExit().
-    wxWasmParkMainLoop();
+    // Run ProcessEvents on the real main C stack, yielding one animation frame between
+    // ticks. No throw (fatal under native wasm-EH), no permanent handleAsync park (which
+    // blocks coroutine fiber swaps — see wxWasmYieldToBrowser). m_shouldExit, set by
+    // ScheduleExit(), ends the loop after the current tick.
+    while (!m_shouldExit)
+    {
+        ProcessEvents();
+        wxWasmYieldToBrowser();
+    }
     --s_wxRunDepth;
 
     return 0;
