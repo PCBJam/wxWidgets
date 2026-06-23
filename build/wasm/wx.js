@@ -455,6 +455,42 @@ if (typeof navigator !== 'undefined') {
   if (windowContainer) {
     windowContainer.style.position = 'relative';
     windowContainer.style.zIndex = '1';
+
+    // Window-chrome CSS for the divs createWindow() builds (.window /
+    // .window.toplevel / .window-canvas). Injected here — the code that creates
+    // these elements — so every host (the e2e test pages, the React standalone
+    // shell, and the wx build template) gets identical styling from one source
+    // instead of pasting it into each page's <style>. pcbjam #22.
+    if (!document.getElementById('wx-window-chrome')) {
+      var wxStyle = document.createElement('style');
+      wxStyle.id = 'wx-window-chrome';
+      wxStyle.textContent = [
+        '.window {',
+        '  position: absolute;',
+        '  pointer-events: none;',
+        '  z-index: 10;',
+        '  background-color: black;',
+        '  overflow: hidden;',
+        '  width: 0;',
+        '  height: 0;',
+        '}',
+        // Modal dialogs (top-level windows, not popup menus) get a border + drop
+        // shadow so they read as raised surfaces. Popup menus style themselves
+        // in wx-dom.js and the main frame is #canvas — neither matches
+        // .window.toplevel, so neither is affected.
+        '.window.toplevel {',
+        '  border: 1px solid #808080;',
+        '  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.35);',
+        '}',
+        '.window-canvas {',
+        '  position: absolute;',
+        '  top: 0;',
+        '  left: 0;',
+        '  pointer-events: none;',
+        '}'
+      ].join('\n');
+      document.head.appendChild(wxStyle);
+    }
   }
 
   var nextWindowId = 0;

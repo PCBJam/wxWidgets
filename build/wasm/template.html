@@ -9,30 +9,6 @@
       div.emscripten { text-align: center; }
       /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
       canvas.emscripten { border: 0px none; }
-
-      .window {
-        position: absolute;
-        pointer-events: none;
-        z-index: 10;
-        background-color: black;
-        overflow: hidden;
-        width: 0;
-        height: 0;
-      }
-
-      /* Give modal dialogs (top-level windows, not popup menus) a border and
-         drop shadow so they read as raised surfaces. pcbjam #22. */
-      .window.toplevel {
-        border: 1px solid #808080;
-        box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.35);
-      }
-
-      .window-canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-        pointer-events: none;
-      }
     </style>
   </head>
   <body style="margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden">
