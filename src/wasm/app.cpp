@@ -348,6 +348,22 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
         wxWasmTooltipOnHoverChange(g_mouseWindow);
 #endif
     }
+
+    // A button click can change UI state that (a) posts follow-up events via
+    // wxPostEvent and (b) calls Refresh()/Invalidate(). Two examples in the symbol
+    // chooser: expanding a wxDataViewCtrl row, and selecting a row — which posts
+    // EVT_LIBITEM_SELECTED (preview + description update) / EVT_LIBITEM_CHOSEN
+    // (double-click accept+close). Inside a modal's Asyncify-driven event pump
+    // those queued events and their repaints are not flushed until the NEXT input
+    // event, so the panel lags one selection behind and double-click doesn't
+    // close. Process the queued events and repaint synchronously after a button
+    // event so the interaction takes effect immediately. Motion/wheel are excluded
+    // to avoid per-move churn; idle work stays with the pump.
+    if (event->ButtonDown() || event->ButtonUp() || event->ButtonDClick())
+    {
+        ProcessPendingEvents();
+        Paint();
+    }
 }
 
 void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
