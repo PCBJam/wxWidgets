@@ -739,6 +739,10 @@ if (typeof navigator !== 'undefined') {
   var getBitmapData = function (id, data) {
     var bitmap = bitmapMap.get(id);
 
+    if (!bitmap) {
+      return;
+    }
+
     var imageData;
 
     if (bitmap.context) {
@@ -748,6 +752,13 @@ if (typeof navigator !== 'undefined') {
       imageData = bitmap.imageData;
     }
 
+    if (!imageData) {
+      return;
+    }
+
+    // Cache the recovered pixels so a later SyncToCpp on this bitmap (after its
+    // memory-DC context has been consumed) can't dereference a null imageData.
+    bitmap.imageData = imageData;
     bitmap.imageBitmap = null;
 
     Module.HEAPU8.set(imageData.data, data);
