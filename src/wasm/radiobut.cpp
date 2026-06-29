@@ -73,8 +73,12 @@ bool wxRadioButton::Create(wxWindow *parent,
             }
         }
 
+        // NB: format the pointer with %zu (via wxUIntPtr), NOT %p. This build's
+        // wxVsnprintf rejects %p and wxString::Format then returns an empty
+        // string, which would collapse the name to a constant "wxrb-" and merge
+        // every radio group on the page into one. See menu.cpp for the same trap.
         wxDomSetGroupName(WasmGetDomId(),
-                          wxString::Format(wxT("wxrb-%p"), (void*)groupStart));
+                          wxString::Format(wxT("wxrb-%zu"), (wxUIntPtr)groupStart));
     }
 
     return true;
