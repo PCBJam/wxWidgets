@@ -84,6 +84,15 @@ bool wxTopLevelWindowWasm::Create(wxWindow *parent,
         }, GetCSSId(), static_cast<const char *>(title.utf8_str()), TITLE_BAR_HEIGHT);
     }
 
+    // Resizable windows (wxRESIZE_BORDER) also get DOM edge-resize handles. Added
+    // after the title bar so the side handles can start just below it (barHeight).
+    if (UseDomResize())
+    {
+        EM_ASM({
+            createWindowResizeHandles($0, $1);
+        }, GetCSSId(), TITLE_BAR_HEIGHT);
+    }
+
     return true;
 }
 
@@ -108,6 +117,16 @@ bool wxTopLevelWindowWasm::UseDomTitleBar() const
     // tooltips carry wxFRAME_NO_TASKBAR, so HasTitleBar() is already false for
     // them and they get no bar.
     return HasTitleBar();
+}
+
+bool wxTopLevelWindowWasm::UseDomResize() const
+{
+    // Edge-resize handles only for windows wx considers resizable. wxRESIZE_BORDER
+    // is the established signal: wxDEFAULT_FRAME_STYLE carries it (all frames) and
+    // KiCad's DIALOG_SHIM defaults to it (all dialogs that don't opt out), so this
+    // makes virtually every dialog/frame resizable while a deliberately fixed
+    // dialog stays fixed.
+    return UseDomTitleBar() && (GetWindowStyle() & wxRESIZE_BORDER);
 }
 
 wxPoint wxTopLevelWindowWasm::GetClientAreaOrigin() const
@@ -378,6 +397,34 @@ void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
     wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
     if (win && !win->IsMainFrame())
         win->Close(false);
+}
+
+// Resize a non-main top-level window to wx screen rect (x, y, width, height).
+// Reuses SetSize so children reflow via the normal wxSizeEvent -> Layout path
+// (incl. a frame's wxGLCanvas -> setGLCanvasRect) and the DOM syncs via
+// wxNonOwnedWindow::DoSetSize -> setWindowRect. The DOM resize handles drag the
+// left/bottom edges + corners, so this takes a full rect (origin + size), unlike
+// the move-only wx_window_move. Safe as a synchronous ccall (SetSize does not
+// suspend the stack).
+void EMSCRIPTEN_KEEPALIVE wx_window_resize(int cssId, int x, int y, int width, int height)
+{
+    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
+    if (win && !win->IsMainFrame())
+    {
+        win->SetSize(x, y, width, height);
+
+        // The JS resize reassigned (and thus CLEARED) the window's 2D canvas, so the
+        // whole window must repaint — not just the strip SetSize invalidated. And
+        // inside a modal dialog's Asyncify event pump the repaint is otherwise
+        // deferred until the next input event (the dialog shows its black background
+        // until the user clicks). Force a full, synchronous repaint now — the same
+        // remedy wxApp uses after a button event (HandleMouseButtonEvent -> Paint).
+        // wxApp::Paint() only repaints windows whose NeedsPaint() is set, so this
+        // refreshes just the resized window.
+        win->Refresh();
+        if (wxTheApp)
+            wxTheApp->Paint();
+    }
 }
 
 } // extern "C"

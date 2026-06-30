@@ -80,6 +80,11 @@ protected:
     // and dialogs); popups/tooltips (wxFRAME_NO_TASKBAR) are excluded.
     virtual bool UseDomTitleBar() const;
 
+    // True when this window should get DOM edge-resize handles: a DOM-title-bar
+    // window whose style carries wxRESIZE_BORDER (all frames + opted-in dialogs;
+    // KiCad's DIALOG_SHIM sets it by default). Fixed dialogs stay non-resizable.
+    virtual bool UseDomResize() const;
+
 private:
     void Init();
 

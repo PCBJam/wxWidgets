@@ -535,7 +535,25 @@ if (typeof navigator !== 'undefined') {
         '.window-titlebar-close:hover {',
         '  background-color: #e25a5a;',
         '  color: #ffffff;',
-        '}'
+        '}',
+        // Edge-resize handles for resizable (wxRESIZE_BORDER) non-main windows.
+        // pointer-events:auto + z-index:12 so they win hit-testing inside window-N's
+        // own stacking context (above the .window-canvas) AND over other frames'
+        // controls (#window-container z-index:1 out-stacks #main-window). Box geometry
+        // (top/left/right/bottom/size) is set inline by createWindowResizeHandles so
+        // the left/right edges can start below the title bar; CSS carries only the
+        // shared bits + per-direction cursor. No top edge/corners: the title bar owns
+        // the top strip (move + close), so handles never overlap it.
+        '.window-resize-handle {',
+        '  position: absolute;',
+        '  pointer-events: auto;',
+        '  z-index: 12;',
+        '}',
+        '.window-resize-e { cursor: ew-resize; }',
+        '.window-resize-w { cursor: ew-resize; }',
+        '.window-resize-s { cursor: ns-resize; }',
+        '.window-resize-se { cursor: nwse-resize; z-index: 13; }',
+        '.window-resize-sw { cursor: nesw-resize; z-index: 13; }'
       ].join('\n');
       document.head.appendChild(wxStyle);
     }
@@ -798,6 +816,144 @@ if (typeof navigator !== 'undefined') {
         Module.ccall('wx_window_close', null, ['number'], [id], { async: true });
       }
     });
+  };
+
+  // Edge-resize handles for a resizable (wxRESIZE_BORDER) non-main window. Mirrors
+  // createWindowTitlebar's pointer/rAF plumbing but drives wx_window_resize
+  // (-> wxWindow::SetSize) with a FULL rect: the left/bottom edges and corners move
+  // the window origin as well as its size. Five handles — right (e), left (w),
+  // bottom (s) and the two bottom corners (se, sw). The top strip is the title bar
+  // (move + close), so there are deliberately no top handles. barHeight comes from
+  // the C++ TITLE_BAR_HEIGHT so the side handles start just below the bar.
+  var createWindowResizeHandles = function (id, barHeight) {
+    var windowData = windowMap.get(id);
+    if (!windowData || !windowData.window) {
+      return;
+    }
+    var win = windowData.window;
+
+    var MIN_W = 120;    // minimum window size, px (flat floor)
+    var MIN_H = 80;
+    var EDGE = 6;       // edge-handle thickness, px
+    var CORNER = 12;    // corner-handle size, px
+
+    // Each handle: which window borders it moves (edges) + its inline box. e/w start
+    // at barHeight so they never overlap the title bar; s/corners sit at the bottom.
+    var defs = [
+      { cls: 'window-resize-e', edges: { right: true },
+        box: { top: barHeight + 'px', right: '0px', bottom: '0px', width: EDGE + 'px' } },
+      { cls: 'window-resize-w', edges: { left: true },
+        box: { top: barHeight + 'px', left: '0px', bottom: '0px', width: EDGE + 'px' } },
+      { cls: 'window-resize-s', edges: { bottom: true },
+        box: { left: CORNER + 'px', right: CORNER + 'px', bottom: '0px', height: EDGE + 'px' } },
+      { cls: 'window-resize-se', edges: { right: true, bottom: true },
+        box: { right: '0px', bottom: '0px', width: CORNER + 'px', height: CORNER + 'px' } },
+      { cls: 'window-resize-sw', edges: { left: true, bottom: true },
+        box: { left: '0px', bottom: '0px', width: CORNER + 'px', height: CORNER + 'px' } }
+    ];
+
+    var handles = [];
+    var resizing = false;
+    var activeEdges = null;
+    var startRect = null;       // window rect (viewport coords) captured at grab
+    var startX = 0, startY = 0; // pointerdown coords
+    var pending = null;         // {x, y, w, h} in wx screen coords
+    var rafPending = false;
+
+    var flushResize = function () {
+      rafPending = false;
+      if (pending && typeof Module !== 'undefined' && Module.ccall) {
+        Module.ccall('wx_window_resize', null,
+                     ['number', 'number', 'number', 'number', 'number'],
+                     [id, pending.x, pending.y, pending.w, pending.h]);
+      }
+    };
+
+    defs.forEach(function (def) {
+      var handle = document.createElement('div');
+      handle.className = 'window-resize-handle ' + def.cls;
+      for (var k in def.box) {
+        if (def.box.hasOwnProperty(k)) {
+          handle.style[k] = def.box[k];
+        }
+      }
+      win.appendChild(handle);
+      handles.push(handle);
+
+      handle.addEventListener('pointerdown', function (ev) {
+        if (ev.button !== 0) {
+          return;
+        }
+        resizing = true;
+        activeEdges = def.edges;
+        startRect = win.getBoundingClientRect();
+        startX = ev.clientX;
+        startY = ev.clientY;
+        try { handle.setPointerCapture(ev.pointerId); } catch (e) {}
+        ev.preventDefault();
+        ev.stopPropagation();
+      });
+
+      handle.addEventListener('pointermove', function (ev) {
+        if (!resizing) {
+          return;
+        }
+        var dx = ev.clientX - startX;
+        var dy = ev.clientY - startY;
+
+        // New viewport rect: move only the active borders (top never moves here).
+        var left = startRect.left;
+        var top = startRect.top;
+        var right = startRect.right;
+        var bottom = startRect.bottom;
+        if (activeEdges.left) { left = startRect.left + dx; }
+        if (activeEdges.right) { right = startRect.right + dx; }
+        if (activeEdges.bottom) { bottom = startRect.bottom + dy; }
+
+        var w = right - left;
+        var h = bottom - top;
+        // Clamp to the minimum, anchored to the FIXED edge so the window doesn't jump.
+        if (w < MIN_W) {
+          if (activeEdges.left) { left = right - MIN_W; }
+          w = MIN_W;
+        }
+        if (h < MIN_H) {
+          bottom = top + MIN_H; // top is anchored; only the bottom moved
+          h = MIN_H;
+        }
+
+        // Convert the top-left back to wx screen coords — the inverse of setWindowRect
+        // (top = y + headerHeight), the same transform the title-bar drag uses.
+        var container = document.getElementById('window-container');
+        var crect = container ? container.getBoundingClientRect() : { left: 0, top: 0 };
+        var header = document.getElementsByClassName('header')[0];
+        var headerHeight = header ? header.offsetHeight : 0;
+        pending = {
+          x: Math.round(left - crect.left),
+          y: Math.round(top - crect.top - headerHeight),
+          w: Math.round(w),
+          h: Math.round(h)
+        };
+        ev.stopPropagation();
+        if (!rafPending) {
+          rafPending = true;
+          requestAnimationFrame(flushResize);
+        }
+      });
+
+      var endResize = function (ev) {
+        if (!resizing) {
+          return;
+        }
+        resizing = false;
+        try { handle.releasePointerCapture(ev.pointerId); } catch (e) {}
+        ev.stopPropagation();
+      };
+      handle.addEventListener('pointerup', endResize);
+      handle.addEventListener('pointercancel', endResize);
+    });
+
+    windowData.resizeHandles = handles;
   };
 
   // Update an existing DOM title bar's text (no-op if the bar isn't built yet —
