@@ -71,6 +71,19 @@ bool wxTopLevelWindowWasm::Create(wxWindow *parent,
 
     SetTitle(title);
 
+    // Non-main wxFrames get a real DOM title bar (drag handle + close "X")
+    // instead of the canvas-painted one: a pointer-events:none canvas title bar
+    // loses hit-testing to overlapping pointer-events:auto DOM controls from
+    // another frame (e.g. the main editor's toolbar over the 3D viewer), so its
+    // clicks never reach the #canvas mouse router. The DOM bar wins via normal
+    // stacking. Created after SetTitle so the bar carries the current title.
+    if (UseDomTitleBar())
+    {
+        EM_ASM({
+            createWindowTitlebar($0, UTF8ToString($1), $2);
+        }, GetCSSId(), static_cast<const char *>(title.utf8_str()), TITLE_BAR_HEIGHT);
+    }
+
     return true;
 }
 
@@ -85,6 +98,16 @@ bool wxTopLevelWindowWasm::HasTitleBar() const
 {
     // Main frame already has a native title bar.
     return !IsMainFrame() && !(GetWindowStyle() & wxFRAME_NO_TASKBAR);
+}
+
+bool wxTopLevelWindowWasm::UseDomTitleBar() const
+{
+    // Every non-main top-level window with a title bar (secondary frames AND
+    // dialogs) uses the real DOM title bar — consistent chrome (cursor, hover,
+    // close X) and robust hit-testing over other frames' DOM controls. Popups /
+    // tooltips carry wxFRAME_NO_TASKBAR, so HasTitleBar() is already false for
+    // them and they get no bar.
+    return HasTitleBar();
 }
 
 wxPoint wxTopLevelWindowWasm::GetClientAreaOrigin() const
@@ -181,6 +204,15 @@ void wxTopLevelWindowWasm::SetTitle(const wxString &title)
             document.title = UTF8ToString($0);
         }, static_cast<const char *>(title.utf8_str()));
     }
+    else if (UseDomTitleBar())
+    {
+        // Push to the DOM title bar's text. No-op if the bar isn't built yet
+        // (the Create-time SetTitle precedes createWindowTitlebar, which then
+        // builds the bar with the current title).
+        EM_ASM({
+            setWindowTitle($0, UTF8ToString($1));
+        }, GetCSSId(), static_cast<const char *>(title.utf8_str()));
+    }
 }
 
 void wxTopLevelWindowWasm::DrawTitleText(wxDC& dc, const wxRect& rect)
@@ -239,7 +271,9 @@ void wxTopLevelWindowWasm::DragMove(const wxPoint& pos)
 
 void wxTopLevelWindowWasm::OnNcPaint(wxNcPaintEvent& WXUNUSED(event))
 {
-    if (HasTitleBar())
+    // Frames use a real DOM title bar (see UseDomTitleBar / createWindowTitlebar);
+    // only dialogs still canvas-paint their title bar here.
+    if (HasTitleBar() && !UseDomTitleBar())
     {
         wxWindowDC dc(this);
         wxRect ncRect(0, 0, GetSize().x, TITLE_BAR_HEIGHT);
@@ -256,7 +290,9 @@ void wxTopLevelWindowWasm::OnNcPaint(wxNcPaintEvent& WXUNUSED(event))
 
 void wxTopLevelWindowWasm::OnMouseDown(wxMouseEvent& event)
 {
-    if (HasTitleBar())
+    // Only dialogs reach the canvas title bar here; frames are driven by the DOM
+    // title bar (UseDomTitleBar), whose events never propagate to #canvas.
+    if (HasTitleBar() && !UseDomTitleBar())
     {
         wxPoint pos = event.GetPosition() + GetClientAreaOrigin();
 
@@ -274,7 +310,8 @@ void wxTopLevelWindowWasm::OnMouseUp(wxMouseEvent& event)
         EndDrag();
     }
 
-    if (HasTitleBar())
+    // Canvas close button is dialogs-only; frames use the DOM title bar's ×.
+    if (HasTitleBar() && !UseDomTitleBar())
     {
         wxPoint pos = event.GetPosition() + GetClientAreaOrigin();
 
@@ -299,3 +336,48 @@ void wxTopLevelWindowWasm::OnMotion(wxMouseEvent& event)
         }
     }
 }
+
+// ----------------------------------------------------------------------------
+// JS -> C++ hooks for the DOM title bar (see createWindowTitlebar in wx.js).
+// The DOM title bar drives the SAME C++ paths as the retired canvas chrome:
+// drag -> Move() (one reposition source of truth), X -> Close() (-> EVT_CLOSE).
+// ----------------------------------------------------------------------------
+
+static wxTopLevelWindow* wxFindTopLevelByCSSId(int cssId)
+{
+    for (wxWindowList::iterator it = wxTopLevelWindows.begin();
+         it != wxTopLevelWindows.end(); ++it)
+    {
+        wxTopLevelWindow* tlw = wxDynamicCast(*it, wxTopLevelWindow);
+        if (tlw && tlw->GetCSSId() == cssId)
+            return tlw;
+    }
+    return NULL;
+}
+
+extern "C"
+{
+
+// Move a non-main top-level window to wx screen coords (x, y). Reuses Move() so
+// the frame's children (GL canvas, tool/status bars) reposition through the
+// normal size-event -> Layout path. Safe as a synchronous ccall (Move does not
+// suspend the stack).
+void EMSCRIPTEN_KEEPALIVE wx_window_move(int cssId, int x, int y)
+{
+    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
+    if (win && !win->IsMainFrame())
+        win->Move(x, y);
+}
+
+// Close a non-main top-level window via wxEVT_CLOSE (-> the frame's
+// OnCloseWindow). MUST be invoked as an ASYNC ccall: Close() runs the handler
+// synchronously and may pump the event loop / show a modal, which aborts
+// Asyncify if dispatched from a synchronous DOM-event ccall.
+void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
+{
+    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
+    if (win && !win->IsMainFrame())
+        win->Close(false);
+}
+
+} // extern "C"

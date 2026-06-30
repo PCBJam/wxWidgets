@@ -75,6 +75,11 @@ protected:
 
     virtual bool HasTitleBar() const;
 
+    // True when this window should use a real DOM title bar (drag + close) instead
+    // of the canvas-painted one — all non-main top-level windows (secondary frames
+    // and dialogs); popups/tooltips (wxFRAME_NO_TASKBAR) are excluded.
+    virtual bool UseDomTitleBar() const;
+
 private:
     void Init();
 

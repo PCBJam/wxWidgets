@@ -487,6 +487,54 @@ if (typeof navigator !== 'undefined') {
         '  top: 0;',
         '  left: 0;',
         '  pointer-events: none;',
+        '}',
+        // Real DOM title bar for non-main wxFrames (e.g. the 3D viewer). It lives
+        // in the top strip of the window-N div with pointer-events:auto, so it
+        // wins hit-testing over OTHER frames' DOM controls (it sits inside
+        // #window-container (z-index:1), above #main-window's controls). It never
+        // overlaps the GL canvas — the GL canvas is positioned the title-bar
+        // height BELOW the frame top — so the GL canvas's huge z-index is
+        // irrelevant. z-index:11 keeps the bar above the sibling .window-canvas
+        // inside window-N's own stacking context (window-N has z-index:10), so it
+        // never escapes that context or competes with the GL sentinel z.
+        '.window-titlebar {',
+        '  position: absolute;',
+        '  top: 0;',
+        '  left: 0;',
+        '  right: 0;',
+        '  pointer-events: auto;',
+        '  cursor: move;',
+        '  z-index: 11;',
+        '  display: flex;',
+        '  align-items: center;',
+        '  box-sizing: border-box;',
+        '  background-color: #c8c8c8;',
+        '  color: #282828;',
+        '  font: bold 12px sans-serif;',
+        '  user-select: none;',
+        '}',
+        '.window-titlebar-text {',
+        '  flex: 1;',
+        '  padding: 0 6px;',
+        '  overflow: hidden;',
+        '  text-overflow: ellipsis;',
+        '  white-space: nowrap;',
+        '}',
+        '.window-titlebar-close {',
+        '  pointer-events: auto;',
+        '  cursor: pointer;',
+        '  width: 22px;',
+        '  height: 100%;',
+        '  border: 0;',
+        '  padding: 0;',
+        '  background: transparent;',
+        '  color: #282828;',
+        '  font: bold 15px sans-serif;',
+        '  line-height: 1;',
+        '}',
+        '.window-titlebar-close:hover {',
+        '  background-color: #e25a5a;',
+        '  color: #ffffff;',
         '}'
       ].join('\n');
       document.head.appendChild(wxStyle);
@@ -638,6 +686,126 @@ if (typeof navigator !== 'undefined') {
       ctx.stack = [];
 
       windowData.context = ctx;
+    }
+  };
+
+  // Build a real DOM title bar (drag handle + title text + close "X") for a
+  // non-main wxFrame's window-N div (called from wxTopLevelWindowWasm::Create via
+  // EM_ASM). Replaces the canvas-painted title bar so the bar wins DOM
+  // hit-testing instead of relying on #canvas event routing — which an
+  // overlapping pointer-events:auto control from another frame would steal (the
+  // confirmed 3D-viewer bug). Drag funnels through wx_window_move ->
+  // wxWindow::Move (one reposition source of truth: children follow via the
+  // size-event -> Layout path). Close funnels through wx_window_close -> wx
+  // Close() as an ASYNC ccall (Close may pump the loop / show a modal).
+  // barHeight comes from the C++ TITLE_BAR_HEIGHT so the strip height is single-
+  // sourced and never under/over-laps the client area reserved for it.
+  var createWindowTitlebar = function (id, title, barHeight) {
+    var windowData = windowMap.get(id);
+    if (!windowData || !windowData.window) {
+      return;
+    }
+    var win = windowData.window;
+
+    var bar = document.createElement('div');
+    bar.className = 'window-titlebar';
+    bar.style.height = barHeight + 'px';
+
+    var text = document.createElement('span');
+    text.className = 'window-titlebar-text';
+    text.textContent = title || '';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'window-titlebar-close';
+    closeBtn.setAttribute('type', 'button');
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '×';
+
+    bar.appendChild(text);
+    bar.appendChild(closeBtn);
+    win.appendChild(bar);
+
+    windowData.titlebar = bar;
+    windowData.titlebarText = text;
+
+    // --- Drag: titlebar pointer -> wx screen coords -> wx_window_move. --------
+    var dragging = false;
+    var grabDX = 0;
+    var grabDY = 0;
+    var pendingX = 0;
+    var pendingY = 0;
+    var rafPending = false;
+
+    var flushMove = function () {
+      rafPending = false;
+      if (typeof Module !== 'undefined' && Module.ccall) {
+        Module.ccall('wx_window_move', null,
+                     ['number', 'number', 'number'], [id, pendingX, pendingY]);
+      }
+    };
+
+    bar.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0) {
+        return;
+      }
+      var r = win.getBoundingClientRect();
+      grabDX = ev.clientX - r.left;
+      grabDY = ev.clientY - r.top;
+      dragging = true;
+      try { bar.setPointerCapture(ev.pointerId); } catch (e) {}
+      ev.preventDefault();
+      ev.stopPropagation();
+    });
+
+    bar.addEventListener('pointermove', function (ev) {
+      if (!dragging) {
+        return;
+      }
+      // Place the window's top-left so the grab point stays under the cursor,
+      // relative to #window-container, then convert to wx screen coords — the
+      // inverse of setWindowRect (top = y + headerHeight).
+      var container = document.getElementById('window-container');
+      var crect = container ? container.getBoundingClientRect() : { left: 0, top: 0 };
+      var header = document.getElementsByClassName('header')[0];
+      var headerHeight = header ? header.offsetHeight : 0;
+      pendingX = Math.round(ev.clientX - grabDX - crect.left);
+      pendingY = Math.round(ev.clientY - grabDY - crect.top - headerHeight);
+      ev.stopPropagation();
+      if (!rafPending) {
+        rafPending = true;
+        requestAnimationFrame(flushMove);
+      }
+    });
+
+    var endDrag = function (ev) {
+      if (!dragging) {
+        return;
+      }
+      dragging = false;
+      try { bar.releasePointerCapture(ev.pointerId); } catch (e) {}
+      ev.stopPropagation();
+    };
+    bar.addEventListener('pointerup', endDrag);
+    bar.addEventListener('pointercancel', endDrag);
+
+    // --- Close: X -> wx_window_close (ASYNC: Close may open a modal). ---------
+    closeBtn.addEventListener('pointerdown', function (ev) {
+      ev.stopPropagation(); // a press on the X must not start a window drag
+    });
+    closeBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (typeof Module !== 'undefined' && Module.ccall) {
+        Module.ccall('wx_window_close', null, ['number'], [id], { async: true });
+      }
+    });
+  };
+
+  // Update an existing DOM title bar's text (no-op if the bar isn't built yet —
+  // the Create-time SetTitle runs before createWindowTitlebar).
+  var setWindowTitle = function (id, title) {
+    var windowData = windowMap.get(id);
+    if (windowData && windowData.titlebarText) {
+      windowData.titlebarText.textContent = title || '';
     }
   };
 
@@ -931,8 +1099,16 @@ if (typeof navigator !== 'undefined') {
     canvas.style.height = height + 'px';
 
     var scaleFactor = getDisplayScaleFactor();
-    canvas.width = width * scaleFactor;
-    canvas.height = height * scaleFactor;
+    var newW = width * scaleFactor;
+    var newH = height * scaleFactor;
+    // Only reassign the backing store when the pixel size actually changes:
+    // assigning canvas.width/height clears the GL drawing buffer, which would
+    // blank/flicker the 3D view on every pointermove during a title-bar drag (a
+    // drag is a pure move — same size). Mirrors the guard in setWindowRect.
+    if (canvas.width !== newW || canvas.height !== newH) {
+      canvas.width = newW;
+      canvas.height = newH;
+    }
 
     // Show the canvas now that it's properly positioned
     // (visibility is also controlled by setGLCanvasVisibility for show/hide logic)
