@@ -399,6 +399,34 @@ void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
         win->Close(false);
 }
 
+// True if `win` is, or contains anywhere in its child tree, a window of class `cls`.
+static bool wxWindowTreeHasClass(wxWindow* win, const wxClassInfo* cls)
+{
+    if (!win || !cls)
+        return false;
+    if (win->IsKindOf(cls))
+        return true;
+    for (wxWindowList::compatibility_iterator node = win->GetChildren().GetFirst();
+         node; node = node->GetNext())
+    {
+        if (wxWindowTreeHasClass(node->GetData(), cls))
+            return true;
+    }
+    return false;
+}
+
+// True if `win` is, or contains, a wxGLCanvas. The 3D viewer's EDA_3D_CANVAS is a
+// wxGLCanvas whose paint runs the (slow, multi-threaded) CPU raytracer — see
+// wx_window_resize for why a synchronous repaint of such a window must be avoided.
+// wxGLCanvas is looked up by NAME (wxClassInfo::FindClass) rather than referenced as a
+// type, so this core translation unit does NOT create a link-time dependency on
+// wxGLCanvas::ms_classInfo — the wxWidgets test apps link libwx_core but not the GL
+// library. In an app that doesn't link a GL canvas, FindClass returns null → no match.
+static bool wxWindowHostsGLCanvas(wxWindow* win)
+{
+    return wxWindowTreeHasClass(win, wxClassInfo::FindClass(wxT("wxGLCanvas")));
+}
+
 // Resize a non-main top-level window to wx screen rect (x, y, width, height).
 // Reuses SetSize so children reflow via the normal wxSizeEvent -> Layout path
 // (incl. a frame's wxGLCanvas -> setGLCanvasRect) and the DOM syncs via
@@ -421,8 +449,20 @@ void EMSCRIPTEN_KEEPALIVE wx_window_resize(int cssId, int x, int y, int width, i
         // remedy wxApp uses after a button event (HandleMouseButtonEvent -> Paint).
         // wxApp::Paint() only repaints windows whose NeedsPaint() is set, so this
         // refreshes just the resized window.
+        //
+        // EXCEPTION — a window hosting a wxGLCanvas (the 3D viewer, whose paint runs the
+        // multi-threaded CPU raytracer). Painting it synchronously here runs the raytrace
+        // NESTED inside this resize ccall (itself driven from a JS requestAnimationFrame
+        // callback in wx.js). If that raytrace then has to spawn an on-demand pthread
+        // Worker — the pre-warmed pool drained by earlier renders, e.g. camera moves —
+        // booting the Worker needs the main thread back in the event loop, which it can't
+        // reach while blocked in this synchronous Paint(): the join busy-waits for a Worker
+        // that can never start → deadlock/freeze. The frame and its GL canvas have already
+        // been resized (SetSize -> setGLCanvasRect); only the RE-RENDER is at stake, so let
+        // Refresh() above repaint it through the normal per-frame event-loop pump instead —
+        // exactly the path a camera move takes, where the Worker CAN boot.
         win->Refresh();
-        if (wxTheApp)
+        if (wxTheApp && !wxWindowHostsGLCanvas(win))
             wxTheApp->Paint();
     }
 }
