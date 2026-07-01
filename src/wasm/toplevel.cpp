@@ -13,7 +13,6 @@
 #include "wx/frame.h"
 #include "wx/settings.h"
 #include "wx/toplevel.h"
-#include "wx/glcanvas.h"
 
 #include "wx/wasm/private.h"
 #include "wx/wasm/private/display.h"
@@ -400,23 +399,32 @@ void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
         win->Close(false);
 }
 
-// True if `win` is, or contains anywhere in its child tree, a wxGLCanvas. The 3D
-// viewer's EDA_3D_CANVAS is a wxGLCanvas whose paint runs the (slow, multi-threaded)
-// CPU raytracer — see wx_window_resize for why a synchronous repaint of such a window
-// must be avoided.
-static bool wxWindowHostsGLCanvas(wxWindow* win)
+// True if `win` is, or contains anywhere in its child tree, a window of class `cls`.
+static bool wxWindowTreeHasClass(wxWindow* win, const wxClassInfo* cls)
 {
-    if (!win)
+    if (!win || !cls)
         return false;
-    if (wxDynamicCast(win, wxGLCanvas))
+    if (win->IsKindOf(cls))
         return true;
     for (wxWindowList::compatibility_iterator node = win->GetChildren().GetFirst();
          node; node = node->GetNext())
     {
-        if (wxWindowHostsGLCanvas(node->GetData()))
+        if (wxWindowTreeHasClass(node->GetData(), cls))
             return true;
     }
     return false;
+}
+
+// True if `win` is, or contains, a wxGLCanvas. The 3D viewer's EDA_3D_CANVAS is a
+// wxGLCanvas whose paint runs the (slow, multi-threaded) CPU raytracer — see
+// wx_window_resize for why a synchronous repaint of such a window must be avoided.
+// wxGLCanvas is looked up by NAME (wxClassInfo::FindClass) rather than referenced as a
+// type, so this core translation unit does NOT create a link-time dependency on
+// wxGLCanvas::ms_classInfo — the wxWidgets test apps link libwx_core but not the GL
+// library. In an app that doesn't link a GL canvas, FindClass returns null → no match.
+static bool wxWindowHostsGLCanvas(wxWindow* win)
+{
+    return wxWindowTreeHasClass(win, wxClassInfo::FindClass(wxT("wxGLCanvas")));
 }
 
 // Resize a non-main top-level window to wx screen rect (x, y, width, height).
