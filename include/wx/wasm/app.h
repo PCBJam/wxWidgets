@@ -28,7 +28,12 @@ public:
     wxApp();
     virtual ~wxApp();
 
-    void Paint();
+    // deferGLCanvasWindows: skip a synchronous repaint of any non-main window hosting a
+    // wxGLCanvas (the 3D viewer, whose paint runs the multi-threaded CPU raytracer). Used
+    // on the mouse-button repaint path (HandleMouseEvent), which is driven synchronously
+    // from a DOM event callback where the raytracer's Worker boot would deadlock — the
+    // window keeps NeedsPaint() and is repainted by the yielding per-frame pump instead.
+    void Paint(bool deferGLCanvasWindows = false);
 
     bool IsKeyPressed(long keyCode);
 

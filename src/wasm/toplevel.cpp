@@ -374,31 +374,6 @@ static wxTopLevelWindow* wxFindTopLevelByCSSId(int cssId)
     return NULL;
 }
 
-extern "C"
-{
-
-// Move a non-main top-level window to wx screen coords (x, y). Reuses Move() so
-// the frame's children (GL canvas, tool/status bars) reposition through the
-// normal size-event -> Layout path. Safe as a synchronous ccall (Move does not
-// suspend the stack).
-void EMSCRIPTEN_KEEPALIVE wx_window_move(int cssId, int x, int y)
-{
-    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
-    if (win && !win->IsMainFrame())
-        win->Move(x, y);
-}
-
-// Close a non-main top-level window via wxEVT_CLOSE (-> the frame's
-// OnCloseWindow). MUST be invoked as an ASYNC ccall: Close() runs the handler
-// synchronously and may pump the event loop / show a modal, which aborts
-// Asyncify if dispatched from a synchronous DOM-event ccall.
-void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
-{
-    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
-    if (win && !win->IsMainFrame())
-        win->Close(false);
-}
-
 // True if `win` is, or contains anywhere in its child tree, a window of class `cls`.
 static bool wxWindowTreeHasClass(wxWindow* win, const wxClassInfo* cls)
 {
@@ -422,9 +397,37 @@ static bool wxWindowTreeHasClass(wxWindow* win, const wxClassInfo* cls)
 // type, so this core translation unit does NOT create a link-time dependency on
 // wxGLCanvas::ms_classInfo — the wxWidgets test apps link libwx_core but not the GL
 // library. In an app that doesn't link a GL canvas, FindClass returns null → no match.
-static bool wxWindowHostsGLCanvas(wxWindow* win)
+// Defined here (C++ linkage, NOT inside the extern "C" block below) and shared with
+// wxApp::Paint() (app.cpp) to defer the raytracer on the synchronous mouse-button repaint
+// path, the same reason wx_window_resize avoids a synchronous Paint() of such a window.
+bool wxWasmWindowHostsGLCanvas(wxWindow* win)
 {
     return wxWindowTreeHasClass(win, wxClassInfo::FindClass(wxT("wxGLCanvas")));
+}
+
+extern "C"
+{
+
+// Move a non-main top-level window to wx screen coords (x, y). Reuses Move() so
+// the frame's children (GL canvas, tool/status bars) reposition through the
+// normal size-event -> Layout path. Safe as a synchronous ccall (Move does not
+// suspend the stack).
+void EMSCRIPTEN_KEEPALIVE wx_window_move(int cssId, int x, int y)
+{
+    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
+    if (win && !win->IsMainFrame())
+        win->Move(x, y);
+}
+
+// Close a non-main top-level window via wxEVT_CLOSE (-> the frame's
+// OnCloseWindow). MUST be invoked as an ASYNC ccall: Close() runs the handler
+// synchronously and may pump the event loop / show a modal, which aborts
+// Asyncify if dispatched from a synchronous DOM-event ccall.
+void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
+{
+    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
+    if (win && !win->IsMainFrame())
+        win->Close(false);
 }
 
 // Resize a non-main top-level window to wx screen rect (x, y, width, height).
@@ -462,7 +465,7 @@ void EMSCRIPTEN_KEEPALIVE wx_window_resize(int cssId, int x, int y, int width, i
         // Refresh() above repaint it through the normal per-frame event-loop pump instead —
         // exactly the path a camera move takes, where the Worker CAN boot.
         win->Refresh();
-        if (wxTheApp && !wxWindowHostsGLCanvas(win))
+        if (wxTheApp && !wxWasmWindowHostsGLCanvas(win))
             wxTheApp->Paint();
     }
 }

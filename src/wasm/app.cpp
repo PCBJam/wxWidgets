@@ -50,7 +50,12 @@ wxApp::~wxApp()
     delete m_display;
 }
 
-void wxApp::Paint()
+// Defined in toplevel.cpp. True if `win` is, or contains, a wxGLCanvas — the 3D viewer,
+// whose paint runs the multi-threaded CPU raytracer. Shared so Paint() can defer it on
+// the synchronous mouse-button repaint path, mirroring wx_window_resize.
+extern bool wxWasmWindowHostsGLCanvas(wxWindow* win);
+
+void wxApp::Paint(bool deferGLCanvasWindows)
 {
     wxWindow *topWindow = GetTopWindow();
     wxASSERT(topWindow != NULL);
@@ -62,6 +67,21 @@ void wxApp::Paint()
          ++windowIter)
     {
         wxNonOwnedWindow* window = static_cast<wxNonOwnedWindow*>(*windowIter);
+
+        // A non-main window hosting a wxGLCanvas is the 3D viewer, whose paint runs the
+        // multi-threaded CPU raytracer: it spawns pthread Workers and busy-waits the main
+        // thread for them. When this Paint() is a SYNCHRONOUS repaint driven from a DOM
+        // event callback (a mouse button, see HandleMouseEvent) the main thread can't
+        // return to the JS event loop to boot an on-demand Worker → the raytrace join
+        // deadlocks (or aborts the nested Asyncify unwind). Defer it to the per-frame
+        // ProcessEvents pump (evtloop.cpp), which yields between frames so Workers boot —
+        // the same remedy wx_window_resize uses. The window keeps NeedsPaint() set, so the
+        // next pump frame repaints it. The MAIN frame's wxGLCanvas is the GAL view (glemu/
+        // WebGL, no CPU raytrace) so it is never deferred — its click feedback stays sync.
+        if (deferGLCanvasWindows && !window->IsMainFrame()
+                && wxWasmWindowHostsGLCanvas(window))
+            continue;
+
         window->OnAnimationFrame();
 
         if (window->NeedsPaint())
@@ -361,8 +381,18 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
     // to avoid per-move churn; idle work stays with the pump.
     if (event->ButtonDown() || event->ButtonUp() || event->ButtonDClick())
     {
+        // ProcessPendingEvents() runs synchronously: it flushes the click's queued
+        // follow-ups (selection/preview updates, double-click accept+close), so interaction
+        // LOGIC still takes effect immediately — the reason this block exists. Paint() then
+        // repaints, but deferGLCanvasWindows SKIPS the synchronous repaint of any non-main
+        // wxGLCanvas host: the 3D viewer, or a dialog with a 3D preview (e.g. the footprint
+        // 3D-models tab). Painting those here would run the multi-threaded CPU raytracer
+        // nested in this synchronous DOM mouse callback, where its on-demand pthread Worker
+        // can't boot (main thread blocked) → deadlock. They keep NeedsPaint() and repaint
+        // via the yielding per-frame pump one frame later (a GAL preview's pixels lag ≤1
+        // frame; its logic already ran above). Non-GL windows still repaint synchronously.
         ProcessPendingEvents();
-        Paint();
+        Paint(/*deferGLCanvasWindows=*/true);
     }
 }
 
