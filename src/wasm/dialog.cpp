@@ -295,6 +295,17 @@ int wxDialog::ShowModal()
         return GetReturnCode();
     }
 
+    // Make the dialog truly input-modal: disable every other top-level window
+    // (notably the parent editor frame) so its menubar/toolbar/canvas stop
+    // accepting input while this dialog is parked under Asyncify. This mirrors
+    // the native ports (e.g. src/univ/dialog.cpp) that the WASM port replaced;
+    // without it the parent frame stays fully live behind the "modal" (parity
+    // audit H-1). Only real ShowModal dialogs create it — modeless Show(true)
+    // leaves it NULL. Torn down in Show(false) via wxDELETE(m_windowDisabler),
+    // which both EndModal() and ~wxDialog() call; ~wxWindowDisabler then
+    // re-enables the windows.
+    m_windowDisabler = new wxWindowDisabler(this);
+
     // Call the Asyncify-based modal event loop
     // This suspends the C++ stack until endModal() is called from EndModal()
     int result = startModal(wxID_CANCEL);
