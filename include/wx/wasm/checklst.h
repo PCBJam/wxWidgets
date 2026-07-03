@@ -58,6 +58,11 @@ protected:
     virtual void DoDeleteOneItem(unsigned int pos) wxOVERRIDE;
     virtual void DoClear() wxOVERRIDE;
 
+    // The DOM checklist shows the CHECK state (not the listbox selection), so
+    // re-apply m_itemsChecked whenever the rows are rebuilt — otherwise every
+    // check done before a later Append/Insert/Delete/SetString is wiped.
+    virtual void WasmSyncSelection() wxOVERRIDE;
+
 private:
     // Cached checked state until the control becomes a real DOM element.
     // Always kept the same size as the item cache.

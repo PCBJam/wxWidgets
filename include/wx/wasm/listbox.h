@@ -86,10 +86,14 @@ protected:
     wxArrayPtrVoid m_itemsClientData;
     wxArrayInt     m_itemsSelected;
 
+    // Push the cached selection state to the DOM rows. virtual so that
+    // wxCheckListBox can re-apply its separate CHECK state after a rebuild
+    // (the DOM checklist has a single boolean per row).
+    virtual void WasmSyncSelection();
+
 private:
     // Push the whole cached item list (+ selection) to the DOM <select>.
     void WasmSyncItems();
-    void WasmSyncSelection();
 
     wxDECLARE_DYNAMIC_CLASS(wxListBox);
 };

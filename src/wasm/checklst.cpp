@@ -120,6 +120,18 @@ void wxCheckListBox::OnDomEvent(wxDomEventKind kind)
     wxListBox::OnDomEvent(kind);
 }
 
+void wxCheckListBox::WasmSyncSelection()
+{
+    if (!WasmGetDomId())
+        return;
+
+    // Re-push the CHECK state (the checklist's single per-row boolean). The base
+    // wxListBox::WasmSyncSelection would push m_itemsSelected, which is a
+    // different concept and would clobber the user-visible check marks.
+    for (size_t i = 0; i < m_itemsChecked.size(); ++i)
+        wxDomSetItemSelected(WasmGetDomId(), i, m_itemsChecked[i] != 0);
+}
+
 int wxCheckListBox::DoInsertOneItem(const wxString& item, unsigned int pos)
 {
     m_itemsChecked.Insert(0, pos);
