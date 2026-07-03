@@ -122,6 +122,8 @@ void wxComboBox::OnDomEvent(wxDomEventKind kind)
             event.SetEventObject(this);
             event.SetInt(sel);
             event.SetString(value);
+            // attach the matched item's client object/data, like native ports
+            InitCommandEventWithItems(event, sel);
             HandleWindowEvent(event);
             return;
         }

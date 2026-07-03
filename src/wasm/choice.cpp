@@ -231,6 +231,9 @@ void wxChoice::OnDomEvent(wxDomEventKind kind)
         if (m_selection >= 0)
             event.SetString(GetString(m_selection));
         event.SetEventObject(this);
+        // attach the selected item's client object/data, like the native ports
+        // (without this, event.GetClientData()/GetClientObject() are always NULL)
+        InitCommandEventWithItems(event, m_selection);
         HandleWindowEvent(event);
         return;
     }
