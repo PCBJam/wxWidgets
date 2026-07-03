@@ -294,6 +294,16 @@ void wxWasmDCImpl::DoSetClippingRegion(wxCoord x, wxCoord y,
 {
     wxDCImpl::DoSetClippingRegion(x, y, width, height);
 
+    // The base class stores the (intersected) clip box in device units only
+    // (m_devClipX1.., private); mirror it into the logical-unit m_clipX1..
+    // members read below — the wx/dc.h contract every port fulfills itself.
+    wxRect clipBox;
+    DoGetClippingRect(clipBox);
+    m_clipX1 = clipBox.GetLeft();
+    m_clipY1 = clipBox.GetTop();
+    m_clipX2 = clipBox.GetRight() + 1;
+    m_clipY2 = clipBox.GetBottom() + 1;
+
     EM_ASM({
         clipRect($0, $1, $2, $3, $4);
     }, GetJavascriptId(),
@@ -305,7 +315,7 @@ void wxWasmDCImpl::DoSetClippingRegion(wxCoord x, wxCoord y,
 
 void wxWasmDCImpl::DestroyClippingRegion()
 {
-    m_clipping = false;
+    wxDCImpl::DestroyClippingRegion();
 
     EM_ASM({
         destroyClip($0);
