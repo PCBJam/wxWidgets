@@ -313,6 +313,8 @@ void wxListBox::OnDomEvent(wxDomEventKind kind)
         if (sel != wxNOT_FOUND)
             event.SetString(GetString(sel));
         event.SetEventObject(this);
+        // attach the selected item's client object/data, like the native ports
+        InitCommandEventWithItems(event, sel);
         HandleWindowEvent(event);
         return;
     }
