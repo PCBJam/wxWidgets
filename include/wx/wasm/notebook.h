@@ -71,6 +71,12 @@ protected:
     // base DoSize() early-returns without m_bookctrl; size pages ourselves
     virtual void DoSize() wxOVERRIDE;
 
+    // In the DOM port a same-size SetSize() skips wxEVT_SIZE (and thus DoSize()),
+    // so re-assert a page shrunk by a collapsible-pane / page->Fit() handler
+    // ourselves. (See DoSetSize() / WasmRelayoutSelectedPage() in the .cpp.)
+    virtual void DoSetSize(int x, int y, int width, int height,
+                           int sizeFlags = wxSIZE_AUTO) wxOVERRIDE;
+
 private:
     void Init();
 

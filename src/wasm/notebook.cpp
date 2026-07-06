@@ -342,4 +342,26 @@ void wxNotebook::DoSize()
     }
 }
 
+void wxNotebook::DoSetSize(int x, int y, int width, int height, int sizeFlags)
+{
+    const wxSize before = GetSize();
+    wxNotebookBase::DoSetSize(x, y, width, height, sizeFlags);
+
+    // DoSetSize() only emits wxEVT_SIZE — which drives wxBookCtrlBase::OnSize ->
+    // DoSize() to re-fill the pages — when the size actually changes. So when an
+    // outer relayout re-asserts the notebook at its UNCHANGED size right after a
+    // handler shrank the selected page (KiCad's collapsible-pane / page->Fit()
+    // idiom), DoSize() never runs and a proportion-1 scrolled child stays
+    // collapsed (clip-pathed away) until reload. If the selected page has
+    // drifted off the page area, restore it. (See WasmRelayoutSelectedPage.)
+    if ( GetSize() == before && m_selection != wxNOT_FOUND )
+    {
+        if ( wxWindow* const page = GetPage(m_selection) )
+        {
+            if ( page->GetSize() != GetPageRect().GetSize() )
+                WasmRelayoutSelectedPage();
+        }
+    }
+}
+
 #endif // wxUSE_NOTEBOOK
