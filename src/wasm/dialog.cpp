@@ -215,7 +215,8 @@ EM_ASYNC_JS(int, startModal, (int aCancelCode), {
                 // The pump must NEVER stop without resolving: a stopped pump
                 // with an unresolved promise leaves this ShowModal parked
                 // forever (silent stall). Cancel the modal instead, loudly.
-                console.error('[wxWasm] modal event pump error - cancelling modal: ' + e);
+                console.error('[wxWasm] modal event pump error - cancelling modal: ' + e +
+                              '\nSTACK: ' + (e && e.stack));
                 if (finish) finish(aCancelCode);
                 return;
             }
