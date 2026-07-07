@@ -53,6 +53,11 @@ private:
     // "end of text"
     long NormalizePos(long pos) const;
 
+    // DOM id of the element backing this entry, 0 until it exists — the
+    // caret/selection accessors read/write the live DOM state through it and
+    // fall back to the cache below when it is 0
+    int WasmDomId() const;
+
     wxString m_value;           // cached contents
 
     long m_insertionPoint;

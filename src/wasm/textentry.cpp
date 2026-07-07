@@ -45,18 +45,30 @@ long wxTextEntry::NormalizePos(long pos) const
     return pos < 0 ? 0 : pos;
 }
 
+int wxTextEntry::WasmDomId() const
+{
+    // GetEditableWindow() is conceptually const but wx declares it non-const
+    wxWindow * const win = const_cast<wxTextEntry *>(this)->GetEditableWindow();
+    return win ? win->WasmGetDomId() : 0;
+}
+
 void wxTextEntry::WriteText(const wxString& text)
 {
-    // writing text replaces the current selection, if any
+    // writing text replaces the current selection, if any — use the live
+    // DOM selection/caret (GetSelection reads it when the element exists),
+    // not the stale cache
+    long selStart = 0, selEnd = 0;
+    GetSelection(&selStart, &selEnd);
+
     long pos;
-    if ( m_selectionStart != -1 && m_selectionStart < m_selectionEnd )
+    if ( selStart < selEnd )
     {
-        pos = m_selectionStart;
-        m_value.erase(m_selectionStart, m_selectionEnd - m_selectionStart);
+        pos = NormalizePos(selStart);
+        m_value.erase(pos, NormalizePos(selEnd) - pos);
     }
     else
     {
-        pos = NormalizePos(m_insertionPoint);
+        pos = NormalizePos(selStart);
     }
 
     m_value.insert(pos, text);
@@ -65,7 +77,13 @@ void wxTextEntry::WriteText(const wxString& text)
     m_selectionStart =
     m_selectionEnd = -1;
 
-    // TODO(dom-phase-2): mirror the new value into the DOM element.
+    // Mirror into the DOM: the value first (setSelectionRange clamps against
+    // the element's current value), then the caret after the inserted text.
+    if ( const int domId = WasmDomId() )
+    {
+        wxDomSetValue(domId, m_value);
+        wxDomSetSelection(domId, (int)m_insertionPoint, (int)m_insertionPoint);
+    }
 
     NotifyTextChanged();
 }
@@ -134,10 +152,21 @@ void wxTextEntry::SetInsertionPoint(long pos)
     // moving the insertion point removes any current selection
     m_selectionStart =
     m_selectionEnd = -1;
+
+    if ( const int domId = WasmDomId() )
+        wxDomSetSelection(domId, (int)m_insertionPoint, (int)m_insertionPoint);
 }
 
 long wxTextEntry::GetInsertionPoint() const
 {
+    // read the live caret from the DOM element when it exists
+    if ( const int domId = WasmDomId() )
+    {
+        const int start = wxDomGetSelectionStart(domId);
+        if ( start >= 0 )
+            return start;
+    }
+
     // the cached value may be stale if the text shrank since it was set
     return NormalizePos(m_insertionPoint);
 }
@@ -175,12 +204,31 @@ void wxTextEntry::SetSelection(long from, long to)
     }
 
     m_insertionPoint = to;
+
+    if ( const int domId = WasmDomId() )
+        wxDomSetSelection(domId, (int)from, (int)to);
 }
 
 void wxTextEntry::GetSelection(long *from, long *to) const
 {
     long start, end;
-    if ( m_selectionStart != -1 )
+
+    // read the live selection from the DOM element when it exists; a
+    // collapsed DOM selection (start == end) is exactly wx's "no selection,
+    // both values are the caret position" convention
+    int domStart = -1, domEnd = -1;
+    if ( const int domId = WasmDomId() )
+    {
+        domStart = wxDomGetSelectionStart(domId);
+        domEnd = wxDomGetSelectionEnd(domId);
+    }
+
+    if ( domStart >= 0 && domEnd >= 0 )
+    {
+        start = domStart;
+        end = domEnd;
+    }
+    else if ( m_selectionStart != -1 )
     {
         start = m_selectionStart;
         end = m_selectionEnd;

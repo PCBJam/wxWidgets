@@ -515,12 +515,56 @@
 
   window.wxDomSetValue = function (domId, value) {
     var el = inputs.get(domId) || controls.get(domId);
-    if (el) el.value = value;
+    // Skip no-op assignments: setting .value always collapses the caret to
+    // the end, which would clobber a selection placed by wxDomSetSelection.
+    if (el && el.value !== value) el.value = value;
   };
 
   window.wxDomGetValue = function (domId) {
     var el = inputs.get(domId) || controls.get(domId);
     return el ? String(el.value) : '';
+  };
+
+  // Caret/selection of an <input>/<textarea>. selectionStart/End only exist
+  // on text-selectable elements (and throw on some input types), so report
+  // -1 when unsupported — the C++ side falls back to its cache.
+  window.wxDomGetSelectionStart = function (domId) {
+    var el = inputs.get(domId) || controls.get(domId);
+    try {
+      if (el && typeof el.selectionStart === 'number') return el.selectionStart;
+    } catch (e) { /* unsupported input type */ }
+    return -1;
+  };
+
+  window.wxDomGetSelectionEnd = function (domId) {
+    var el = inputs.get(domId) || controls.get(domId);
+    try {
+      if (el && typeof el.selectionEnd === 'number') return el.selectionEnd;
+    } catch (e) { /* unsupported input type */ }
+    return -1;
+  };
+
+  window.wxDomSetSelection = function (domId, start, end) {
+    var el = inputs.get(domId) || controls.get(domId);
+    if (!el || typeof el.setSelectionRange !== 'function') return;
+    var apply = function () {
+      try { el.setSelectionRange(start, end); } catch (e) { /* unsupported type */ }
+    };
+    apply();
+    // A selection set on a blurred <input> is dropped when the element is
+    // later focused (the browser restores its own caret on focus). KiCad's
+    // dialog select-all-on-open runs while the field is still unfocused and
+    // then focuses it, so re-apply the range once on the next focus to make
+    // "select then focus" (type-to-replace) behave like native.
+    if (document.activeElement !== el) {
+      if (el.__wxReselect) el.removeEventListener('focus', el.__wxReselect);
+      el.__wxReselect = function () {
+        apply();
+        el.removeEventListener('focus', el.__wxReselect);
+        el.__wxReselect = null;
+      };
+      el.addEventListener('focus', el.__wxReselect);
+    }
   };
 
   // Boolean state: checkbox/radio checked, toggle button pressed.
