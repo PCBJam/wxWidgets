@@ -11,6 +11,10 @@
 
 #include "wx/slider.h"
 
+#ifndef WX_PRECOMP
+    #include "wx/event.h"        // wxScrollEvent
+#endif
+
 #include "wx/wasm/private/dom.h"
 
 wxSlider::wxSlider() :
@@ -129,19 +133,45 @@ int wxSlider::GetThumbLength() const
 
 void wxSlider::OnDomEvent(wxDomEventKind kind)
 {
+    const int orient = HasFlag(wxSL_VERTICAL) ? wxVERTICAL : wxHORIZONTAL;
+
     if (kind == wxDOM_EVENT_INPUT)
     {
-        // Pull the dragged position into the cache and fire wxEVT_SLIDER,
-        // like any port does for user changes.
+        // Pull the dragged position into the cache.
         m_value = wxDomGetIntValue(WasmGetDomId());
 
+        // Fire the wxScrollEvent family first, like the native ports
+        // (src/gtk/slider.cpp): a continuous drag is a THUMBTRACK, followed by
+        // wxEVT_SCROLL_CHANGED. This is what handlers bound ONLY to the scroll
+        // family rely on (e.g. KiCad's colour-picker brightness/alpha sliders).
+        {
+            wxScrollEvent ev(wxEVT_SCROLL_THUMBTRACK, GetId(), m_value, orient);
+            ev.SetEventObject(this);
+            HandleWindowEvent(ev);
+        }
+        {
+            wxScrollEvent ev(wxEVT_SCROLL_CHANGED, GetId(), m_value, orient);
+            ev.SetEventObject(this);
+            HandleWindowEvent(ev);
+        }
+
+        // then the high-level command event
         wxCommandEvent event(wxEVT_SLIDER, GetId());
         event.SetInt(m_value);
         event.SetEventObject(this);
         HandleWindowEvent(event);
+        return;
+    }
 
-        // TODO(dom-phase-3): also fire the wxScrollEvent family
-        // (wxEVT_SCROLL_THUMBTRACK/THUMBRELEASE/CHANGED).
+    if (kind == wxDOM_EVENT_CHANGE)
+    {
+        // The range input fires 'change' when the drag ends: report it as a
+        // thumb release so handlers tracking THUMBRELEASE see the final value.
+        m_value = wxDomGetIntValue(WasmGetDomId());
+
+        wxScrollEvent ev(wxEVT_SCROLL_THUMBRELEASE, GetId(), m_value, orient);
+        ev.SetEventObject(this);
+        HandleWindowEvent(ev);
         return;
     }
 
