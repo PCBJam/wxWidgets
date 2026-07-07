@@ -86,8 +86,13 @@ void wxStaticText::WXSetVisibleLabel(const wxString& str)
 {
     m_visibleLabel = str;
 
+    // Consume the wx mnemonic marker before showing the text, like the native
+    // ports (e.g. wxGTK's GTKConvertMnemonics + gtk_label_set_text_with_mnemonic):
+    // a single '&' marks the (here unusable) mnemonic and is removed, "&&"
+    // collapses to a literal '&'. Otherwise KiCad's '&'-bearing dialog labels
+    // render with a stray ampersand.
     if (WasmGetDomId())
-        wxDomSetText(WasmGetDomId(), m_visibleLabel);
+        wxDomSetText(WasmGetDomId(), RemoveMnemonics(m_visibleLabel));
 }
 
 #endif // wxUSE_STATTEXT
