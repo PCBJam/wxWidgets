@@ -2108,9 +2108,22 @@ if (typeof navigator !== 'undefined') {
     return -1;
   };
 
+  // The C++ config reader allocates `new char[len + 1]` and then calls
+  // stringToUTF8(value, buf, len + 1), which treats len+1 as a max BYTE budget.
+  // So these length helpers must return the UTF-8 byte length, NOT the JS
+  // string's UTF-16 .length — otherwise any value/key with a non-ASCII
+  // character is truncated at the first multi-byte char on read-back.
+  var utf8ByteLength = function (str) {
+    if (typeof lengthBytesUTF8 === 'function') {
+      return lengthBytesUTF8(str);
+    }
+    return new TextEncoder().encode(str).length;
+  };
+
   var getConfigKeyLength = function (index) {
     try {
-      return localStorage.key(index).length;
+      var key = localStorage.key(index);
+      return key === null ? 0 : utf8ByteLength(key);
     } catch (error) {
       console.error(error);
       return 0;
@@ -2137,7 +2150,7 @@ if (typeof navigator !== 'undefined') {
     if (value === null) {
       return -1;
     } else {
-      return value.length
+      return utf8ByteLength(value);
     }
   };
 
