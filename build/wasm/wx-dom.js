@@ -921,6 +921,17 @@
 
   var openMenuPopup = null;
 
+  // Fresh menu items pushed from C++ (wxMenuBar::WasmOnMenuOpen) on menu open,
+  // keyed by "<menubarDomId>:<menuIndex>". Delivered via EM_ASM rather than a
+  // ccall return value because the refresh can Asyncify-suspend, which loses a
+  // returned string. (parity H-7)
+  var freshMenuItems = {};
+  window.wxDomSetOpenMenuItems = function (domId, idx, json) {
+    try {
+      freshMenuItems[domId + ':' + idx] = JSON.parse(json);
+    } catch (e) { /* leave null; caller falls back to the cached snapshot */ }
+  };
+
   function closeMenuPopup() {
     if (openMenuPopup) {
       openMenuPopup.remove();
@@ -1168,12 +1179,29 @@
         'border:none;background:transparent;padding:2px 8px;margin:0;' +
         'font:inherit;white-space:pre;';
       btn.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
-      btn.addEventListener('click', function (ev) {
+      btn.addEventListener('click', async function (ev) {
         ev.stopPropagation();
         if (openMenuPopup) {
           closeMenuPopup();
         } else {
-          showMenuPopup(domId, btn, m.items || [], domId + ':' + idx);
+          // Ask C++ to fire wxEVT_MENU_OPEN + refresh this menu's item state
+          // just-in-time, and use the freshly-serialized items — the cached
+          // `m.items` snapshot is stale (enable/check computed on idle in C++
+          // never reached the DOM). The refresh can Asyncify-suspend (KiCad's
+          // updateMenu), so call it with {async:true} and await the result;
+          // falls back to the snapshot on any error.
+          var key = domId + ':' + idx;
+          freshMenuItems[key] = null;
+          try {
+            await Module.ccall('wx_dom_menu_open', null,
+                               ['number', 'number'], [domId, idx],
+                               { async: true });
+          } catch (e) { /* keep the cached snapshot */ }
+          // C++ pushed the refreshed items via wxDomSetOpenMenuItems during the
+          // (possibly suspended) call above; use them, else the stale snapshot.
+          var items = freshMenuItems[key] || m.items || [];
+          if (openMenuPopup) return; // user closed/reopened while awaiting
+          showMenuPopup(domId, btn, items, key);
         }
       });
       el.appendChild(btn);

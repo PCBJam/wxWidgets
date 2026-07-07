@@ -62,6 +62,12 @@ public:
     // wxEVT_MENU dispatch for clicks on the DOM menu popups
     virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
 
+    // Called from wx-dom.js when the menu at `pos` is about to open: fires
+    // wxEVT_MENU_OPEN + runs the menu's UpdateUI so item enable/check/label
+    // state is refreshed just-in-time, then returns that menu's items as JSON
+    // for the popup. (parity H-7)
+    wxString WasmOnMenuOpen(size_t pos);
+
 protected:
     // intrinsic size of the DOM menubar, used by wxFrame::PositionMenuBar()
     // via the SetSize() call in Attach()

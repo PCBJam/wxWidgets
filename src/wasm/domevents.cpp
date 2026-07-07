@@ -10,6 +10,7 @@
 
 #include "wx/window.h"
 #include "wx/app.h"
+#include "wx/menu.h"
 #include "wx/hashmap.h"
 #include "wx/base64.h"
 #include "wx/bitmap.h"
@@ -22,6 +23,7 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <cstring>
+#include <string>
 
 WX_DECLARE_HASH_MAP(int, wxWindowWasm*, wxIntegerHash, wxIntegerEqual,
                     wxDomWindowMap);
@@ -163,6 +165,33 @@ int EMSCRIPTEN_KEEPALIVE wx_dom_mouse(int kind, int x, int y,
 
     wxTheApp->HandleMouseEvent(&event);
     return 1;
+}
+
+// Called from wx-dom.js when a menubar title is clicked, BEFORE the popup is
+// painted. Fires wxEVT_MENU_OPEN + runs the menu's UpdateUI so app handlers
+// (KiCad's ACTION_MENU::OnMenuEvent -> updateMenu) refresh item enable/check
+// state, then returns the freshly-serialized items JSON for that menu. The
+// returned pointer stays valid until the next call (function-static storage).
+// Returns "[]" if the domId is not a live menubar. (parity H-7)
+const char* EMSCRIPTEN_KEEPALIVE wx_dom_menu_open(int domId, int menuIndex)
+{
+    static std::string s_json;
+    s_json = "[]";
+
+#if wxUSE_MENUBAR
+    wxDomWindowMap::iterator it = gs_domWindows.find(domId);
+    if ( it != gs_domWindows.end() && it->second )
+    {
+        wxMenuBar *bar = static_cast<wxMenuBar *>(it->second);
+        const wxString json = bar->WasmOnMenuOpen(static_cast<size_t>(menuIndex));
+        s_json = (const char *)json.utf8_str();
+    }
+#else
+    (void)domId;
+    (void)menuIndex;
+#endif
+
+    return s_json.c_str();
 }
 
 } // extern "C"

@@ -17,6 +17,8 @@
 
 #include "wx/wasm/private/dom.h"
 
+#include <emscripten.h>
+
 #if wxUSE_MENUBAR
 
 // Refresh the DOM menubar (if any) that `menu` ultimately hangs off: a
@@ -288,6 +290,39 @@ void wxMenuBar::WasmRebuildMenus()
 
     wxDomMenuSetStructure(WasmGetDomId(), json);
     InvalidateBestSize();
+}
+
+wxString wxMenuBar::WasmOnMenuOpen(size_t pos)
+{
+    if (pos >= GetMenuCount())
+        return wxT("[]");
+
+    wxMenu *menu = GetMenu(pos);
+
+    // Native ports fire wxEVT_MENU_OPEN when a menu opens so application
+    // handlers can refresh item enable/check/label just-in-time (KiCad's
+    // ACTION_MENU::OnMenuEvent -> ACTIONS::updateMenu is gated on this event).
+    // Dispatch it the same way the GTK port does (src/gtk/menu.cpp): to the
+    // menu's own handler and then the top-level frame.
+    wxMenuEvent event(wxEVT_MENU_OPEN, 0, menu);
+    event.SetEventObject(this);
+    wxMenu::ProcessMenuEvent(menu, event, menu->GetWindow());
+
+    // wxUSE_IDLEMENUUPDATES == 1 for wasm, so wxFrameBase::OnMenuOpen does NOT
+    // run DoMenuUpdates; run this menu's EVT_UPDATE_UI pass explicitly so items
+    // driven by EVT_UPDATE_UI (rather than wxEVT_MENU_OPEN) also refresh.
+    menu->UpdateUI();
+
+    // Serialize the now-fresh enable/check/label state for the JS popup, and
+    // push it to the JS side directly: the refresh above can Asyncify-suspend
+    // (KiCad's updateMenu), and a value returned across that suspension is lost
+    // (the ccall resolves to null). An EM_ASM store survives the suspend/resume.
+    const wxString json = menu->WasmItemsToJson();
+    EM_ASM({
+        wxDomSetOpenMenuItems($0, $1, UTF8ToString($2));
+    }, WasmGetDomId(), (int)pos, (const char *)json.utf8_str());
+
+    return json;
 }
 
 void wxMenuBar::OnDomEvent(wxDomEventKind kind)
