@@ -68,6 +68,24 @@ inline wxString wxDomGetValue(int domId)
     return result;
 }
 
+// Caret/selection of an <input>/<textarea>. The getters return -1 when the
+// element doesn't exist or doesn't support text selection (e.g. a <select>),
+// so callers can fall back to their C++-side cache.
+inline int wxDomGetSelectionStart(int domId)
+{
+    return EM_ASM_INT({ return wxDomGetSelectionStart($0); }, domId);
+}
+
+inline int wxDomGetSelectionEnd(int domId)
+{
+    return EM_ASM_INT({ return wxDomGetSelectionEnd($0); }, domId);
+}
+
+inline void wxDomSetSelection(int domId, int start, int end)
+{
+    EM_ASM({ wxDomSetSelection($0, $1, $2); }, domId, start, end);
+}
+
 inline void wxDomSetEnabled(int domId, bool enabled)
 {
     EM_ASM({ wxDomSetEnabled($0, $1); }, domId, enabled);

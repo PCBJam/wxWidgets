@@ -77,12 +77,10 @@ void wxTextCtrl::DiscardEdits()
 
 void wxTextCtrl::WriteText(const wxString& text)
 {
+    // The base mixin pushes both the new value and the caret position into
+    // the DOM element (pushing the value again here would reset the DOM
+    // caret to the end, undoing the caret push).
     wxTextEntry::WriteText(text);
-
-    // WriteText/AppendText mutate the cache directly (not via DoSetValue),
-    // so push the result into the DOM element here.
-    if (WasmGetDomId())
-        wxDomSetValue(WasmGetDomId(), GetValue());
 
     MarkDirty();
 }
