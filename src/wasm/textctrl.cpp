@@ -85,6 +85,20 @@ void wxTextCtrl::WriteText(const wxString& text)
     MarkDirty();
 }
 
+void wxTextCtrl::Remove(long from, long to)
+{
+    wxTextEntry::Remove(from, to);
+
+    // wxTextEntry::Remove only mutates the cached value (it has no DOM element
+    // of its own); push the shortened value into the <input>/<textarea> so the
+    // visible text matches GetValue(). This also covers Clear(), which the base
+    // implements as Remove(0, GetLastPosition()).
+    if (WasmGetDomId())
+        wxDomSetValue(WasmGetDomId(), GetValue());
+
+    MarkDirty();
+}
+
 void wxTextCtrl::DoSetValue(const wxString& value, int flags)
 {
     wxTextEntry::DoSetValue(value, flags);

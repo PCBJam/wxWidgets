@@ -42,6 +42,10 @@ public:
     // editing the control marks it as dirty
     virtual void WriteText(const wxString& text) wxOVERRIDE;
 
+    // deleting text (also drives Clear() == Remove(0, GetLastPosition())) must
+    // push the shortened value into the DOM element, like WriteText does
+    virtual void Remove(long from, long to) wxOVERRIDE;
+
     // typed text / enter / focus from the real <input>/<textarea>
     virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
 
