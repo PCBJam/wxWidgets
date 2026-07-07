@@ -728,6 +728,18 @@ bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
 {
     wxCHECK_MSG(menu, false, wxT("DoPopupMenu: NULL menu"));
 
+    // Fire wxEVT_MENU_OPEN and run a UpdateUI pass just before the popup is
+    // shown, exactly like the native ports, so application handlers can refresh
+    // item enable/check/label just-in-time. KiCad's ACTION_MENU::OnMenuEvent
+    // runs ACTIONS::updateMenu on wxEVT_MENU_OPEN; context menus shown via the
+    // no-arg TOOL_MENU::ShowContextMenu() (marked dirty, not pre-Evaluated)
+    // depend on it. Mirrors wxMenuBar::WasmOnMenuOpen (parity H-8; same root as
+    // H-7). Serialize AFTER so the JSON captures the refreshed state.
+    wxMenuEvent openEvent(wxEVT_MENU_OPEN, 0, menu);
+    openEvent.SetEventObject(menu);
+    wxMenu::ProcessMenuEvent(menu, openEvent, menu->GetWindow());
+    menu->UpdateUI();
+
     // Build the JSON before suspending: no wxString may need to outlive the
     // Asyncify park (destructors don't reliably run across it).
     const wxString json = menu->WasmItemsToJson();
