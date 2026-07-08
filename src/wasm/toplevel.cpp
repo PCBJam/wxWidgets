@@ -103,6 +103,26 @@ void wxTopLevelWindowWasm::Init()
     m_isDragging = false;
 }
 
+wxTopLevelWindowWasm::~wxTopLevelWindowWasm()
+{
+    // Notify the host page when the application's main window is destroyed
+    // (File->Quit or last close). A vetoed close (e.g. a cancelled
+    // unsaved-changes prompt) never reaches destruction, so this only fires
+    // for a real quit. Must run before ~wxTopLevelWindowBase, which clears
+    // wxTheApp's top-window pointer. Child frames and dialogs are never the
+    // app top window and don't notify.
+    if (wxTheApp && wxTheApp->GetTopWindow() == this)
+    {
+        EM_ASM({
+            if (typeof window !== 'undefined'
+                    && typeof window.wxAppTopWindowClosed === 'function')
+            {
+                window.wxAppTopWindowClosed();
+            }
+        });
+    }
+}
+
 bool wxTopLevelWindowWasm::HasTitleBar() const
 {
     // Main frame already has a native title bar.

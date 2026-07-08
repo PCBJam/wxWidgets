@@ -39,7 +39,7 @@ public:
                 long style = wxDEFAULT_FRAME_STYLE,
                 const wxString& name = wxFrameNameStr);
 
-    virtual ~wxTopLevelWindowWasm() { }
+    virtual ~wxTopLevelWindowWasm();
 
     virtual wxPoint GetClientAreaOrigin() const wxOVERRIDE;
 
