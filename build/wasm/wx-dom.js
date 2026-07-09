@@ -1179,30 +1179,43 @@
         'border:none;background:transparent;padding:2px 8px;margin:0;' +
         'font:inherit;white-space:pre;';
       btn.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
-      btn.addEventListener('click', async function (ev) {
+      btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
         if (openMenuPopup) {
           closeMenuPopup();
-        } else {
-          // Ask C++ to fire wxEVT_MENU_OPEN + refresh this menu's item state
-          // just-in-time, and use the freshly-serialized items — the cached
-          // `m.items` snapshot is stale (enable/check computed on idle in C++
-          // never reached the DOM). The refresh can Asyncify-suspend (KiCad's
-          // updateMenu), so call it with {async:true} and await the result;
-          // falls back to the snapshot on any error.
-          var key = domId + ':' + idx;
-          freshMenuItems[key] = null;
-          try {
-            await Module.ccall('wx_dom_menu_open', null,
-                               ['number', 'number'], [domId, idx],
-                               { async: true });
-          } catch (e) { /* keep the cached snapshot */ }
-          // C++ pushed the refreshed items via wxDomSetOpenMenuItems during the
-          // (possibly suspended) call above; use them, else the stale snapshot.
-          var items = freshMenuItems[key] || m.items || [];
-          if (openMenuPopup) return; // user closed/reopened while awaiting
-          showMenuPopup(domId, btn, items, key);
+          return;
         }
+        // Render the popup IMMEDIATELY from the cached structure snapshot so the
+        // menu always appears — decoupled from the C++ refresh below. That
+        // refresh fires wxEVT_MENU_OPEN + re-runs KiCad's updateMenu, which
+        // Asyncify-suspends through the tool-coroutine machinery; on the merged
+        // kicad_editor module that suspend can be slow to resume, and blocking
+        // the popup on it (the earlier inline `await`) left every menubar
+        // dropdown blank until it resolved — in CI it never did within the
+        // test's read window, so every item lookup failed. The snapshot already
+        // carries each item's label; only enable/check state can be stale until
+        // the refresh lands. (parity H-7)
+        var key = domId + ':' + idx;
+        freshMenuItems[key] = null;
+        showMenuPopup(domId, btn, m.items || [], key);
+        var openedPopup = openMenuPopup;
+        // Fire wxEVT_MENU_OPEN + refresh enable/check state just-in-time, OFF the
+        // popup's critical path (a microtask chain, not awaited inline). When the
+        // fresh items arrive, re-render the popup in place — but only if this
+        // exact popup is still the one showing (the user hasn't closed it, opened
+        // another menu, or descended into a submenu meanwhile). Stamp the fresh
+        // popup so tests can wait for the refresh instead of a fixed delay.
+        Promise.resolve().then(function () {
+          return Module.ccall('wx_dom_menu_open', null,
+                              ['number', 'number'], [domId, idx],
+                              { async: true });
+        }).then(function () {
+          var fresh = freshMenuItems[key];
+          if (fresh && openMenuPopup === openedPopup) {
+            showMenuPopup(domId, btn, fresh, key);
+            if (openMenuPopup) openMenuPopup.dataset.wxMenuFresh = '1';
+          }
+        }).catch(function () { /* keep the snapshot already shown */ });
       });
       el.appendChild(btn);
       requestAnimationFrame(function () {
