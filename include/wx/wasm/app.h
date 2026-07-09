@@ -28,6 +28,14 @@ public:
     wxApp();
     virtual ~wxApp();
 
+    // A C++ exception escaped an event handler. In the DOM port a single buggy
+    // handler must NOT tear the app down: wxEvtHandler::WXConsumeException calls
+    // ExitMainLoop() when this returns false (or rethrows), and under native
+    // wasm-EH exiting the main loop destroys the top-level window — the frame
+    // vanishes mid-session (the same catch_all cleanup-pad teardown documented in
+    // docs/features/wasm-exceptions/08). Log and keep the loop running instead.
+    virtual bool OnExceptionInMainLoop() wxOVERRIDE;
+
     // deferGLCanvasWindows: skip a synchronous repaint of any non-main window hosting a
     // wxGLCanvas (the 3D viewer, whose paint runs the multi-threaded CPU raytracer). Used
     // on the mouse-button repaint path (HandleMouseEvent), which is driven synchronously
