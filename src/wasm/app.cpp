@@ -50,6 +50,17 @@ wxApp::~wxApp()
     delete m_display;
 }
 
+bool wxApp::OnExceptionInMainLoop()
+{
+    // See the header: returning true keeps the main loop (and the top-level
+    // window) alive after a handler throws, instead of ExitMainLoop() tearing
+    // the frame down under native wasm-EH. Report to the console (NOT wxLogError,
+    // whose GUI log target would pop a modal error dialog over the app), then
+    // continue.
+    fprintf(stderr, "wxApp: unhandled exception in an event handler; continuing.\n");
+    return true;
+}
+
 // Defined in toplevel.cpp. True if `win` is, or contains, a wxGLCanvas — the 3D viewer,
 // whose paint runs the multi-threaded CPU raytracer. Shared so Paint() can defer it on
 // the synchronous mouse-button repaint path, mirroring wx_window_resize.
