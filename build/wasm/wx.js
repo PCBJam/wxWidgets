@@ -482,6 +482,19 @@ if (typeof navigator !== 'undefined') {
         '  border: 1px solid #808080;',
         '  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.35);',
         '}',
+        // Input barrier for windows shadowed by a higher, overlapping top-level
+        // window (see recomputeModalBarrier). Each dialog control is a real DOM
+        // element with pointer-events:auto, so without this a click over an
+        // upper modal's canvas-drawn area (which is pointer-events:none) still
+        // hit-tests the live control of the dialog beneath it. Forcing the whole
+        // subtree to pointer-events:none — !important to beat the inline
+        // pointer-events:auto wx-dom.js sets on controls — drops the click
+        // through to #canvas, where the C++ hit-test routes it to the true
+        // topmost window. Native wx leans on the OS to block input to shadowed
+        // windows; the browser has no such barrier, so we add one here.
+        '.window.wx-inert, .window.wx-inert * {',
+        '  pointer-events: none !important;',
+        '}',
         '.window-canvas {',
         '  position: absolute;',
         '  top: 0;',
@@ -623,6 +636,7 @@ if (typeof navigator !== 'undefined') {
     // parent it has, and is a no-op when unparented.
     if (windowData && windowData.window) windowData.window.remove();
     windowMap.delete(id);
+    recomputeModalBarrier();
   };
 
   // Read-only accessor for the DOM port's control layer (wx-dom.js): native
@@ -641,6 +655,7 @@ if (typeof navigator !== 'undefined') {
 
     var windowData = windowMap.get(id);
     windowData.window.style.display = isVisible ? 'block' : 'none';
+    recomputeModalBarrier();
   };
 
   var setWindowRect = function (id, x, y, width, height) {
@@ -705,6 +720,10 @@ if (typeof navigator !== 'undefined') {
 
       windowData.context = ctx;
     }
+
+    // A move/resize changes which windows overlap, so re-derive the barrier
+    // (e.g. a modal is centered via setWindowRect after it is first shown).
+    recomputeModalBarrier();
   };
 
   // Build a real DOM title bar (drag handle + title text + close "X") for a
@@ -1004,6 +1023,7 @@ if (typeof navigator !== 'undefined') {
     }
 
     setWindowZIndex(id, maxZ + 1);
+    recomputeModalBarrier();
   };
 
   var lowerWindow = function (id) {
@@ -1021,6 +1041,54 @@ if (typeof navigator !== 'undefined') {
     }
 
     setWindowZIndex(id, minZ - 1);
+    recomputeModalBarrier();
+  };
+
+  var rectsOverlap = function (a, b) {
+    return a.left < b.right && a.right > b.left &&
+           a.top < b.bottom && a.bottom > b.top;
+  };
+
+  // Re-derive the shadowed-window input barrier from the current z-order and
+  // geometry. A top-level dialog/frame is "shadowed" — and gets the wx-inert
+  // class so its DOM controls stop receiving pointer events — when some other
+  // top-level window with a higher z-index overlaps it. This is what makes a
+  // click land on the genuine topmost window (via #canvas + the C++ hit-test)
+  // instead of leaking to a live control of a dialog stacked underneath it.
+  //
+  // Excluded from the barrier, by design:
+  //   - the main window (id 0): its #canvas must stay live so shadowed windows'
+  //     clicks can fall through to the C++ hit-test.
+  //   - popups/tooltips (.popup): they must stay interactive (e.g. a combobox
+  //     dropdown) and must never shadow the dialog beneath them, so they count
+  //     neither as inert candidates nor as shadowing windows.
+  // Non-overlapping windows (e.g. two side-by-side modeless dialogs) are left
+  // interactive — only a genuine overlap blocks input.
+  var recomputeModalBarrier = function () {
+    if (typeof document === 'undefined') return; // worker context: no DOM
+    var wins = [];
+    windowMap.forEach(function (windowData, id) {
+      if (id === 0 || !windowData) return;
+      var el = windowData.window;
+      if (!el || !el.classList ||
+          !el.classList.contains('toplevel') || el.classList.contains('popup')) {
+        return;
+      }
+      if (el.style.display === 'none') return;
+      var z = parseInt(document.defaultView.getComputedStyle(el).zIndex, 10);
+      if (isNaN(z)) z = 0;
+      wins.push({ el: el, z: z, rect: el.getBoundingClientRect() });
+    });
+
+    wins.forEach(function (w) {
+      var shadowed = wins.some(function (o) {
+        return o !== w && o.z > w.z && rectsOverlap(o.rect, w.rect);
+      });
+      w.el.classList.toggle('wx-inert', shadowed);
+      // Also block focus/keyboard on the shadowed window where supported; the
+      // pointer-events CSS above is what actually re-routes the clicks.
+      try { w.el.inert = shadowed; } catch (e) { /* older engine: CSS suffices */ }
+    });
   };
 
   /* wxColour */
