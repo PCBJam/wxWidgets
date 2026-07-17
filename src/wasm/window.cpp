@@ -1022,16 +1022,24 @@ bool wxWindowWasm::HasTransparentBackground()
 
 void wxWindowWasm::Invalidate(bool needsPaint)
 {
-    if (!m_childNeedsPaint || m_selfNeedsPaint != needsPaint)
-    {
-        m_selfNeedsPaint |= needsPaint;
-        m_childNeedsPaint = true;
+    m_selfNeedsPaint |= needsPaint;
+    m_childNeedsPaint = true;
 
-        if (GetParent())
-        {
-            bool parentNeedsPaint = needsPaint && HasTransparentBackground();
-            GetParent()->Invalidate(parentNeedsPaint);
-        }
+    // Always walk up to the top-level window, even when this window's flags
+    // are already set. An early-out here (skip the walk if m_childNeedsPaint
+    // is already true) assumes "descendant flagged => ancestor chain flagged",
+    // but the paint sweep breaks that invariant: DoPaint() clears a window's
+    // flags on entry while a flagged child can be skipped (hidden/frozen/
+    // zero-sized), stranding the child with flags set and its ancestor chain
+    // clear. A window stuck like that had every later Refresh() swallowed by
+    // the early-out, so wxApp::Paint() (gated on the top-level's
+    // NeedsPaint()) never descended to it again. This permanently blanked
+    // the GAL canvas when the repaint it dropped was a lost-WebGL-context
+    // recovery (SwiftShader CI: the occ-export blank-board flake).
+    if (GetParent())
+    {
+        bool parentNeedsPaint = needsPaint && HasTransparentBackground();
+        GetParent()->Invalidate(parentNeedsPaint);
     }
 }
 
@@ -1075,8 +1083,6 @@ void wxWindowWasm::PaintSelf()
 
     wxPaintEvent paintEvent(this);
     HandleWindowEvent(paintEvent);
-
-    m_selfNeedsPaint = false;
 }
 
 void wxWindowWasm::PaintChildren(bool selfWasPainted)
@@ -1098,8 +1104,6 @@ void wxWindowWasm::PaintChildren(bool selfWasPainted)
             }
         }
     }
-
-    m_childNeedsPaint = false;
 }
 
 void wxWindowWasm::DoPaint(bool parentWasPainted)
@@ -1117,20 +1121,24 @@ void wxWindowWasm::DoPaint(bool parentWasPainted)
     {
         m_updateRegion = wxRect(GetSize());
 
-        bool selfWasPainted;
-        if (m_selfNeedsPaint || parentWasPainted)
+        bool selfWasPainted = m_selfNeedsPaint || parentWasPainted;
+
+        // Clear both flags BEFORE dispatching any paint event, not after the
+        // sweep: paint handlers can call Refresh()/Invalidate() reentrantly
+        // (widget churn during a paint, a canvas re-created mid-frame), and a
+        // post-sweep clear would silently swallow that request — with nothing
+        // ever re-issuing it, the window stays stale forever. Cleared up
+        // front, a mid-paint Invalidate re-arms the flags and the next pump
+        // frame repaints.
+        m_selfNeedsPaint = false;
+        m_childNeedsPaint = false;
+
+        if (selfWasPainted)
         {
             PaintSelf();
-            selfWasPainted = true;
-        }
-        else
-        {
-            selfWasPainted = false;
         }
 
-        //if (m_childNeedsPaint || selfWasPainted) {
         PaintChildren(selfWasPainted);
-        //}
 
         m_updateRegion.Clear();
     }
