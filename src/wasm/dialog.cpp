@@ -38,6 +38,7 @@
 
 #include "wx/evtloop.h"
 #include "wx/modalhook.h"
+#include "wx/wasm/private/dispatch.h"
 
 #include <emscripten.h>
 #include <cstdio>
@@ -297,7 +298,15 @@ int wxDialog::ShowModal()
 
     // Call the Asyncify-based modal event loop
     // This suspends the C++ stack until endModal() is called from EndModal()
+    //
+    // The opener's dispatch chain parks here for the modal's whole lifetime;
+    // the modal pump is the legitimate dispatcher meanwhile, so zero the
+    // dispatch interlock for the park's duration (manual save/restore:
+    // destructors are not reliable across an Asyncify park).
+    const int savedDispatchDepth = wxWasmDispatchDepth;
+    wxWasmDispatchDepth = 0;
     int result = startModal(wxID_CANCEL);
+    wxWasmDispatchDepth = savedDispatchDepth;
 
     return result;
 }

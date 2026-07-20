@@ -11,24 +11,49 @@
 #include "wx/app.h"
 #include "wx/evtloop.h"
 #include "wx/toplevel.h"
+#include "wx/wasm/private/dispatch.h"
 
 #include <emscripten.h>
+
+// See wx/wasm/private/dispatch.h for the interlock contract.
+int wxWasmDispatchDepth = 0;
+
+// Ungated dispatch body: used by the pump once the interlock check passed and
+// by wxGUIEventLoop::Dispatch()/wxYield, which deliberately dispatch NESTED
+// inside a running handler chain (the interlock only forbids interleaving
+// with a PARKED chain, not same-stack recursion).
+static void wxWasmProcessEventsUngated()
+{
+    static int counter = 0;
+
+    wxWasmDispatchGuard guard;
+    wxTheApp->ProcessPendingEvents();
+    wxTheApp->Paint();
+    if (counter++ % 3 == 0)
+    {
+        wxTheApp->ProcessIdle();
+    }
+}
 
 extern "C" {
 
     void EMSCRIPTEN_KEEPALIVE ProcessEvents()
     {
-        static int counter = 0;
+        if (!wxTheApp)
+            return;
 
-        if (wxTheApp)
+        if (wxWasmDispatchParked())
         {
-            wxTheApp->ProcessPendingEvents();
+            // Another dispatch chain is Asyncify-parked mid-handler (e.g. a
+            // library bridge fetch suspended inside a key handler). Running
+            // more handlers now would interleave two C++ stacks over the same
+            // widget state. Keep painting so the UI stays live; queued events
+            // dispatch on the first tick after the parked chain resumes.
             wxTheApp->Paint();
-            if (counter++ % 3 == 0)
-            {
-                wxTheApp->ProcessIdle();
-            }
+            return;
         }
+
+        wxWasmProcessEventsUngated();
     }
 
 }  // extern "C"
@@ -142,7 +167,10 @@ bool wxGUIEventLoop::Pending() const
 
 bool wxGUIEventLoop::Dispatch()
 {
-    ProcessEvents();
+    // Ungated on purpose: Dispatch()/wxYield run nested within the calling
+    // handler chain (same C++ stack), which the interlock permits.
+    if (wxTheApp)
+        wxWasmProcessEventsUngated();
     return true;
 }
 
@@ -177,7 +205,14 @@ int wxGUIEventLoop::DoRun()
     // (see the header comment and docs/features/wasm-exceptions/09).
     if (s_wxRunDepth++ > 0)
     {
+        // The opener's dispatch chain parks here for the nested loop's whole
+        // lifetime; the nested pump is the legitimate dispatcher meanwhile, so
+        // zero the interlock for the park's duration (manual save/restore:
+        // destructors are not reliable across an Asyncify park).
+        const int savedDispatchDepth = wxWasmDispatchDepth;
+        wxWasmDispatchDepth = 0;
         wxWasmRunNestedLoop();   // suspends here until ScheduleExit()/Exit()
+        wxWasmDispatchDepth = savedDispatchDepth;
         --s_wxRunDepth;
         return 0;
     }
