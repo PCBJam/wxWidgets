@@ -36,6 +36,12 @@
 #include "wx/vector.h"
 #include "wx/xlocale.h"
 
+#if wxUSE_UNICODE_UTF8
+    // for the per-thread iterator node list (wxStringIteratorNode::GetFirst());
+    // wx/string.h only pulls this in when the position cache is enabled
+    #include "wx/tls.h"
+#endif
+
 #ifdef __WINDOWS__
     #include "wx/msw/wrapwin.h"
 #endif // __WINDOWS__
@@ -177,6 +183,48 @@ static wxStrCacheStatsDumper s_showCacheStats;
 #endif // wxPROFILE_STRING_CACHE
 
 #endif // wxUSE_STRING_POS_CACHE
+
+#if wxUSE_UNICODE_UTF8
+
+// The per-thread list of live iterator nodes (see the class comment in
+// wx/string.h). Function-local so no global-initialization-order issues
+// arise if a static object's constructor uses wxString iterators; the
+// initializer object below still forces the TLS slot creation to happen
+// during static initialization, i.e. before any threads can exist, the same
+// way wxStrCacheInitializer does for the position cache.
+namespace
+{
+
+struct wxStrIteratorListHead
+{
+    wxStringIteratorNode *ptr;
+};
+
+} // anonymous namespace
+
+wxStringIteratorNode *&wxStringIteratorNode::GetFirst()
+{
+    static wxTLS_TYPE(wxStrIteratorListHead) s_head;
+
+    return wxTLS_VALUE(s_head).ptr;
+}
+
+namespace
+{
+
+struct wxStrIteratorListInitializer
+{
+    wxStrIteratorListInitializer()
+    {
+        wxStringIteratorNode::GetFirst();
+    }
+};
+
+wxStrIteratorListInitializer gs_stringIteratorListInit;
+
+} // anonymous namespace
+
+#endif // wxUSE_UNICODE_UTF8
 
 // ----------------------------------------------------------------------------
 // global functions

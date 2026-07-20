@@ -55,7 +55,13 @@
 // it would have to be re-tested and probably corrected
 // CS: under OSX release builds the string destructor/cache cleanup sometimes
 // crashes, disable until we find the true reason or a better workaround
-#if wxUSE_UNICODE_UTF8 && !defined(__WINDOWS__) && !defined(__WXOSX__)
+// Under Emscripten with threads the cache is unsafe: entries are keyed by raw
+// wxString addresses and only invalidated by the thread that modifies or
+// destroys the string, so another thread's entry can outlive the string and
+// then match an unrelated one allocated at the same address, yielding wrong
+// offsets and lengths. Disable it there like under OSX above.
+#if wxUSE_UNICODE_UTF8 && !defined(__WINDOWS__) && !defined(__WXOSX__) \
+        && !defined(__EMSCRIPTEN__)
     #define wxUSE_STRING_POS_CACHE 1
 #else
     #define wxUSE_STRING_POS_CACHE 0
@@ -263,6 +269,18 @@ private:
 
 #if wxUSE_UNICODE_UTF8
 // see the comment near wxString::iterator for why we need this
+// Every live wxString iterator is tracked through one of these nodes so that
+// an in-place edit which shifts the underlying UTF-8 bytes can fix up all
+// iterators still pointing into the string (see wxUniCharRef::operator=()).
+//
+// The nodes are kept in per-THREAD lists (see GetFirst()), not in a list
+// inside the string itself: iterators are created by const methods of
+// possibly shared strings, so a per-string list would turn every read-only
+// use of a shared string into an unsynchronized write to it. A thread's edit
+// can then only fix up its own thread's iterators, but that covers all
+// supported uses -- modifying a string while another thread holds iterators
+// into it is a data race on the underlying buffer anyhow, exactly as with the
+// standard library containers.
 class WXDLLIMPEXP_BASE wxStringIteratorNode
 {
 public:
@@ -275,6 +293,10 @@ public:
         { DoSet(str, NULL, iter); }
     ~wxStringIteratorNode()
         { clear(); }
+
+    // Head of the calling thread's list of live iterator nodes; nodes for
+    // different strings share the list and are told apart by m_str.
+    static wxStringIteratorNode *&GetFirst();
 
     inline void set(const wxString *str, wxStringImpl::const_iterator *citer)
         { clear(); DoSet(str, citer, NULL); }
@@ -3796,23 +3818,9 @@ private:
 #endif // !wxUSE_UNICODE_WCHAR
 
 #if wxUSE_UNICODE_UTF8
-  // FIXME-UTF8: (try to) move this elsewhere (TLS) or solve differently
-  //             assigning to character pointer to by wxString::iterator may
-  //             change the underlying wxStringImpl iterator, so we have to
-  //             keep track of all iterators and update them as necessary:
-  struct wxStringIteratorNodeHead
-  {
-      wxStringIteratorNodeHead() : ptr(NULL) {}
-      wxStringIteratorNode *ptr;
-
-      // copying is disallowed as it would result in more than one pointer into
-      // the same linked list
-      wxDECLARE_NO_COPY_CLASS(wxStringIteratorNodeHead);
-  };
-
-  wxStringIteratorNodeHead m_iterators;
-
-  friend class WXDLLIMPEXP_FWD_BASE wxStringIteratorNode;
+  // live iterators are tracked in per-thread lists of wxStringIteratorNode
+  // (see that class) so that wxUniCharRef can fix them up after an in-place
+  // edit shifts the underlying bytes
   friend class WXDLLIMPEXP_FWD_BASE wxUniCharRef;
 #endif // wxUSE_UNICODE_UTF8
 
@@ -4521,8 +4529,9 @@ void wxStringIteratorNode::DoSet(const wxString *str,
     m_str = str;
     if ( str )
     {
-        m_next = str->m_iterators.ptr;
-        const_cast<wxString*>(m_str)->m_iterators.ptr = this;
+        wxStringIteratorNode *&first = GetFirst();
+        m_next = first;
+        first = this;
         if ( m_next )
             m_next->m_prev = this;
     }
@@ -4539,7 +4548,7 @@ void wxStringIteratorNode::clear()
     if ( m_prev )
         m_prev->m_next = m_next;
     else if ( m_str ) // first in the list
-        const_cast<wxString*>(m_str)->m_iterators.ptr = m_next;
+        GetFirst() = m_next;
 
     m_next = m_prev = NULL;
     m_citer = NULL;
