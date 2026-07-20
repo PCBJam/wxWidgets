@@ -14,6 +14,7 @@
 #include "wx/evtloop.h"
 #include "wx/log.h"
 
+#include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/timer.h"
 
 #include <emscripten.h>
@@ -84,8 +85,20 @@ void TimerCallbackFunc::Run()
 {
     bool selfDestruct = true;
 
+    if (!IsCanceled() && wxWasmDispatchParked())
+    {
+        // Another dispatch chain is Asyncify-parked mid-handler; Notify()
+        // would run the timer handler over its half-mutated widget state.
+        // Retry shortly instead - ScheduleNextInterval()'s deadline
+        // bookkeeping keeps periodic timers on cadence afterwards.
+        emscripten_async_call(TimerCallback, this, 17);
+        return;
+    }
+
     if (!IsCanceled())
     {
+        wxWasmDispatchGuard dispatchGuard;
+
         wxWasmTimerImpl *timer = GetTimerImpl();
 
         if (timer->IsOneShot())
