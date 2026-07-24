@@ -21,6 +21,40 @@
   var inputs = new Map();   // domId -> value-bearing element (if != root)
   var labels = new Map();   // domId -> label text target (if != root)
 
+  // Dark-theme overrides for the DOM widgets (pcbjam comments-ux 0002): the
+  // factory below sets "classic light" INLINE styles; these html.dark-scoped
+  // !important rules override them live when the embedding page toggles its
+  // theme class — no per-element re-styling, and light mode is untouched.
+  // Keep the palette aligned with the wx wasm system-colour table
+  // (src/wasm/settings.cpp): face #2d2d3e, window #1e1e2c, text #e4e4ee.
+  (function injectDarkThemeStyles() {
+    var css =
+      'html.dark [data-wx-menu-bar="1"],' +
+      'html.dark [data-wx-tool-bar="1"]{background:#2d2d3e !important;}' +
+      'html.dark [data-wx-menu-bar="1"] .wx-menu-title{color:#e4e4ee !important;}' +
+      'html.dark .wx-menu-popup{background:#2d2d3e !important;' +
+        'border-color:#121220 !important;color:#e4e4ee !important;}' +
+      'html.dark [data-wx-check-list="1"]{background:#1e1e2c !important;' +
+        'border-color:#121220 !important;color:#e4e4ee !important;}' +
+      'html.dark .wx-tab-strip{background:#2d2d3e !important;' +
+        'border-bottom-color:#121220 !important;}' +
+      'html.dark .wx-tab-strip button{background:#23233a !important;' +
+        'color:#e4e4ee !important;border-color:#121220 !important;}' +
+      'html.dark .wx-tab-strip button[aria-selected="true"]' +
+        '{background:#3a3a54 !important;}' +
+      'html.dark #wx-tooltip{background:#2d2d3e !important;' +
+        'color:#e4e4ee !important;border-color:#5a5a72 !important;}' +
+      'html.dark .wx-tool{color:#e4e4ee !important;}' +
+      'html.dark .wx-tool[data-wx-toggled="1"]{background:#3d6ae0 !important;}' +
+      'html.dark [data-wx-scrollbar="1"]{background:#23233a !important;}' +
+      'html.dark [data-wx-scrollbar="1"] .wx-sb-thumb{background:#4a4a62 !important;' +
+        'border-color:#5a5a72 !important;}';
+    var style = document.createElement('style');
+    style.id = 'wx-dom-dark-theme';
+    style.textContent = css;
+    document.head.appendChild(style);
+  })();
+
   // Flag read by the C++ keyboard callback (src/wasm/app.cpp): while a DOM
   // editable owns browser focus, wx must not swallow/preventDefault keys.
   window.wxDomEditableFocused = 0;
@@ -1182,6 +1216,9 @@
       }
       btn.disabled = !t.enabled;
       if (t.toggled) btn.style.background = '#b0c4de';
+      // Styling hook only (dark theme CSS keys off it) — the light look
+      // stays inline above.
+      if (t.toggled) btn.dataset.wxToggled = '1';
       btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
         el.dataset.wxLastCommand = String(t.id);
