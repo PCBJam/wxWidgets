@@ -48,7 +48,16 @@
       'html.dark .wx-tool[data-wx-toggled="1"]{background:#3d6ae0 !important;}' +
       'html.dark [data-wx-scrollbar="1"]{background:#23233a !important;}' +
       'html.dark [data-wx-scrollbar="1"] .wx-sb-thumb{background:#4a4a62 !important;' +
-        'border-color:#5a5a72 !important;}';
+        'border-color:#5a5a72 !important;}' +
+      // Native form controls (select/input/textarea .wx-dom-control): the page's
+      // dark foreground bleeds into them while their native background stays
+      // white — restyle both, and flip color-scheme so the dropdown list and
+      // caret follow.
+      'html.dark select.wx-dom-control,' +
+      'html.dark input.wx-dom-control,' +
+      'html.dark textarea.wx-dom-control{background:#1e1e2c !important;' +
+        'color:#e4e4ee !important;border-color:#121220 !important;' +
+        'color-scheme:dark;}';
     var style = document.createElement('style');
     style.id = 'wx-dom-dark-theme';
     style.textContent = css;
