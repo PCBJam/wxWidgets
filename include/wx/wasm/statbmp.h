@@ -29,6 +29,9 @@ public:
 
     virtual void SetBitmap(const wxBitmapBundle& bitmap) wxOVERRIDE;
 
+protected:
+    virtual wxSize DoGetBestSize() const wxOVERRIDE;
+
 private:
     wxDECLARE_DYNAMIC_CLASS(wxStaticBitmap);
 };

@@ -1589,14 +1589,11 @@ if (typeof navigator !== 'undefined') {
     //console.log('clipRect: ' + x + ' ' + y + ' ' + width + ' ' + height);
     var ctx = getContext(id);
 
-    // FIX: If clip region is empty (0,0,0,0), use full context dimensions
-    // This happens when wxWidgets hasn't properly initialized the clip region
-    if (width <= 0 || height <= 0) {
-      x = 0;
-      y = 0;
-      width = ctx.width;
-      height = ctx.height;
-    }
+    // An empty clip box means "everything is clipped out" — apply it as such.
+    // (An earlier fallback expanded empty rects to the full context, but that
+    // was masking the C++ side sending empty boxes for every clip.)
+    if (width < 0) width = 0;
+    if (height < 0) height = 0;
 
     resetClip(ctx);
 

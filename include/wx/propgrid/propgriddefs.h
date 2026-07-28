@@ -121,6 +121,39 @@ class WXDLLIMPEXP_FWD_CORE wxFont;
     // If 1 then controls are refreshed after selected was drawn.
     #define wxPG_REFRESH_CONTROLS 0
 
+#elif defined(__WXWASM__)
+
+    // Same as the generic defaults below, except wxRendererNative (the
+    // generic renderer on this port) is used so e.g. bool cells get a real
+    // drawn checkbox instead of the hand-rolled DrawCheckMark fallback.
+
+    // space between vertical line and value text
+    #define wxPG_XBEFORETEXT            5
+    // space between vertical line and value editor widget
+    #define wxPG_XBEFOREWIDGET          1
+
+    // x position adjustment for wxTextCtrl (and like)
+    // left margin cannot be set with wxTextEntry::SetMargins()
+    #define wxPG_TEXTCTRLXADJUST        3
+
+    // comment to use bitmap buttons
+    #define wxPG_ICON_WIDTH             9
+    // 1 if wxRendererNative should be employed
+    #define wxPG_USE_RENDERER_NATIVE    1
+
+    // width of optional bitmap/image in front of property
+    #define wxPG_CUSTOM_IMAGE_WIDTH     20
+
+    // 1 if splitter drag detect margin and control cannot overlap
+    #define wxPG_NO_CHILD_EVT_MOTION    1
+
+    #define wxPG_NAT_BUTTON_BORDER_ANY      0
+    #define wxPG_NAT_BUTTON_BORDER_X        0
+    #define wxPG_NAT_BUTTON_BORDER_Y        0
+
+    // If 1 then controls are refreshed after selected was drawn.
+    #define wxPG_REFRESH_CONTROLS 0
+
 #else // defaults
 
     // space between vertical line and value text

@@ -294,13 +294,22 @@ void wxWasmDCImpl::DoSetClippingRegion(wxCoord x, wxCoord y,
 {
     wxDCImpl::DoSetClippingRegion(x, y, width, height);
 
+    // The base implementation stores the effective clip box in device
+    // coordinates (m_devClip*, private) — the legacy logical m_clip* members
+    // stay zero, so reading those sent an empty rect and the canvas ended up
+    // with no clip at all (a dc.Clear() meant to wipe one propgrid cell wiped
+    // the whole buffer). DoGetClippingRect() returns the real box in logical
+    // coordinates whichever representation the base used.
+    wxRect clip;
+    DoGetClippingRect(clip);
+
     EM_ASM({
         clipRect($0, $1, $2, $3, $4);
     }, GetJavascriptId(),
-       LogicalToDeviceDoubleX(m_clipX1),
-       LogicalToDeviceDoubleY(m_clipY1),
-       LogicalToDeviceXRel(m_clipX2 - m_clipX1),
-       LogicalToDeviceYRel(m_clipY2 - m_clipY1));
+       LogicalToDeviceDoubleX(clip.x),
+       LogicalToDeviceDoubleY(clip.y),
+       LogicalToDeviceXRel(clip.width),
+       LogicalToDeviceYRel(clip.height));
 }
 
 void wxWasmDCImpl::DestroyClippingRegion()
@@ -523,13 +532,16 @@ bool wxWasmDCImpl::DoBlit(wxCoord xdest, wxCoord ydest,
 
     wxWasmDCImpl *srcImpl = static_cast<wxWasmDCImpl*>(source->GetImpl());
 
+    // Convert both endpoints to device coordinates: the source DC may carry a
+    // device origin (e.g. wxBufferedDC::UnMask passes -GetDeviceOrigin() as
+    // the source position after PrepareDC applied the scroll offset).
     EM_ASM({
         blit($0, $1, $2, $3, $4, $5, $6, $7);
     }, srcImpl->GetJavascriptId(),
     GetJavascriptId(),
-    xsrc, ysrc,
-    width, height,
-    xdest, ydest);
+    srcImpl->LogicalToDeviceDoubleX(xsrc), srcImpl->LogicalToDeviceDoubleY(ysrc),
+    LogicalToDeviceXRel(width), LogicalToDeviceYRel(height),
+    LogicalToDeviceDoubleX(xdest), LogicalToDeviceDoubleY(ydest));
 
     return true;
 }

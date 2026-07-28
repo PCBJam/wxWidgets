@@ -37,6 +37,7 @@ public:
 protected:
     virtual void DoSet3StateValue(wxCheckBoxState state) wxOVERRIDE;
     virtual wxCheckBoxState DoGet3StateValue() const wxOVERRIDE;
+    virtual wxSize DoGetBestSize() const wxOVERRIDE;
 
 private:
     // Cached state, kept in sync with the DOM element's checked property.

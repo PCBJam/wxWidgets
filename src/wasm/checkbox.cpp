@@ -86,6 +86,22 @@ wxCheckBoxState wxCheckBox::DoGet3StateValue() const
     return m_state;
 }
 
+wxSize wxCheckBox::DoGetBestSize() const
+{
+    wxSize best = wxControl::DoGetBestSize();
+
+    // Same rationale as wxChoice::DoGetBestSize(): the DOM intrinsic measure
+    // can run before the element is laid out and report a degenerate height,
+    // and dense sizers (wxGridBagSizer(0,0) in KiCad's selection filters) use
+    // the best height as the full row pitch. Floor it to a font-derived
+    // control height.
+    const int minHeight = GetCharHeight() + 8;
+    if (best.y < minHeight)
+        best.y = minHeight;
+
+    return best;
+}
+
 void wxCheckBox::OnDomEvent(wxDomEventKind kind)
 {
     if (kind == wxDOM_EVENT_CHANGE)

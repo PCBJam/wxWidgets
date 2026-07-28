@@ -57,7 +57,10 @@
       'html.dark input.wx-dom-control,' +
       'html.dark textarea.wx-dom-control{background:#1e1e2c !important;' +
         'color:#e4e4ee !important;border-color:#121220 !important;' +
-        'color-scheme:dark;}';
+        'color-scheme:dark;}' +
+      // checkbox/radio inputs are CHILDREN of a label.wx-dom-control, so the
+      // rule above never reaches them; flip their color-scheme too.
+      'html.dark label.wx-dom-control{color-scheme:dark;}';
     var style = document.createElement('style');
     style.id = 'wx-dom-dark-theme';
     style.textContent = css;
@@ -115,9 +118,15 @@
       case 'checkbox':
       case 'radio': {
         root = document.createElement('label');
+        // Breathing room around the row: measured into the intrinsic size, so
+        // sizers pick it up (wxDomCreateControl only force-zeroes padding on
+        // controls that didn't set their own).
+        root.style.padding = '3px 0';
         input = document.createElement('input');
         input.type = type;
-        input.style.margin = '0 3px 0 0';
+        input.style.margin = '0 5px 0 0';
+        // Never let a too-narrow rect crush the box into the label.
+        input.style.flexShrink = '0';
         label = document.createElement('span');
         label.className = 'wx-label';
         root.appendChild(input);
@@ -237,6 +246,10 @@
       case 'image': {
         root = document.createElement('img');
         root.dataset.wxChrome = '1'; // non-interactive like statbmp
+        // Layout may hand the <img> a rect bigger than the bitmap (sizer
+        // stretch, min-size constraints); keep the aspect instead of the
+        // default object-fit:fill smear.
+        root.style.objectFit = 'contain';
         break;
       }
       case 'combobox': {
