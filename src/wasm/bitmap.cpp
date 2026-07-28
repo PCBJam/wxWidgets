@@ -916,7 +916,16 @@ wxGDIRefData* wxBitmap::CloneGDIRefData(const wxGDIRefData* data) const
         memcpy(newRef->m_bitmap, oldRef->m_bitmap, size);
     }
 
-    newRef->m_dataSource = BITMAP_DATA_SOURCE_CPP;
+    // A never-materialized source (SOURCE_NONE, no buffer) must stay
+    // SOURCE_NONE: stamping it SOURCE_CPP with a NULL buffer is an invalid
+    // state — SyncToCpp() then skips allocation and raw access/ConvertToImage
+    // fail (seen when wxBitmapBundle::GetBitmap sets a scale factor on a
+    // shared, still-blank bitmap).
+    if (oldRef->GetDataSource() != BITMAP_DATA_SOURCE_NONE ||
+            newRef->m_bitmap != NULL)
+    {
+        newRef->m_dataSource = BITMAP_DATA_SOURCE_CPP;
+    }
 
     if (oldRef->m_mask != NULL)
     {
