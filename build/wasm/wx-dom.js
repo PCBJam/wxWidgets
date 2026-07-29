@@ -93,6 +93,16 @@
     } catch (e) {
       // Surfaces in test logs; must never throw back into DOM event handlers.
       console.error('wx_dom_event(' + domId + ',' + kind + ') failed:', e);
+      // That chain died mid-flight (trap, or the "async operation already in
+      // flight" abort a park inside this synchronous ccall raises), so its
+      // dispatch-interlock guard never unwound. Release the interlock or every
+      // later event defers forever behind a chain that is gone. Guarded: the
+      // export is absent in wx builds predating the interlock.
+      try {
+        Module['ccall']('wx_dispatch_abandon', null, [], []);
+      } catch (e2) {
+        /* nothing else to do - the runtime is already in trouble */
+      }
     }
   }
 

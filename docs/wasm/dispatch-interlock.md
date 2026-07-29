@@ -100,7 +100,21 @@ crash).
   than one chain — but that was already a hung app (the parked stack holds
   arbitrary locks).
 - A wasm trap escaping a dispatch chain leaks the held count (no destructors on
-  a trap) and permanently gates dispatch; traps were already effectively fatal
-  (asyncify state corrupt), so this isn't a new failure mode.
+  a trap). Where the JS entry point *catches* the failure the chain is known to
+  be dead and the interlock is released explicitly: `wx_dispatch_abandon`
+  (`wxWasmDispatchAbandon()`, evtloop.cpp), called from the `dispatch()` catch
+  in `build/wasm/wx-dom.js`. This matters because such a failure is not always
+  fatal — the wxClipboard test app raises Emscripten's "cannot start an async
+  operation when one is already in flight" abort (its `EM_ASYNC_JS` clipboard
+  park suspends inside the *synchronous* `wx_dom_event` ccall), keeps running,
+  and its later clicks work; without the release, the first abort would gate
+  every later event behind a chain that no longer exists. Entry points with no
+  catch (the Emscripten key/focus handlers) can still leak, but there the
+  runtime is already poisoned.
+- That clipboard abort is a **pre-existing** bug, unrelated to the interlock:
+  it reproduces identically on builds before it. The real fix is to stop the
+  clipboard parking inside a synchronous DOM callback (or ccall `wx_dom_event`
+  with `{async: true}`); the spec's assertions are loose enough to pass either
+  way, so CI green does not mean the clipboard round-trip works.
 - Paint still runs during a park (it always has, and is needed to keep the UI
   alive). The crash class was pending-event *dispatch*, which is what's gated.

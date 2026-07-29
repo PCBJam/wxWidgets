@@ -36,6 +36,18 @@ extern int wxWasmDispatchDepth;
 // must defer (queue/skip) instead of running handlers.
 inline bool wxWasmDispatchParked() { return wxWasmDispatchDepth > 0; }
 
+// Abandon every held chain: the count drops to zero and dispatch reopens.
+//
+// A chain that dies ABNORMALLY - a wasm trap, or an Emscripten abort() such as
+// the "cannot start an async operation when one is already in flight" assert a
+// park inside a non-async ccall raises - never runs its guard destructor, so
+// its count would be held forever and every later event would defer against a
+// chain that is already gone (input wedged for good). The JS entry points that
+// catch such a failure know the chain is dead and call this, exported as
+// wx_dispatch_abandon; see src/wasm/evtloop.cpp and the dispatch() wrapper in
+// build/wasm/wx-dom.js.
+void wxWasmDispatchAbandon();
+
 // Scope guard for a dispatch chain. Under Asyncify the destructor runs when
 // the chain truly completes (unwind skips it, rewind resumes past it), so
 // the count is held across parks - exactly the property the interlock needs.

@@ -18,6 +18,11 @@
 // See wx/wasm/private/dispatch.h for the interlock contract.
 int wxWasmDispatchDepth = 0;
 
+void wxWasmDispatchAbandon()
+{
+    wxWasmDispatchDepth = 0;
+}
+
 // Ungated dispatch body: used by the pump once the interlock check passed and
 // by wxGUIEventLoop::Dispatch()/wxYield, which deliberately dispatch NESTED
 // inside a running handler chain (the interlock only forbids interleaving
@@ -36,6 +41,15 @@ static void wxWasmProcessEventsUngated()
 }
 
 extern "C" {
+
+    // Called by a JS entry point whose ccall into wx died abnormally (trap or
+    // Emscripten abort): that chain's guard destructor never ran, so release
+    // the interlock it still holds. Without this the first such failure wedges
+    // every later event behind a chain that no longer exists.
+    void EMSCRIPTEN_KEEPALIVE wx_dispatch_abandon()
+    {
+        wxWasmDispatchAbandon();
+    }
 
     void EMSCRIPTEN_KEEPALIVE ProcessEvents()
     {
