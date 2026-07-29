@@ -20,6 +20,7 @@
 #include "wx/wasm/private/display.h"
 
 #include "wx/settings.h"
+#include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/dom.h"
 
 #include <emscripten.h>
@@ -737,8 +738,15 @@ bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
     const int vx = (x == wxDefaultCoord) ? -1 : x;
     const int vy = (y == wxDefaultCoord) ? -1 : y;
 
+    // The invoking dispatch chain parks for the menu's whole lifetime; event
+    // dispatch must keep running meanwhile (the menu itself and the rest of
+    // the UI), so zero the dispatch interlock for the park's duration
+    // (manual save/restore: destructors are not reliable across the park).
+    const int savedDispatchDepth = wxWasmDispatchDepth;
+    wxWasmDispatchDepth = 0;
     const int chosenId =
         wxDomPopupMenuModal(json.utf8_str(), WasmGetDomId(), vx, vy);
+    wxWasmDispatchDepth = savedDispatchDepth;
 
     if ( chosenId < 0 )
         return false; // cancelled

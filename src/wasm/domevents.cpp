@@ -16,6 +16,7 @@
 #include "wx/image.h"
 #include "wx/log.h"
 #include "wx/mstream.h"
+#include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/dom.h"
 #include "wx/wasm/private/mouse.h"
 
@@ -93,6 +94,23 @@ void EMSCRIPTEN_KEEPALIVE wx_dom_event(int domId, int kind)
     wxWindowWasm *window = it->second;
     if ( !window->IsEnabled() )
         return;
+
+    if ( wxWasmDispatchParked() )
+    {
+        // Another dispatch chain is Asyncify-parked mid-handler; defer this
+        // DOM event to the first pump tick after resume instead of running
+        // handlers over its half-mutated widget state. CallAfter binds the
+        // deferred call to the window's event queue, so it dies with the
+        // window if that is destroyed first.
+        window->CallAfter([window, domId, kind]() {
+            gs_currentEventDomId = domId;
+            window->OnDomEvent(static_cast<wxDomEventKind>(kind));
+            gs_currentEventDomId = 0;
+        });
+        return;
+    }
+
+    wxWasmDispatchGuard dispatchGuard;
 
     gs_currentEventDomId = domId;
     window->OnDomEvent(static_cast<wxDomEventKind>(kind));

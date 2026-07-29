@@ -19,6 +19,7 @@
 #include "wx/window.h"
 
 #include "wx/private/eventloopsourcesmanager.h"
+#include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/display.h"
 #include "wx/wasm/private/keyboard.h"
 #include "wx/wasm/private/mouse.h"
@@ -194,6 +195,20 @@ bool wxApp::HandleKeyEvent(wxKeyEvent *event)
             SetKeyPressed(event->GetKeyCode(), false);
         }
 
+        if (wxWasmDispatchParked())
+        {
+            // Another dispatch chain is Asyncify-parked mid-handler; running
+            // key handlers now would interleave with its half-mutated widget
+            // state. Queue the event for the first pump tick after resume.
+            // CHAR_HOOK reports "not handled" so the caller still synthesizes
+            // the follow-up KEY_DOWN (queued too, order preserved); other
+            // types report "handled" so the browser default stays suppressed
+            // and no duplicate CHAR is synthesized.
+            wxPostEvent(window->GetEventHandler(), *event);
+            return event->GetEventType() != wxEVT_CHAR_HOOK;
+        }
+
+        wxWasmDispatchGuard guard;
         return window->HandleWindowEvent(*event);
     }
     else
@@ -242,6 +257,35 @@ void wxApp::UpdateMouseState(const wxMouseEvent& event)
 
 void wxApp::HandleMouseEvent(wxMouseEvent *event)
 {
+    if (wxWasmDispatchParked())
+    {
+        // Another dispatch chain is Asyncify-parked mid-handler; running
+        // mouse handlers now would interleave with its half-mutated widget
+        // state. Keep wxGetMouseState() truthful, queue button events for
+        // the first pump tick after resume (targeted like
+        // SendMouseEventToWindow would), and drop motion/hover synthesis -
+        // the next real motion after resume re-syncs it.
+        UpdateMouseState(*event);
+
+        if (event->ButtonDown() || event->ButtonUp() || event->ButtonDClick())
+        {
+            wxWindow *target = GetMouseWindow(event->GetPosition());
+
+            if (target != NULL && target->IsEnabled())
+            {
+                wxMouseEvent queued(*event);
+                queued.SetPosition(target->ScreenToClient(event->GetPosition()));
+                queued.SetEventObject(target);
+                queued.SetId(target->GetId());
+                wxPostEvent(target->GetEventHandler(), queued);
+            }
+        }
+
+        return;
+    }
+
+    wxWasmDispatchGuard dispatchGuard;
+
     if (wxDropSource::IsDragInProgress())
     {
         wxDropSource::HandleMouseEvent(event);
@@ -398,6 +442,14 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
 
 void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
 {
+    // Another dispatch chain is Asyncify-parked mid-handler: drop the wheel
+    // tick rather than interleave with its half-mutated widget state (the
+    // user's next tick after resume scrolls normally).
+    if (wxWasmDispatchParked())
+        return;
+
+    wxWasmDispatchGuard dispatchGuard;
+
     wxPoint mousePosition = wxGetMousePosition();
     event->SetPosition(mousePosition);
     wxWindow *window = GetMouseWindow(mousePosition);
