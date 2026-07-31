@@ -306,7 +306,7 @@ int wxDialog::ShowModal()
     const int savedDispatchDepth = wxWasmDispatchDepth;
     wxWasmDispatchDepth = 0;
     int result = startModal(wxID_CANCEL);
-    wxWasmDispatchDepth = savedDispatchDepth;
+    wxWasmDispatchRestore(savedDispatchDepth, "ShowModal");
 
     return result;
 }

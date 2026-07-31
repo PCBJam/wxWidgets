@@ -746,7 +746,7 @@ bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
     wxWasmDispatchDepth = 0;
     const int chosenId =
         wxDomPopupMenuModal(json.utf8_str(), WasmGetDomId(), vx, vy);
-    wxWasmDispatchDepth = savedDispatchDepth;
+    wxWasmDispatchRestore(savedDispatchDepth, "PopupMenu");
 
     if ( chosenId < 0 )
         return false; // cancelled

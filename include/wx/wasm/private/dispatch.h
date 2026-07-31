@@ -48,6 +48,25 @@ inline bool wxWasmDispatchParked() { return wxWasmDispatchDepth > 0; }
 // build/wasm/wx-dom.js.
 void wxWasmDispatchAbandon();
 
+// Restore the count at the end of a "modal" park (ShowModal, nested loop run,
+// DOM popup menu), REPORTING the accounting anomaly those three sites can hit.
+//
+// Each does `saved = depth; depth = 0; ...park...; depth = saved`. Any guard
+// taken while the count was zeroed is ERASED by that restore, so the interlock
+// reads "nothing parked" while a chain is still parked - a fresh dispatch then
+// runs handlers over half-mutated widget state, which is the documented cause
+// of the "index out of bounds" class of trap. Repeated nesting can also drive
+// the count negative.
+//
+// Neither condition is recoverable here (correcting the count would change
+// behaviour, and the right fix is composable save/restore) - this only makes
+// the anomaly VISIBLE in a production console log, which is the missing
+// evidence for a load-time trap we have never reproduced locally. Rate-limited
+// so a pathological load cannot flood the console.
+//
+// `site` is a static string naming the caller, e.g. "ShowModal".
+void wxWasmDispatchRestore(int saved, const char *site);
+
 // Scope guard for a dispatch chain. Under Asyncify the destructor runs when
 // the chain truly completes (unwind skips it, rewind resumes past it), so
 // the count is held across parks - exactly the property the interlock needs.

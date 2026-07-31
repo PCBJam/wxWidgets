@@ -47,7 +47,8 @@ class WXDLLIMPEXP_CORE TimerCallbackFunc : public wxObject
 public:
     TimerCallbackFunc(wxWasmTimerImpl* timer)
         : m_timer(timer),
-          m_canceled(false) { }
+          m_canceled(false),
+          m_parkRetries(0) { }
 
     void Run();
 
@@ -59,6 +60,10 @@ public:
 private:
     wxWasmTimerImpl *m_timer;
     bool m_canceled;
+    // Diagnostic only: consecutive 17ms retries this callback has made while a
+    // dispatch chain stayed parked. Reset once it finally runs. Measures the
+    // length of the window the load-time trap occurs in - see Run().
+    int m_parkRetries;
 };
 
 #endif // wxUSE_TIMER

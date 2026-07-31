@@ -14,6 +14,7 @@
 #include "wx/wasm/private/dispatch.h"
 
 #include <emscripten.h>
+#include <stdio.h>   // printf: diagnostics land in the browser console
 
 // See wx/wasm/private/dispatch.h for the interlock contract.
 int wxWasmDispatchDepth = 0;
@@ -21,6 +22,35 @@ int wxWasmDispatchDepth = 0;
 void wxWasmDispatchAbandon()
 {
     wxWasmDispatchDepth = 0;
+}
+
+void wxWasmDispatchRestore(int saved, const char *site)
+{
+    // Guards taken while the count was zeroed are about to be erased: the
+    // interlock will read "nothing parked" although `erased` chains still are.
+    const int erased = wxWasmDispatchDepth;
+
+    wxWasmDispatchDepth = saved;
+
+    if (erased != 0)
+    {
+        static int s_erasedCount = 0;
+        ++s_erasedCount;
+        // Loud for the first few, then sparse: the interesting fact is THAT it
+        // happened and how often, not each instance.
+        if (s_erasedCount <= 10 || s_erasedCount % 100 == 0)
+        {
+            printf("[wx-dispatch] ERASED %d held chain(s) restoring depth=%d at %s "
+                   "(occurrence %d) - interlock now reads open while a chain is parked\n",
+                   erased, saved, site, s_erasedCount);
+        }
+    }
+
+    if (wxWasmDispatchDepth < 0)
+    {
+        printf("[wx-dispatch] NEGATIVE depth=%d at %s - accounting is corrupt\n",
+               wxWasmDispatchDepth, site);
+    }
 }
 
 // Ungated dispatch body: used by the pump once the interlock check passed and
@@ -226,7 +256,7 @@ int wxGUIEventLoop::DoRun()
         const int savedDispatchDepth = wxWasmDispatchDepth;
         wxWasmDispatchDepth = 0;
         wxWasmRunNestedLoop();   // suspends here until ScheduleExit()/Exit()
-        wxWasmDispatchDepth = savedDispatchDepth;
+        wxWasmDispatchRestore(savedDispatchDepth, "NestedLoop");
         --s_wxRunDepth;
         return 0;
     }

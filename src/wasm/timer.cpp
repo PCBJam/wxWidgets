@@ -18,6 +18,7 @@
 #include "wx/wasm/private/timer.h"
 
 #include <emscripten.h>
+#include <stdio.h>   // printf: diagnostics land in the browser console
 
 // ----------------------------------------------------------------------------
 // wxTimerImpl
@@ -91,9 +92,31 @@ void TimerCallbackFunc::Run()
         // would run the timer handler over its half-mutated widget state.
         // Retry shortly instead - ScheduleNextInterval()'s deadline
         // bookkeeping keeps periodic timers on cadence afterwards.
+
+        // Diagnostic: how LONG this retry loop spins is a direct measure of the
+        // window in which the load-time trap occurs (a board open parks for the
+        // whole inline footprint-library preload, and the GAL refresh timer
+        // re-arms every 100ms throughout). Reported per callback at escalating
+        // thresholds, so a normal short park stays silent and a multi-second one
+        // is impossible to miss. ~59 retries/second at 17ms.
+        ++m_parkRetries;
+        if (m_parkRetries == 60 || m_parkRetries == 300 || m_parkRetries == 1200 ||
+            (m_parkRetries > 1200 && m_parkRetries % 1200 == 0))
+        {
+            printf("[wx-timer] retry storm: %d retries (~%ds parked, depth=%d) "
+                   "- a dispatch chain has been parked this whole time\n",
+                   m_parkRetries, (m_parkRetries * 17) / 1000, wxWasmDispatchDepth);
+        }
         emscripten_async_call(TimerCallback, this, 17);
         return;
     }
+
+    if (m_parkRetries >= 60)
+    {
+        printf("[wx-timer] retry storm ended after %d retries (~%ds)\n",
+               m_parkRetries, (m_parkRetries * 17) / 1000);
+    }
+    m_parkRetries = 0;
 
     if (!IsCanceled())
     {
