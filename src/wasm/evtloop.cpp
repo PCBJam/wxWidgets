@@ -199,15 +199,44 @@ EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
 EM_JS(void, wxWasmScheduleProcessEvents, (), {
     setTimeout(function () {
         try {
-            Module["_ProcessEvents"]();
+            Module["_wxWasmTopLevelTick"]();
         } catch (e) {
             // Mirror the DOM handlers' guard: a trap here would otherwise leave
             // the dispatch interlock held by a chain that no longer exists.
             if (Module["_wx_dispatch_abandon"]) Module["_wx_dispatch_abandon"]();
+            // If a quasi-modal's nested loop is open, tear it down exactly as
+            // the nested pump's own catch does. A handler can throw from EITHER
+            // dispatcher, and whichever one catches it, the parked nested DoRun
+            // must be released or it never returns — a silent stall (the
+            // asyncify-races nested_quasi_modal_pump_error case).
+            var exits = Module["_wxNestedLoopExit"];
+            if (exits && exits.length) (exits.pop())();
             throw e;
         }
     }, 0);
 });
+
+extern "C" {
+
+    // The top-level loop's scheduled dispatch. A separate entry point from
+    // ProcessEvents so the JS side has one obvious name to schedule, and so any
+    // future top-level-only policy has a home that the nested pump's direct
+    // ProcessEvents calls do not share.
+    //
+    // Deliberately NOT gated on s_wxRunDepth. The nested pump re-arms only after
+    // its awaited ccall returns, so while a long operation is parked inside a
+    // quasi-modal loop this tick is the only dispatcher left; refusing to
+    // dispatch there risks stalling exactly the loads this change exists to fix.
+    // The genuine hazard of running alongside the pump is an error being
+    // delivered to the wrong catch, and that is handled where it belongs — the
+    // error path in wxWasmScheduleProcessEvents releases the parked nested
+    // DoRun, so a throwing handler tears the loop down from either dispatcher.
+    void EMSCRIPTEN_KEEPALIVE wxWasmTopLevelTick()
+    {
+        ProcessEvents();
+    }
+
+}  // extern "C"
 
 // ----------------------------------------------------------------------------
 // wxGUIEventLoop
