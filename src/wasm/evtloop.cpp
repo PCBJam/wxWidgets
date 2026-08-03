@@ -309,7 +309,19 @@ int wxGUIEventLoop::DoRun()
         // events run from a fresh JS task while this loop is parked below, so a
         // tool coroutine resumed by them never swaps main out inside main's own
         // wake continuation.
-        wxWasmScheduleProcessEvents();
+        //
+        // ...but ONLY while this is the only loop running. Dispatching inline
+        // used to park this loop inside ProcessEvents for a quasi-modal's whole
+        // lifetime, which stopped it pumping; scheduling returns immediately, so
+        // without this gate the loop would keep queueing dispatches that run
+        // CONCURRENTLY with the nested pump (which zeroes the dispatch interlock
+        // for the duration, so nothing else would catch them). The nested pump
+        // is the legitimate dispatcher meanwhile; this loop just yields until it
+        // exits.
+        if (s_wxRunDepth <= 1)
+        {
+            wxWasmScheduleProcessEvents();
+        }
         wxWasmYieldToBrowser();
     }
     --s_wxRunDepth;
