@@ -111,7 +111,13 @@ wxTopLevelWindowWasm::~wxTopLevelWindowWasm()
     // for a real quit. Must run before ~wxTopLevelWindowBase, which clears
     // wxTheApp's top-window pointer. Child frames and dialogs are never the
     // app top window and don't notify.
-    if (wxTheApp && wxTheApp->GetTopWindow() == this)
+    // IsMainFrame() (== wxTopLevelWindows[0], the first TLW ever created) rather
+    // than GetTopWindow(): wx re-points the top window at whatever TLW is left,
+    // so a transient frame dying mid-session used to look exactly like an app
+    // quit — and the host acts on that by navigating the user out of the editor.
+    // Observed for real 2026-08-03: a frame torn down during a heavy board load
+    // silently ejected the user (docs/features/async/16 round 6).
+    if (wxTheApp && IsMainFrame() && wxTheApp->GetTopWindow() == this)
     {
         EM_ASM({
             if (typeof window !== 'undefined'

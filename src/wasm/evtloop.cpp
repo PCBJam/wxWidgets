@@ -185,6 +185,30 @@ EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
     await new Promise(function (resolve) { requestAnimationFrame(resolve); });
 });
 
+// Deliver the tick's events from a FRESH JS task instead of inline in the main
+// loop (docs/features/async/16 round 6). Everything after wxWasmYieldToBrowser()
+// returns runs inside that park's synchronous wake continuation, and a coroutine
+// resumed there swaps main OUT inside its own live wake: emscripten_fiber_swap
+// then stamps the wake's re-invoked __main_argc_argv as the rewind entry of a
+// capture that only spans the swap-site frames — unrewindable by construction,
+// and the reproduced cause of the production board-load death. Dispatching from
+// a fresh entry is exactly what every HEALTHY dispatch already does (the DOM
+// handlers and timer callbacks that run while main is parked; the flight
+// recorder shows all of them at wake-depth 0). ProcessEvents itself is
+// re-entrancy-safe: it no-ops into a repaint whenever a chain is parked.
+EM_JS(void, wxWasmScheduleProcessEvents, (), {
+    setTimeout(function () {
+        try {
+            Module["_ProcessEvents"]();
+        } catch (e) {
+            // Mirror the DOM handlers' guard: a trap here would otherwise leave
+            // the dispatch interlock held by a chain that no longer exists.
+            if (Module["_wx_dispatch_abandon"]) Module["_wx_dispatch_abandon"]();
+            throw e;
+        }
+    }, 0);
+});
+
 // ----------------------------------------------------------------------------
 // wxGUIEventLoop
 // ----------------------------------------------------------------------------
@@ -281,7 +305,11 @@ int wxGUIEventLoop::DoRun()
     // ScheduleExit(), ends the loop after the current tick.
     while (!m_shouldExit)
     {
-        ProcessEvents();
+        // Schedule, don't dispatch: see wxWasmScheduleProcessEvents. The tick's
+        // events run from a fresh JS task while this loop is parked below, so a
+        // tool coroutine resumed by them never swaps main out inside main's own
+        // wake continuation.
+        wxWasmScheduleProcessEvents();
         wxWasmYieldToBrowser();
     }
     --s_wxRunDepth;
