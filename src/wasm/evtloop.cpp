@@ -268,81 +268,19 @@ extern "C" {
 //     suspended, a tool-coroutine fiber swap inside ProcessEvents runs from a clean
 //     stack. A permanent handleAsync park here instead aborts coroutine swaps with
 //     "cannot stop an async operation in flight" (docs/features/async/13).
-//   * nested (DoRun depth >0): wxWasmRunNestedLoop() suspends the stack and drives
-//     ProcessEvents from a JS setTimeout pump (rAF isn't usable from a nested context).
-//     Nested resolvers live on a LIFO (Module._wxNestedLoopExit); ScheduleExit() pops
-//     the innermost. The top-level loop instead just sets m_shouldExit.
+//   * nested (DoRun depth >0): a registered "nested" scheduler wait (doc 17 S4) — no
+//     pump; the top-level tick keeps dispatching at any depth. ScheduleExit() resolves
+//     the innermost wait. The top-level loop instead just sets m_shouldExit.
+//     (The legacy wxWasmRunNestedLoop setTimeout pump and its _wxNestedLoopExit
+//     resolver stack were deleted at doc 20 D-1.)
 
 // Depth of nested wxGUIEventLoop::DoRun() calls. 0 = none running; 1 = the
 // top-level main loop; >1 = a nested (quasi-modal) loop.
 static int s_wxRunDepth = 0;
 
-EM_ASYNC_JS(void, wxWasmRunNestedLoop, (), {
-    var stopped = false;
-    var timer = null;
-    var finish = null;   // resolves THIS nested loop exactly once
-
-    var pump = function () {
-        if (stopped) return;
-        timer = setTimeout(async function () {
-            if (stopped) return;
-            // Scheduler builds (docs/features/async/17 S3): plain export call
-            // instead of `await ccall(...,{async:true})` — the #13302
-            // boundary. See startModal for the full rationale.
-            if (globalThis.__wxSchedulerInstalled) {
-                try {
-                    Module['_ProcessEvents']();
-                } catch (e) {
-                    console.error('[wxWasm] nested loop pump error - exiting nested loop: ' + e);
-                    if (finish) finish();
-                    return;
-                }
-                if (!stopped) pump();
-                return;
-            }
-            try {
-                await ccall('ProcessEvents', 'void', [], [], { async: true });
-            } catch (e) {
-                // The pump must NEVER stop without resolving: an unresolved
-                // promise leaves the nested DoRun (and the whole quasi-modal
-                // C++ stack under it) parked forever — a silent freeze. Exit
-                // the nested loop instead, loudly.
-                console.error('[wxWasm] nested loop pump error - exiting nested loop: ' + e);
-                if (finish) finish();
-                return;
-            }
-            if (!stopped) pump();
-        }, 17);
-    };
-
-    Module._wxNestedLoopExit = Module._wxNestedLoopExit || [];
-
-    await new Promise(function (resolve) {
-        finish = function () {
-            if (stopped) return;
-            stopped = true;
-            if (timer !== null) { clearTimeout(timer); timer = null; }
-            // Self-exit paths must remove our own entry (we may not be top of
-            // the stack if an inner loop is open above us).
-            var idx = Module._wxNestedLoopExit.indexOf(finish);
-            if (idx !== -1) Module._wxNestedLoopExit.splice(idx, 1);
-            resolve();
-        };
-        Module._wxNestedLoopExit.push(finish);
-        pump();
-    });
-});
-
 EM_JS(void, wxWasmExitNestedLoop, (), {
-    // Scheduler builds: the nested loop is a registered wait (doc 17 S4).
-    if (globalThis.__wxSchedulerInstalled) {
-        globalThis.__wxScheduler.resolveTopWait('nested', 0);
-        return;
-    }
-    var stack = Module._wxNestedLoopExit;
-    if (stack && stack.length) {
-        (stack.pop())();
-    }
+    // The nested loop is a registered wait (doc 17 S4).
+    globalThis.__wxScheduler.resolveTopWait('nested', 0);
 });
 
 // Top-level main loop: yield to the browser for ONE animation frame, then return. It is
@@ -374,17 +312,13 @@ EM_JS(void, wxWasmScheduleProcessEvents, (), {
             // Mirror the DOM handlers' guard: a trap here would otherwise leave
             // the dispatch interlock held by a chain that no longer exists.
             if (Module["_wx_dispatch_abandon"]) Module["_wx_dispatch_abandon"]();
-            // If a quasi-modal's nested loop is open, tear it down exactly as
-            // the nested pump's own catch does. A handler can throw from EITHER
-            // dispatcher, and whichever one catches it, the parked nested DoRun
-            // must be released or it never returns — a silent stall (the
-            // asyncify-races nested_quasi_modal_pump_error case). On scheduler
-            // builds the same containment releases the innermost registered
-            // waits: the nested loop AND the top modal (its legacy pump-error
-            // cancel path no longer exists; 5101 = wxID_CANCEL).
-            var exits = Module["_wxNestedLoopExit"];
-            if (exits && exits.length) (exits.pop())();
-            else if (globalThis.__wxScheduler) {
+            // If a quasi-modal's nested loop is open, tear it down. A throwing
+            // handler must not leave the parked nested DoRun unresolved or it
+            // never returns — a silent stall (the asyncify-races
+            // nested_quasi_modal_pump_error case). The containment releases
+            // the innermost registered waits: the nested loop AND the top
+            // modal (5101 = wxID_CANCEL).
+            if (globalThis.__wxScheduler) {
                 globalThis.__wxScheduler.resolveTopWait('nested', 0);
                 globalThis.__wxScheduler.resolveTopWait('modal', 5101);
             }
@@ -426,7 +360,7 @@ void wxGUIEventLoop::ScheduleExit(int WXUNUSED(rc))
     m_shouldExit = true;
 
     // The top-level loop is a plain while-loop that checks m_shouldExit (above). A nested
-    // (quasi-modal) loop is the Asyncify setTimeout pump — resolve it so its DoRun resumes
+    // (quasi-modal) loop is a registered scheduler wait — resolve it so its DoRun resumes
     // and returns.
     if ( s_wxRunDepth > 1 )
     {

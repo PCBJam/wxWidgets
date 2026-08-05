@@ -13,9 +13,10 @@
 // wxWidgets event loop approach doesn't work in WASM (JavaScript is
 // single-threaded and cannot truly block).
 //
-// ShowModal() and EndModal() use Emscripten Asyncify to suspend the C++ stack,
-// run a JavaScript event loop that processes wxWidgets events via setTimeout,
-// and resume when the dialog is closed.
+// ShowModal() registers a "modal" wait with the injected scheduler shim and
+// Asyncify-suspends the C++ stack on it; EndModal() resolves the innermost
+// registered wait and the stack resumes (docs/features/async/17 S4). The
+// top-level tick is the sole event dispatcher while the modal is open.
 
 // ============================================================================
 // declarations
@@ -182,112 +183,9 @@ bool wxDialog::IsModal() const
 // ----------------------------------------------------------------------------
 // WASM-specific modal implementation using Asyncify
 // ----------------------------------------------------------------------------
-
-// JavaScript function that implements the modal event loop using Asyncify.
-// This function:
-// 1. Starts a setTimeout-based event loop that calls ProcessEvents
-// 2. Returns a Promise that resolves when endModal() is called
-// 3. Asyncify suspends the C++ stack until the Promise resolves
-//
-// Note: When consecutive modals run (e.g. wizard pages), the second modal's
-// asyncify operation starts inside the first modal's doRewind. This is an
-// inherent limitation of Emscripten's asyncify — the errors are non-fatal
-// and both modals complete correctly. The try/catch in the event loop
-// prevents cascading errors after the asyncify state corruption.
-//
-// The setTimeout callback is async because ccall('ProcessEvents', …,
-// {async:true}) returns a Promise whenever ProcessEvents asyncify-suspends
-// (e.g. a tool coroutine yields).  Without `await`, that Promise rejects
-// with the "unwind" sentinel after the callback returns, surfacing as an
-// "Uncaught (in promise) unwind" page error in Chrome; with `await`, the
-// try/catch sees the rejection and stops the loop cleanly.
-EM_ASYNC_JS(int, startModal, (int aCancelCode), {
-    var timer = null;
-    var stopped = false;
-    var tickCount = 0;
-    var finish = null;   // resolves THIS modal exactly once
-
-    var runEventLoop = function () {
-        if (stopped) return;
-        timer = setTimeout(async function () {
-            if (stopped) return;
-            tickCount++;
-            // Scheduler builds (docs/features/async/17 S3): drive ProcessEvents
-            // as a PLAIN export call — never `await ccall(...,{async:true})`.
-            // JS awaiting a suspending export is the Emscripten #13302
-            // corruption boundary (a fiber swap inside the awaited chain
-            // traps); a chain that parks completes via its own wake, and
-            // ProcessEvents is parked-safe (Paint-only) for overlapping ticks.
-            if (globalThis.__wxSchedulerInstalled) {
-                try {
-                    Module['_ProcessEvents']();
-                } catch (e) {
-                    console.error('[wxWasm] modal event pump error - cancelling modal: ' + e +
-                                  '\nSTACK: ' + (e && e.stack));
-                    if (finish) finish(aCancelCode);
-                    return;
-                }
-                if (!stopped) runEventLoop();
-                return;
-            }
-            try {
-                await ccall('ProcessEvents', 'void', [], [], { async: true });
-            } catch (e) {
-                // The pump must NEVER stop without resolving: a stopped pump
-                // with an unresolved promise leaves this ShowModal parked
-                // forever (silent stall). Cancel the modal instead, loudly.
-                console.error('[wxWasm] modal event pump error - cancelling modal: ' + e +
-                              '\nSTACK: ' + (e && e.stack));
-                if (finish) finish(aCancelCode);
-                return;
-            }
-            if (!stopped) runEventLoop();
-        }, 17);
-    };
-
-    // EndModal resolves the INNERMOST live modal (LIFO), matching wx modal
-    // semantics. The previous single-slot resolver (Module._endModal = fn,
-    // delete after use) lost the middle resolver with 3+ nested modals: its
-    // EndModal resolved nothing and its ShowModal parked forever.
-    Module._wxModalResolvers = Module._wxModalResolvers || [];
-    if (typeof Module._endModal !== 'function') {
-        Module._endModal = function(code) {
-            var stack = Module._wxModalResolvers;
-            if (stack && stack.length) {
-                (stack.pop())(code);
-            } else {
-                Module._pendingModalResult = code;
-            }
-        };
-    }
-
-    // EndModal fired before this loop started (stored as pending): consume it.
-    if (Module._pendingModalResult !== undefined) {
-        var pending = Module._pendingModalResult;
-        delete Module._pendingModalResult;
-        return pending;
-    }
-
-    const result = await new Promise((resolve) => {
-        finish = function(code) {
-            if (stopped) return;   // resolve exactly once
-            stopped = true;
-            if (timer !== null) {
-                clearTimeout(timer);
-                timer = null;
-            }
-            // Self-cancel paths must remove our own entry (we may not be top
-            // of the stack if an inner modal is open above us).
-            var idx = Module._wxModalResolvers.indexOf(finish);
-            if (idx !== -1) Module._wxModalResolvers.splice(idx, 1);
-            resolve(code);
-        };
-        Module._wxModalResolvers.push(finish);
-        runEventLoop();
-    });
-
-    return result;
-});
+// (The legacy startModal event pump and its Module._wxModalResolvers /
+// _endModal / _pendingModalResult machinery were deleted at doc 20 D-1: the
+// modal is a registered scheduler wait, and no per-modal pump exists.)
 
 int wxDialog::ShowModal()
 {

@@ -93,17 +93,13 @@ void TimerCallbackFunc::Run()
 
     if (!IsCanceled() && wxWasmDispatchParked())
     {
-        // Another dispatch chain is Asyncify-parked mid-handler; Notify()
-        // would run the timer handler over its half-mutated widget state.
-        // Retry shortly instead - ScheduleNextInterval()'s deadline
-        // bookkeeping keeps periodic timers on cadence afterwards.
-
-        // Diagnostic: how LONG this retry loop spins is a direct measure of the
-        // window in which the load-time trap occurs (a board open parks for the
-        // whole inline footprint-library preload, and the GAL refresh timer
-        // re-arms every 100ms throughout). Reported per callback at escalating
-        // thresholds, so a normal short park stays silent and a multi-second one
-        // is impossible to miss. ~59 retries/second at 17ms.
+        // TRIPWIRE (should never fire): the mailbox only delivers when the
+        // dispatch interlock is free, so Run() cannot be entered parked via
+        // the mailbox lane. If it fires anyway, re-queue rather than run the
+        // handler over the parked chain's half-mutated widget state -
+        // ScheduleNextInterval()'s deadline bookkeeping keeps periodic
+        // timers on cadence afterwards. Reported at escalating thresholds
+        // (~59 retries/second at 17ms).
         ++m_parkRetries;
         if (m_parkRetries == 60 || m_parkRetries == 300 || m_parkRetries == 1200 ||
             (m_parkRetries > 1200 && m_parkRetries % 1200 == 0))
@@ -112,7 +108,7 @@ void TimerCallbackFunc::Run()
                    "- a dispatch chain has been parked this whole time\n",
                    m_parkRetries, (m_parkRetries * 17) / 1000, wxWasmDispatchDepth);
         }
-        emscripten_async_call(TimerCallback, this, 17);
+        wxWasmMailboxEnqueueAfter(TimerCallback, this, 17);
         return;
     }
 

@@ -714,11 +714,12 @@ void wxWindowWasm::DestroyScrollbarDom()
 
 #if wxUSE_MENUS
 
-// Shows the DOM context menu and BLOCKS (pumping wx events) until an item is
-// chosen or the menu is dismissed, returning the chosen command id (-1 =
-// cancelled). The whole modal lifetime lives in JS (Module.wxShowContextMenu),
-// mirroring wxDialog::ShowModal's startModal: no C++ object's destructor needs
-// to survive the Asyncify suspension (which is unreliable here).
+// Shows the DOM context menu and BLOCKS until an item is chosen or the menu
+// is dismissed, returning the chosen command id (-1 = cancelled). The whole
+// modal lifetime lives in JS (Module.wxShowContextMenu), mirroring
+// wxDialog::ShowModal: no C++ object's destructor needs to survive the
+// Asyncify suspension (which is unreliable here). No per-popup pump exists —
+// the top-level tick dispatches while this chain is parked (doc 17 S4).
 EM_ASYNC_JS(int, wxDomPopupMenuModal,
             (const char *json, int invokerDomId, int x, int y), {
     return await Module['wxShowContextMenu'](UTF8ToString(json),

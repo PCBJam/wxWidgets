@@ -2042,19 +2042,6 @@ if (typeof navigator !== 'undefined') {
     link.click();
   };
 
-  var endModal = null;
-/*
-  var startModal = async function () {
-    Asyncify.handleAsync(async () => {
-      console.log('startModal');
-      const result = await new Promise((resolve, reject) =>  {
-        endModal = resolve;
-      });
-      console.log('modal result: ' + result);
-    });
-  };
- */
-
   /* wxLocalStorageConfig */
 
   var hasConfigEntry = function (key) {

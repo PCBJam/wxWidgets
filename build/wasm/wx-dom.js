@@ -1054,12 +1054,13 @@
   // ========== Context menu (wxWindow::PopupMenu -> DoPopupMenu) ==========
   //
   // Shows a standalone popup at a viewport point and BLOCKS the synchronous
-  // C++ DoPopupMenu via the same ProcessEvents pump wxDialog::ShowModal uses
-  // (src/wasm/dialog.cpp): the EM_ASYNC_JS wxDomPopupMenuModal in
+  // C++ DoPopupMenu: the EM_ASYNC_JS wxDomPopupMenuModal in
   // src/wasm/window.cpp awaits the returned Promise, which resolves with the
-  // chosen command id (-1 = cancelled). json: the wxMenu serialized by
-  // wxMenu::WasmItemsToJson(). x/y in viewport px, or -1 (wxDefaultCoord) to
-  // use the last pointer position (the KiCad canvas right-click case).
+  // chosen command id (-1 = cancelled). The top-level tick keeps dispatching
+  // and painting while the opener's chain is parked. json: the wxMenu
+  // serialized by wxMenu::WasmItemsToJson(). x/y in viewport px, or -1
+  // (wxDefaultCoord) to use the last pointer position (the KiCad canvas
+  // right-click case).
   Module['wxShowContextMenu'] = function (json, invokerDomId, x, y) {
     var items;
     try {
@@ -1142,34 +1143,11 @@
       document.addEventListener('mousedown', onOutside, true);
       document.addEventListener('keydown', onKey, true);
 
-      // Pump wx while the popup is open so the suspended coroutine stack
-      // (DoPopupMenu is called from inside a tool) stays parked and the app
-      // keeps painting. Must NEVER stop without resolving (a pending Promise
-      // would freeze the parked stack) — any error cancels the menu loudly.
-      // Scheduler builds (docs/features/async/17 S4): NO popup pump — the
-      // top-level tick is the sole dispatcher and keeps the app painting
-      // while DoPopupMenu's chain is parked. The menu itself is DOM, its
-      // events dispatch as fresh entries. Legacy builds keep the pump.
-      if (!globalThis.__wxSchedulerInstalled) (function pump() {
-        if (settled) return;
-        setTimeout(function () {
-          if (settled) return;
-          var p;
-          try {
-            p = Module['ccall']('ProcessEvents', 'void', [], [], { async: true });
-          } catch (e) {
-            console.error('[wxWasm] context menu pump error: ' + e);
-            settle(-1);
-            return;
-          }
-          Promise.resolve(p).then(
-            function () { if (!settled) pump(); },
-            function (e) {
-              console.error('[wxWasm] context menu pump error: ' + e);
-              settle(-1);
-            });
-        }, 17);
-      })();
+      // NO popup pump (docs/features/async/17 S4): the top-level tick is the
+      // sole dispatcher and keeps the app painting while DoPopupMenu's chain
+      // is parked. The menu itself is DOM, its events dispatch as fresh
+      // entries. (The legacy per-popup ProcessEvents pump was deleted at
+      // doc 20 D-1.)
     });
   };
 
