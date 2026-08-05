@@ -39,6 +39,8 @@
 #include "wx/evtloop.h"
 #include "wx/modalhook.h"
 #include "wx/wasm/private/dispatch.h"
+#include "wx/wasm/private/mailbox.h"
+#include "wx/wasm/private/yieldwait.h"
 
 #include <emscripten.h>
 #include <cstdio>
@@ -305,25 +307,39 @@ int wxDialog::ShowModal()
         m_parent = parent;
     }
 
+    // Scheduler builds (doc 17 S4): the modal is a registered WAIT begun
+    // BEFORE Show(true) — an EndModal running synchronously inside Show()
+    // resolves the wait early and wxWasmYieldUntil returns immediately, which
+    // retires the legacy _pendingModalResult edge case. No modal pump exists:
+    // the top-level tick is the sole dispatcher (dialogs on the DOM port are
+    // real HTML, so they render without a paint loop even pre-main-loop).
+    const bool schedulerWait = wxWasmMailboxEnabled();
+    int waitToken = -1;
+    if (schedulerWait)
+        waitToken = wxWasmBeginWait("modal");
+
     m_isShowingModal = true;
     Show(true);
 
     // Check if EndModal was called during Show(true)
-    if ( !m_isShowingModal )
+    if ( !m_isShowingModal && !schedulerWait )
     {
         return GetReturnCode();
     }
 
-    // Call the Asyncify-based modal event loop
-    // This suspends the C++ stack until endModal() is called from EndModal()
+    // Suspend the C++ stack until EndModal() resolves it.
     //
     // The opener's dispatch chain parks here for the modal's whole lifetime;
-    // the modal pump is the legitimate dispatcher meanwhile, so zero the
+    // the legitimate dispatcher keeps running meanwhile, so zero the
     // dispatch interlock for the park's duration (manual save/restore:
     // destructors are not reliable across an Asyncify park).
     const int savedDispatchDepth = wxWasmDispatchDepth;
     wxWasmDispatchDepth = 0;
-    int result = startModal(wxID_CANCEL);
+    int result;
+    if (schedulerWait)
+        result = wxWasmYieldUntil(waitToken);
+    else
+        result = startModal(wxID_CANCEL);
     wxWasmDispatchRestore(savedDispatchDepth, "ShowModal");
 
     return result;
@@ -350,16 +366,26 @@ void wxDialog::EndModal(int retCode)
 
     m_isShowingModal = false;
 
-    // Resolve the modal promise via Module._endModal callback.
-    // If _endModal isn't set yet (EndModal called before startModal's event
-    // loop started), store the result as pending so ShowModal can pick it up.
-    EM_ASM({
-        if (typeof Module._endModal === 'function') {
-            Module._endModal($0);
-        } else {
-            Module._pendingModalResult = $0;
-        }
-    }, retCode);
+    // Scheduler builds: resolve the innermost registered modal wait (wx LIFO
+    // semantics — same contract the legacy resolver stack implemented). A
+    // resolve racing ahead of ShowModal's park pre-resolves the promise.
+    if (wxWasmMailboxEnabled())
+    {
+        wxWasmResolveTopWait("modal", retCode);
+    }
+    else
+    {
+        // Resolve the modal promise via Module._endModal callback.
+        // If _endModal isn't set yet (EndModal called before startModal's event
+        // loop started), store the result as pending so ShowModal can pick it up.
+        EM_ASM({
+            if (typeof Module._endModal === 'function') {
+                Module._endModal($0);
+            } else {
+                Module._pendingModalResult = $0;
+            }
+        }, retCode);
+    }
 
     Show(false);
 

@@ -13,6 +13,7 @@
 #include "wx/toplevel.h"
 #include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/mailbox.h"
+#include "wx/wasm/private/yieldwait.h"
 
 #include <emscripten.h>
 #include <stdio.h>   // printf: diagnostics land in the browser console
@@ -145,6 +146,50 @@ extern "C" {
 
 }  // extern "C"
 
+// ----------------------------------------------------------------------------
+// Scheduler-build token waits (wx/wasm/private/yieldwait.h; doc 17 S4).
+// The wait registry lives in the injected scheduler shim; these are thin
+// bridges. wxWasmYieldUntil is the ONE park primitive the migrated waits
+// share — a handleSleep the S2 core manages like any other (deferred wakes,
+// registry, recorder).
+// ----------------------------------------------------------------------------
+
+EM_JS(int, wxWasmBeginWaitJs, (const char *kind), {
+    return globalThis.__wxScheduler.beginWait(UTF8ToString(kind));
+});
+
+EM_ASYNC_JS(int, wxWasmYieldUntilJs, (int token), {
+    return await globalThis.__wxScheduler.waitPromise(token);
+});
+
+EM_JS(void, wxWasmResolveWaitJs, (int token, int result), {
+    globalThis.__wxScheduler.resolveWait(token, result);
+});
+
+EM_JS(void, wxWasmResolveTopWaitJs, (const char *kind, int result), {
+    globalThis.__wxScheduler.resolveTopWait(UTF8ToString(kind), result);
+});
+
+extern "C" int wxWasmBeginWait(const char *kind)
+{
+    return wxWasmBeginWaitJs(kind);
+}
+
+extern "C" int wxWasmYieldUntil(int token)
+{
+    return wxWasmYieldUntilJs(token);
+}
+
+extern "C" void wxWasmResolveWait(int token, int result)
+{
+    wxWasmResolveWaitJs(token, result);
+}
+
+extern "C" void wxWasmResolveTopWait(const char *kind, int result)
+{
+    wxWasmResolveTopWaitJs(kind, result);
+}
+
 // Ungated dispatch body: used by the pump once the interlock check passed and
 // by wxGUIEventLoop::Dispatch()/wxYield, which deliberately dispatch NESTED
 // inside a running handler chain (the interlock only forbids interleaving
@@ -275,6 +320,11 @@ EM_ASYNC_JS(void, wxWasmRunNestedLoop, (), {
 });
 
 EM_JS(void, wxWasmExitNestedLoop, (), {
+    // Scheduler builds: the nested loop is a registered wait (doc 17 S4).
+    if (globalThis.__wxSchedulerInstalled) {
+        globalThis.__wxScheduler.resolveTopWait('nested', 0);
+        return;
+    }
     var stack = Module._wxNestedLoopExit;
     if (stack && stack.length) {
         (stack.pop())();
@@ -314,9 +364,16 @@ EM_JS(void, wxWasmScheduleProcessEvents, (), {
             // the nested pump's own catch does. A handler can throw from EITHER
             // dispatcher, and whichever one catches it, the parked nested DoRun
             // must be released or it never returns — a silent stall (the
-            // asyncify-races nested_quasi_modal_pump_error case).
+            // asyncify-races nested_quasi_modal_pump_error case). On scheduler
+            // builds the same containment releases the innermost registered
+            // waits: the nested loop AND the top modal (its legacy pump-error
+            // cancel path no longer exists; 5101 = wxID_CANCEL).
             var exits = Module["_wxNestedLoopExit"];
             if (exits && exits.length) (exits.pop())();
+            else if (globalThis.__wxScheduler) {
+                globalThis.__wxScheduler.resolveTopWait('nested', 0);
+                globalThis.__wxScheduler.resolveTopWait('modal', 5101);
+            }
             throw e;
         }
     }, 0);
@@ -409,12 +466,26 @@ int wxGUIEventLoop::DoRun()
     if (s_wxRunDepth++ > 0)
     {
         // The opener's dispatch chain parks here for the nested loop's whole
-        // lifetime; the nested pump is the legitimate dispatcher meanwhile, so
-        // zero the interlock for the park's duration (manual save/restore:
-        // destructors are not reliable across an Asyncify park).
+        // lifetime; the interlock is zeroed for the park's duration (manual
+        // save/restore: destructors are not reliable across an Asyncify park)
+        // so the legitimate dispatcher keeps running meanwhile.
         const int savedDispatchDepth = wxWasmDispatchDepth;
         wxWasmDispatchDepth = 0;
-        wxWasmRunNestedLoop();   // suspends here until ScheduleExit()/Exit()
+        if (wxWasmMailboxEnabled())
+        {
+            // Scheduler builds (doc 17 S4): the nested loop is a registered
+            // WAIT, not a pump. The top-level tick — which runs at ANY DoRun
+            // depth on scheduler builds (see the while-loop below) — is the
+            // sole dispatcher; ScheduleExit()/Exit() resolves the innermost
+            // "nested" wait and this stack resumes. wxWasmRunNestedLoop and
+            // its _wxNestedLoopExit resolver stack are legacy-only.
+            const int token = wxWasmBeginWait("nested");
+            wxWasmYieldUntil(token);   // suspends until resolved
+        }
+        else
+        {
+            wxWasmRunNestedLoop();   // suspends here until ScheduleExit()/Exit()
+        }
         wxWasmDispatchRestore(savedDispatchDepth, "NestedLoop");
         --s_wxRunDepth;
         return 0;
@@ -453,7 +524,13 @@ int wxGUIEventLoop::DoRun()
         // for the duration, so nothing else would catch them). The nested pump
         // is the legitimate dispatcher meanwhile; this loop just yields until it
         // exits.
-        if (s_wxRunDepth <= 1)
+        // Scheduler builds: the top-level tick is the ONLY dispatcher, at any
+        // depth — nested loops are waits, not pumps (doc 17 S4), so gating on
+        // depth would leave a quasi-modal with no dispatcher at all. The June
+        // double-driver hazard (§6e) required TWO pumps re-driving one parked
+        // context under awaited semantics; with a single plain-call tick and
+        // the scheduler's consume-once/deferred-wake guards it is closed.
+        if (s_wxRunDepth <= 1 || wxWasmMailboxEnabled())
         {
             wxWasmScheduleProcessEvents();
         }

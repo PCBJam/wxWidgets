@@ -1146,24 +1146,14 @@
       // (DoPopupMenu is called from inside a tool) stays parked and the app
       // keeps painting. Must NEVER stop without resolving (a pending Promise
       // would freeze the parked stack) — any error cancels the menu loudly.
-      (function pump() {
+      // Scheduler builds (docs/features/async/17 S4): NO popup pump — the
+      // top-level tick is the sole dispatcher and keeps the app painting
+      // while DoPopupMenu's chain is parked. The menu itself is DOM, its
+      // events dispatch as fresh entries. Legacy builds keep the pump.
+      if (!globalThis.__wxSchedulerInstalled) (function pump() {
         if (settled) return;
         setTimeout(function () {
           if (settled) return;
-          // Scheduler builds (docs/features/async/17 S3): plain export call
-          // instead of `await ccall(...,{async:true})` — the #13302 boundary.
-          // See wxwidgets/src/wasm/dialog.cpp startModal for the rationale.
-          if (globalThis.__wxSchedulerInstalled) {
-            try {
-              Module['_ProcessEvents']();
-            } catch (e) {
-              console.error('[wxWasm] context menu pump error: ' + e);
-              settle(-1);
-              return;
-            }
-            if (!settled) pump();
-            return;
-          }
           var p;
           try {
             p = Module['ccall']('ProcessEvents', 'void', [], [], { async: true });
