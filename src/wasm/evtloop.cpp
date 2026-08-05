@@ -107,6 +107,12 @@ extern "C" void wxWasmMailboxDeliver()
     if (!wxWasmMailboxEnabled())
         return;
 
+    // S6 teardown parity with ProcessEvents: after the main loop exits the
+    // app object is being (or has been) destroyed — a queued timer message
+    // delivered now calls into freed timer state.
+    if (!wxTheApp)
+        return;
+
     // Snapshot the count: a handler that re-arms its timer with delay 0 must
     // not extend this drain unboundedly.
     int budget = wxWasmMailboxJsPending();
@@ -537,6 +543,15 @@ int wxGUIEventLoop::DoRun()
         wxWasmYieldToBrowser();
     }
     --s_wxRunDepth;
+
+    // S6 (doc 17): the main loop has ended — wx cleanup follows. Latch the
+    // scheduler DEAD so already-queued ticks, messages, mutators, and wakes
+    // are dropped/rejected loudly instead of delivering into teardown. Any
+    // stranded work is beaconed ("shutdown ... stranded:"), which is the
+    // visibility the plan's lifetime step asks for.
+    EM_ASM({
+        if (globalThis.__wxScheduler) globalThis.__wxScheduler.shutdown("main loop exited");
+    });
 
     return 0;
 }
