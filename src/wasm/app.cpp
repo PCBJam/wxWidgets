@@ -20,6 +20,7 @@
 
 #include "wx/private/eventloopsourcesmanager.h"
 #include "wx/wasm/private/dispatch.h"
+#include "wx/wasm/private/mailbox.h"
 #include "wx/wasm/private/display.h"
 #include "wx/wasm/private/keyboard.h"
 #include "wx/wasm/private/mouse.h"
@@ -440,13 +441,38 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
     }
 }
 
+// Mailbox replay for a wheel tick that arrived while a dispatch chain was
+// parked (docs/features/async/17 S1). Owns the heap copy; re-enters through
+// the public handler so the parked re-check and the interlock guard apply.
+static void WheelReplay(void *p)
+{
+    wxMouseEvent *event = static_cast<wxMouseEvent *>(p);
+    if (wxTheApp)
+        wxTheApp->HandleMouseWheelEvent(event);
+    delete event;
+}
+
 void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
 {
-    // Another dispatch chain is Asyncify-parked mid-handler: drop the wheel
-    // tick rather than interleave with its half-mutated widget state (the
-    // user's next tick after resume scrolls normally).
     if (wxWasmDispatchParked())
+    {
+        // Scheduler builds: queue the tick for delivery when the interlock
+        // frees instead of dropping it — every tick the user made scrolls,
+        // just later (a long park replays them as a burst, which is the
+        // deliver-not-drop contract). The wheel resolves its target window
+        // from the CURRENT pointer position at delivery, matching what a
+        // fresh tick after resume would do.
+        if (wxWasmMailboxEnabled())
+        {
+            wxWasmMailboxEnqueueAfter(WheelReplay, new wxMouseEvent(*event), 0);
+            return;
+        }
+
+        // Legacy: drop the wheel tick rather than interleave with the parked
+        // chain's half-mutated widget state (the user's next tick after
+        // resume scrolls normally).
         return;
+    }
 
     wxWasmDispatchGuard dispatchGuard;
 
