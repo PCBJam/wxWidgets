@@ -456,21 +456,13 @@ void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
 {
     if (wxWasmDispatchParked())
     {
-        // Scheduler builds: queue the tick for delivery when the interlock
-        // frees instead of dropping it — every tick the user made scrolls,
-        // just later (a long park replays them as a burst, which is the
-        // deliver-not-drop contract). The wheel resolves its target window
-        // from the CURRENT pointer position at delivery, matching what a
-        // fresh tick after resume would do.
-        if (wxWasmMailboxEnabled())
-        {
-            wxWasmMailboxEnqueueAfter(WheelReplay, new wxMouseEvent(*event), 0);
-            return;
-        }
-
-        // Legacy: drop the wheel tick rather than interleave with the parked
-        // chain's half-mutated widget state (the user's next tick after
-        // resume scrolls normally).
+        // Queue the tick for delivery when the interlock frees instead of
+        // dropping it — every tick the user made scrolls, just later (a long
+        // park replays them as a burst, which is the deliver-not-drop
+        // contract). The wheel resolves its target window from the CURRENT
+        // pointer position at delivery, matching what a fresh tick after
+        // resume would do.
+        wxWasmMailboxEnqueueAfter(WheelReplay, new wxMouseEvent(*event), 0);
         return;
     }
 

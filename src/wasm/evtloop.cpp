@@ -56,11 +56,12 @@ void wxWasmDispatchRestore(int saved, const char *site)
 }
 
 // ----------------------------------------------------------------------------
-// Scheduler-build mailbox (wx/wasm/private/mailbox.h; pcbjam docs/features/
+// Scheduler mailbox (wx/wasm/private/mailbox.h; pcbjam docs/features/
 // async/17 S1). The queue itself lives in the injected asyncify-scheduler.js
-// shim — this side only probes for it, pushes deferred callbacks, and pulls
-// due messages from the pump's clean stack. Every EM_JS below tolerates the
-// shim being absent (legacy build): enabled() reports 0 and nothing else runs.
+// shim — this side pushes deferred callbacks and pulls due messages from the
+// pump's clean stack. The shim is the ONLY runtime (the legacy opt-out was
+// deleted at doc 20 D-1): a glue without it is a broken build, caught loudly
+// by wxWasmSchedulerAssertInstalled() at main-loop entry.
 // ----------------------------------------------------------------------------
 
 EM_JS(int, wxWasmMailboxJsEnabled, (), {
@@ -69,6 +70,25 @@ EM_JS(int, wxWasmMailboxJsEnabled, (), {
             globalThis.__wxScheduler &&
             globalThis.__wxScheduler.mailbox) ? 1 : 0;
 });
+
+// The scheduler shim is injected into every glue by
+// scripts/common/inject-dyncall-shims.sh; running without it means the build
+// pipeline was skipped and every park/wait/timer lane below would die in
+// obscure ways. Fail fast and name the culprit instead.
+static void wxWasmSchedulerAssertInstalled()
+{
+    static bool s_checked = false;
+    if (s_checked)
+        return;
+    s_checked = true;
+    if (!wxWasmMailboxJsEnabled())
+    {
+        printf("[wx-scheduler] FATAL: asyncify-scheduler shim not present in "
+               "this glue - run scripts/common/inject-dyncall-shims.sh "
+               "(doc 20 D-1: the legacy runtime is gone)\n");
+        abort();
+    }
+}
 
 EM_JS(void, wxWasmMailboxJsEnqueue, (void *fn, void *arg, int ms), {
     globalThis.__wxScheduler.enqueueAfter(fn, arg, ms);
@@ -87,15 +107,6 @@ EM_JS(int, wxWasmMailboxJsPop, (void **fnOut, void **argOut), {
     return 1;
 });
 
-extern "C" int wxWasmMailboxEnabled()
-{
-    // The shim runs at glue load, before any wx code, so one probe suffices.
-    static int s_enabled = -1;
-    if (s_enabled < 0)
-        s_enabled = wxWasmMailboxJsEnabled();
-    return s_enabled;
-}
-
 extern "C" void wxWasmMailboxEnqueueAfter(void (*fn)(void *), void *arg,
                                           int millisecs)
 {
@@ -104,9 +115,6 @@ extern "C" void wxWasmMailboxEnqueueAfter(void (*fn)(void *), void *arg,
 
 extern "C" void wxWasmMailboxDeliver()
 {
-    if (!wxWasmMailboxEnabled())
-        return;
-
     // S6 teardown parity with ProcessEvents: after the main loop exits the
     // app object is being (or has been) destroyed — a queued timer message
     // delivered now calls into freed timer state.
@@ -466,6 +474,8 @@ int wxGUIEventLoop::DoRun()
 {
     wxASSERT_MSG(IsOk(), wxT("invalid event loop"));
 
+    wxWasmSchedulerAssertInstalled();
+
     // A nested loop (a quasi-modal dialog opened from a tool) pumps via Asyncify; the
     // first (top-level) DoRun registers the rAF main loop then parks. Neither throws
     // (see the header comment and docs/features/wasm-exceptions/09).
@@ -477,21 +487,12 @@ int wxGUIEventLoop::DoRun()
         // so the legitimate dispatcher keeps running meanwhile.
         const int savedDispatchDepth = wxWasmDispatchDepth;
         wxWasmDispatchDepth = 0;
-        if (wxWasmMailboxEnabled())
-        {
-            // Scheduler builds (doc 17 S4): the nested loop is a registered
-            // WAIT, not a pump. The top-level tick — which runs at ANY DoRun
-            // depth on scheduler builds (see the while-loop below) — is the
-            // sole dispatcher; ScheduleExit()/Exit() resolves the innermost
-            // "nested" wait and this stack resumes. wxWasmRunNestedLoop and
-            // its _wxNestedLoopExit resolver stack are legacy-only.
-            const int token = wxWasmBeginWait("nested");
-            wxWasmYieldUntil(token);   // suspends until resolved
-        }
-        else
-        {
-            wxWasmRunNestedLoop();   // suspends here until ScheduleExit()/Exit()
-        }
+        // The nested loop is a registered WAIT, not a pump (doc 17 S4). The
+        // top-level tick — which runs at ANY DoRun depth (see the while-loop
+        // below) — is the sole dispatcher; ScheduleExit()/Exit() resolves the
+        // innermost "nested" wait and this stack resumes.
+        const int token = wxWasmBeginWait("nested");
+        wxWasmYieldUntil(token);   // suspends until resolved
         wxWasmDispatchRestore(savedDispatchDepth, "NestedLoop");
         --s_wxRunDepth;
         return 0;
@@ -522,24 +523,13 @@ int wxGUIEventLoop::DoRun()
         // tool coroutine resumed by them never swaps main out inside main's own
         // wake continuation.
         //
-        // ...but ONLY while this is the only loop running. Dispatching inline
-        // used to park this loop inside ProcessEvents for a quasi-modal's whole
-        // lifetime, which stopped it pumping; scheduling returns immediately, so
-        // without this gate the loop would keep queueing dispatches that run
-        // CONCURRENTLY with the nested pump (which zeroes the dispatch interlock
-        // for the duration, so nothing else would catch them). The nested pump
-        // is the legitimate dispatcher meanwhile; this loop just yields until it
-        // exits.
-        // Scheduler builds: the top-level tick is the ONLY dispatcher, at any
-        // depth — nested loops are waits, not pumps (doc 17 S4), so gating on
-        // depth would leave a quasi-modal with no dispatcher at all. The June
-        // double-driver hazard (§6e) required TWO pumps re-driving one parked
-        // context under awaited semantics; with a single plain-call tick and
-        // the scheduler's consume-once/deferred-wake guards it is closed.
-        if (s_wxRunDepth <= 1 || wxWasmMailboxEnabled())
-        {
-            wxWasmScheduleProcessEvents();
-        }
+        // Unconditional at any DoRun depth: nested loops are waits, not pumps
+        // (doc 17 S4), so gating on depth would leave a quasi-modal with no
+        // dispatcher at all. The June double-driver hazard (§6e) required TWO
+        // pumps re-driving one parked context under awaited semantics; with a
+        // single plain-call tick and the scheduler's consume-once/deferred-wake
+        // guards it is closed.
+        wxWasmScheduleProcessEvents();
         wxWasmYieldToBrowser();
     }
     --s_wxRunDepth;

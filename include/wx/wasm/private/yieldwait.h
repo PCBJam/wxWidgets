@@ -9,8 +9,8 @@
 #define _WX_WASM_PRIVATE_YIELDWAIT_H_
 
 // The doc-13 §2 yield API (pcbjam docs/features/async/17, step S4), backed by
-// the injected scheduler's wait registry. Only meaningful on WX_SCHEDULER=1
-// builds (probe wxWasmMailboxEnabled() first — same marker). The contract:
+// the injected scheduler's wait registry (the shim is the only runtime since
+// doc 20 D-1 — no probe needed). The contract:
 //
 //   int token = wxWasmBeginWait("modal");   // BEFORE showing/parking:
 //                                           // a resolve racing ahead of the
