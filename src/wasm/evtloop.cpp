@@ -227,6 +227,20 @@ EM_ASYNC_JS(void, wxWasmRunNestedLoop, (), {
         if (stopped) return;
         timer = setTimeout(async function () {
             if (stopped) return;
+            // Scheduler builds (docs/features/async/17 S3): plain export call
+            // instead of `await ccall(...,{async:true})` — the #13302
+            // boundary. See startModal for the full rationale.
+            if (globalThis.__wxSchedulerInstalled) {
+                try {
+                    Module['_ProcessEvents']();
+                } catch (e) {
+                    console.error('[wxWasm] nested loop pump error - exiting nested loop: ' + e);
+                    if (finish) finish();
+                    return;
+                }
+                if (!stopped) pump();
+                return;
+            }
             try {
                 await ccall('ProcessEvents', 'void', [], [], { async: true });
             } catch (e) {

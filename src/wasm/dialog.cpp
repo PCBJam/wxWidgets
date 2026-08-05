@@ -210,6 +210,24 @@ EM_ASYNC_JS(int, startModal, (int aCancelCode), {
         timer = setTimeout(async function () {
             if (stopped) return;
             tickCount++;
+            // Scheduler builds (docs/features/async/17 S3): drive ProcessEvents
+            // as a PLAIN export call — never `await ccall(...,{async:true})`.
+            // JS awaiting a suspending export is the Emscripten #13302
+            // corruption boundary (a fiber swap inside the awaited chain
+            // traps); a chain that parks completes via its own wake, and
+            // ProcessEvents is parked-safe (Paint-only) for overlapping ticks.
+            if (globalThis.__wxSchedulerInstalled) {
+                try {
+                    Module['_ProcessEvents']();
+                } catch (e) {
+                    console.error('[wxWasm] modal event pump error - cancelling modal: ' + e +
+                                  '\nSTACK: ' + (e && e.stack));
+                    if (finish) finish(aCancelCode);
+                    return;
+                }
+                if (!stopped) runEventLoop();
+                return;
+            }
             try {
                 await ccall('ProcessEvents', 'void', [], [], { async: true });
             } catch (e) {

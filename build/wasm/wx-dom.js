@@ -1150,6 +1150,20 @@
         if (settled) return;
         setTimeout(function () {
           if (settled) return;
+          // Scheduler builds (docs/features/async/17 S3): plain export call
+          // instead of `await ccall(...,{async:true})` — the #13302 boundary.
+          // See wxwidgets/src/wasm/dialog.cpp startModal for the rationale.
+          if (globalThis.__wxSchedulerInstalled) {
+            try {
+              Module['_ProcessEvents']();
+            } catch (e) {
+              console.error('[wxWasm] context menu pump error: ' + e);
+              settle(-1);
+              return;
+            }
+            if (!settled) pump();
+            return;
+          }
           var p;
           try {
             p = Module['ccall']('ProcessEvents', 'void', [], [], { async: true });
