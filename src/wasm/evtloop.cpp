@@ -12,6 +12,7 @@
 #include "wx/evtloop.h"
 #include "wx/toplevel.h"
 #include "wx/wasm/private/dispatch.h"
+#include "wx/wasm/private/mailbox.h"
 
 #include <emscripten.h>
 #include <stdio.h>   // printf: diagnostics land in the browser console
@@ -52,6 +53,97 @@ void wxWasmDispatchRestore(int saved, const char *site)
                wxWasmDispatchDepth, site);
     }
 }
+
+// ----------------------------------------------------------------------------
+// Scheduler-build mailbox (wx/wasm/private/mailbox.h; pcbjam docs/features/
+// async/17 S1). The queue itself lives in the injected asyncify-scheduler.js
+// shim — this side only probes for it, pushes deferred callbacks, and pulls
+// due messages from the pump's clean stack. Every EM_JS below tolerates the
+// shim being absent (legacy build): enabled() reports 0 and nothing else runs.
+// ----------------------------------------------------------------------------
+
+EM_JS(int, wxWasmMailboxJsEnabled, (), {
+    return (typeof globalThis !== "undefined" &&
+            globalThis.__wxSchedulerInstalled &&
+            globalThis.__wxScheduler &&
+            globalThis.__wxScheduler.mailbox) ? 1 : 0;
+});
+
+EM_JS(void, wxWasmMailboxJsEnqueue, (void *fn, void *arg, int ms), {
+    globalThis.__wxScheduler.enqueueAfter(fn, arg, ms);
+});
+
+EM_JS(int, wxWasmMailboxJsPending, (), {
+    return globalThis.__wxScheduler.mailbox.length;
+});
+
+// Pop the oldest due message into *fnOut/*argOut; 0 if the queue is empty.
+EM_JS(int, wxWasmMailboxJsPop, (void **fnOut, void **argOut), {
+    var m = globalThis.__wxScheduler.pop();
+    if (!m) return 0;
+    HEAPU32[fnOut >> 2] = m.fn;
+    HEAPU32[argOut >> 2] = m.arg;
+    return 1;
+});
+
+extern "C" int wxWasmMailboxEnabled()
+{
+    // The shim runs at glue load, before any wx code, so one probe suffices.
+    static int s_enabled = -1;
+    if (s_enabled < 0)
+        s_enabled = wxWasmMailboxJsEnabled();
+    return s_enabled;
+}
+
+extern "C" void wxWasmMailboxEnqueueAfter(void (*fn)(void *), void *arg,
+                                          int millisecs)
+{
+    wxWasmMailboxJsEnqueue(reinterpret_cast<void *>(fn), arg, millisecs);
+}
+
+extern "C" void wxWasmMailboxDeliver()
+{
+    if (!wxWasmMailboxEnabled())
+        return;
+
+    // Snapshot the count: a handler that re-arms its timer with delay 0 must
+    // not extend this drain unboundedly.
+    int budget = wxWasmMailboxJsPending();
+    while (budget-- > 0)
+    {
+        // A delivered handler may itself park (a lib fetch inside a timer
+        // handler): its chain then holds the interlock, and delivering more
+        // messages would land them on that parked chain — exactly the
+        // collision the mailbox exists to prevent. Leave the remainder
+        // queued; the JS delivery tick retries after the resume.
+        if (wxWasmDispatchParked())
+            break;
+
+        void *fn = NULL;
+        void *arg = NULL;
+        if (!wxWasmMailboxJsPop(&fn, &arg))
+            break;
+        reinterpret_cast<void (*)(void *)>(fn)(arg);
+    }
+}
+
+extern "C" {
+
+    // The mailbox's own dispatch entry (docs/features/async/17 S1). Called by
+    // the shim's self-armed delivery tick as a PLAIN export call — never from
+    // inside a pump's `await ccall('ProcessEvents')`. Delivering from the
+    // pump's awaited export put a fiber swap inside the JS-awaits-a-
+    // suspending-export boundary (Emscripten #13302) and trapped `unreachable`
+    // in the coroutine-nested battery (fiber_create_run_destroy_inside_modal).
+    // A fresh sync entry is exactly the context legacy timer callbacks always
+    // ran in — the mailbox changes WHEN a message runs (queued, in order,
+    // interlock free), not the kind of stack it runs on.
+    void EMSCRIPTEN_KEEPALIVE wxWasmMailboxTick()
+    {
+        wxWasmMailboxDeliver();
+    }
+
+}  // extern "C"
 
 // Ungated dispatch body: used by the pump once the interlock check passed and
 // by wxGUIEventLoop::Dispatch()/wxYield, which deliberately dispatch NESTED
