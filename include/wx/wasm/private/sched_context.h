@@ -156,6 +156,57 @@ constexpr size_t DEFAULT_ASYNCIFY_BYTES = 128 * 1024;
 // production runs on contexts yet, and the test app's worst battery uses ~8.
 constexpr size_t MAX_LIVE_CONTEXTS = 64;
 
+/**
+ * 16-byte-aligned buffer.
+ *
+ * NOT a nicety: a fiber's C stack must be 16-aligned or EM_ASM breaks. Its
+ * argument buffer is allocated ON the running stack and the glue asserts
+ * `buf % 16 == 0` ("the input buffer is allocated on the stack, so it must be
+ * stack-aligned"). Emscripten's malloc is 8-byte aligned, so a std::vector<char>
+ * stack lands on an 8-mod-16 address about half the time and EVERY EM_ASM on
+ * that context traps with an unreachable inside readEmAsmArgs — which is
+ * exactly how this was found (D2b, 107 wx failures). libcontext has always
+ * carried `alignas(16)` on its buffers for the same reason.
+ */
+struct AlignedBuffer
+{
+    void* raw = nullptr;
+    char* base = nullptr;
+    size_t size = 0;
+
+    void allocate( size_t aBytes )
+    {
+        release();
+        // Round the size up too: the fiber's stack BASE is base+size, and a
+        // misaligned top misaligns every frame below it.
+        size = ( aBytes + 15u ) & ~size_t( 15 );
+        raw = std::calloc( 1, size + 16 );
+
+        if( !raw )
+        {
+            size = 0;
+            return;
+        }
+
+        base = reinterpret_cast<char*>(
+                ( reinterpret_cast<uintptr_t>( raw ) + 15u ) & ~uintptr_t( 15 ) );
+    }
+
+    void release()
+    {
+        std::free( raw );
+        raw = nullptr;
+        base = nullptr;
+        size = 0;
+    }
+
+    ~AlignedBuffer() { release(); }
+
+    AlignedBuffer() = default;
+    AlignedBuffer( const AlignedBuffer& ) = delete;
+    AlignedBuffer& operator=( const AlignedBuffer& ) = delete;
+};
+
 struct Context
 {
     ContextId id = 0;
@@ -165,8 +216,8 @@ struct Context
     int result = 0;
 
     emscripten_fiber_t fiber {};
-    std::vector<char> c_stack;
-    std::vector<char> asyncify_stack;
+    AlignedBuffer c_stack;
+    AlignedBuffer asyncify_stack;
 
     void ( *entry )( void* ) = nullptr;
     void* arg = nullptr;
@@ -186,7 +237,7 @@ struct Registry
     bool transition = false;             // at most one swap in flight
     bool scheduler_initialized = false;
     emscripten_fiber_t scheduler_fiber {};
-    std::vector<char> scheduler_asyncify_stack;
+    AlignedBuffer scheduler_asyncify_stack;
 
     // Counters (stats_json)
     uint32_t created = 0;
@@ -229,14 +280,14 @@ inline bool on_main_thread()
  */
 inline size_t asyncify_used( const Context& aCtx )
 {
-    const char* base = aCtx.asyncify_stack.data();
+    const char* base = aCtx.asyncify_stack.base;
     const char* ptr = static_cast<const char*>( aCtx.fiber.asyncify_data.stack_ptr );
 
     if( !base || !ptr || ptr < base )
         return 0;
 
     const size_t used = static_cast<size_t>( ptr - base );
-    return used > aCtx.asyncify_stack.size() ? aCtx.asyncify_stack.size() : used;
+    return used > aCtx.asyncify_stack.size ? aCtx.asyncify_stack.size : used;
 }
 
 inline void note_asyncify_use( Context& aCtx )
@@ -251,12 +302,12 @@ inline void note_asyncify_use( Context& aCtx )
 
     // Overflow here is silent corruption (libcontext's 512K comment documents
     // exactly that failure), so shout well before the edge rather than after.
-    if( used * 4 > aCtx.asyncify_stack.size() * 3 )
+    if( used * 4 > aCtx.asyncify_stack.size * 3 )
     {
         char detail[128];
         std::snprintf( detail, sizeof( detail ),
                        "asyncify buffer >75%% used (%zu/%zu) - raise the size",
-                       used, aCtx.asyncify_stack.size() );
+                       used, aCtx.asyncify_stack.size );
         beacon( "BUFFER-PRESSURE", detail, aCtx.id );
     }
 }
@@ -278,10 +329,10 @@ inline void ensure_scheduler_context()
     // task entry. Contexts swap back INTO this fiber, which is what makes the
     // topology a star: every yield lands here, and only here decides who runs
     // next.
-    r.scheduler_asyncify_stack.assign( DEFAULT_ASYNCIFY_BYTES, 0 );
+    r.scheduler_asyncify_stack.allocate( DEFAULT_ASYNCIFY_BYTES );
     emscripten_fiber_init_from_current_context( &r.scheduler_fiber,
-                                                r.scheduler_asyncify_stack.data(),
-                                                r.scheduler_asyncify_stack.size() );
+                                                r.scheduler_asyncify_stack.base,
+                                                r.scheduler_asyncify_stack.size );
     r.scheduler_initialized = true;
 }
 
@@ -378,12 +429,20 @@ inline ContextId create( void ( *aEntry )( void* ), void* aArg, const char* aLab
     ctx->label = aLabel ? aLabel : "";
     ctx->entry = aEntry;
     ctx->arg = aArg;
-    ctx->c_stack.assign( DEFAULT_C_STACK_BYTES, 0 );
-    ctx->asyncify_stack.assign( DEFAULT_ASYNCIFY_BYTES, 0 );
+    ctx->c_stack.allocate( DEFAULT_C_STACK_BYTES );
+    ctx->asyncify_stack.allocate( DEFAULT_ASYNCIFY_BYTES );
+
+    if( !ctx->c_stack.base || !ctx->asyncify_stack.base )
+    {
+        beacon( "REFUSED", "context stack allocation failed", 0 );
+        r.refusals++;
+        delete ctx;
+        return 0;
+    }
 
     emscripten_fiber_init( &ctx->fiber, context_trampoline, ctx,
-                           ctx->c_stack.data(), ctx->c_stack.size(),
-                           ctx->asyncify_stack.data(), ctx->asyncify_stack.size() );
+                           ctx->c_stack.base, ctx->c_stack.size,
+                           ctx->asyncify_stack.base, ctx->asyncify_stack.size );
 
     ctx->status = Status::Ready;   // enters at aEntry on the first drain()
     ctx->park_reason = "created";
@@ -396,7 +455,7 @@ inline ContextId create( void ( *aEntry )( void* ), void* aArg, const char* aLab
     if( r.live > r.peak_live )
         r.peak_live = r.live;
 
-    r.bytes += ctx->c_stack.size() + ctx->asyncify_stack.size();
+    r.bytes += ctx->c_stack.size + ctx->asyncify_stack.size;
 
     if( r.bytes > r.peak_bytes )
         r.peak_bytes = r.bytes;
@@ -564,7 +623,7 @@ inline bool destroy( ContextId aId )
         return false;
     }
 
-    r.bytes -= ctx->c_stack.size() + ctx->asyncify_stack.size();
+    r.bytes -= ctx->c_stack.size + ctx->asyncify_stack.size;
     r.live--;
     r.contexts.erase( aId );
     delete ctx;
