@@ -114,6 +114,14 @@ bool mark_ready( ContextId aId, int aResult );
  */
 ContextId drain();
 
+/**
+ * Would yield_park() succeed right now? True only when a context is running
+ * AND the caller's frame lies inside that context's own stack — i.e. the
+ * caller owns what it would be parking. Callers use this to choose the
+ * context park over an in-place one without provoking a refusal beacon.
+ */
+bool can_yield_here();
+
 /** True while a swap is in flight; drain() refuses to start another. */
 bool transition_in_flight();
 
@@ -121,6 +129,9 @@ bool transition_in_flight();
 ContextId current();
 
 Status status_of( ContextId aId );
+
+/** Why a context is parked (the string yield_park was given), "" if unknown. */
+const char* park_reason_of( ContextId aId );
 
 /** Destroy a Finished context and release its stack + buffer. */
 bool destroy( ContextId aId );
@@ -812,6 +823,13 @@ inline size_t drain_all()
 }
 
 
+inline bool can_yield_here()
+{
+    Context* ctx = find( reg().running );
+    return ctx && on_context_stack( *ctx );
+}
+
+
 inline bool transition_in_flight()
 {
     return reg().transition;
@@ -828,6 +846,13 @@ inline Status status_of( ContextId aId )
 {
     Context* ctx = find( aId );
     return ctx ? ctx->status : Status::Finished;
+}
+
+
+inline const char* park_reason_of( ContextId aId )
+{
+    Context* ctx = find( aId );
+    return ctx && ctx->park_reason ? ctx->park_reason : "";
 }
 
 
@@ -972,9 +997,11 @@ inline ContextId fiber_create( void ( *aEntry )( void* ), void* aArg,
         return 0;
     }
 
-    if( !aEntry || !aStackBottom || !aStackBytes )
+    // A null stack pointer is legal and means "allocate one for me" (below);
+    // a zero SIZE never is.
+    if( !aEntry || !aStackBytes )
     {
-        beacon( "REFUSED", "fiber_create() with a null entry or stack", 0 );
+        beacon( "REFUSED", "fiber_create() with a null entry or zero stack size", 0 );
         r.fiber_refusals++;
         return 0;
     }
@@ -993,7 +1020,25 @@ inline ContextId fiber_create( void ( *aEntry )( void* ), void* aArg,
     ctx->symmetric = true;
     ctx->entry = aEntry;
     ctx->arg = aArg;
-    ctx->c_stack.adopt( aStackBottom, aStackBytes );
+
+    // A null stack means "you own it": the scheduler's own long-lived contexts
+    // (the dispatch context) have no KiCad allocation behind them.
+    if( aStackBottom )
+        ctx->c_stack.adopt( aStackBottom, aStackBytes );
+    else
+        ctx->c_stack.allocate( aStackBytes );
+
+    aStackBottom = ctx->c_stack.base;
+    aStackBytes = ctx->c_stack.size;
+
+    if( !aStackBottom )
+    {
+        beacon( "REFUSED", "fiber_create() stack allocation failed", 0 );
+        r.fiber_refusals++;
+        delete ctx;
+        return 0;
+    }
+
     ctx->asyncify_stack.allocate( aAsyncifyBytes );
 
     if( !ctx->asyncify_stack.base )

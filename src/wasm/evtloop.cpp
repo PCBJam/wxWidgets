@@ -14,11 +14,15 @@
 #include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/mailbox.h"
 #include "wx/wasm/private/mainstack.h"
+#include "wx/wasm/private/sched_context.h"
 #include "wx/wasm/private/yieldwait.h"
 
 #include <emscripten.h>
 #include <emscripten/stack.h>
 #include <stdio.h>   // printf: diagnostics land in the browser console
+#include <string.h>  // strcmp: park-reason comparison
+
+#include <map>
 
 // See wx/wasm/private/dispatch.h for the interlock contract.
 int wxWasmDispatchDepth = 0;
@@ -191,10 +195,70 @@ extern "C" int wxWasmBeginWait(const char *kind)
     return wxWasmBeginWaitJs(kind);
 }
 
+// Tell the shim that this token's waiter is a scheduler context, so
+// resolveWait marks it ready instead of resolving a promise nobody awaits.
+EM_JS(void, wxWasmNoteContextWaitJs, (int token), {
+    globalThis.__wxScheduler.noteContextWait(token);
+});
+
+namespace
+{
+// token -> the context parked on it (doc 22 Phase C). Small and short-lived:
+// one entry per outstanding wait, erased on resolve.
+std::map<int, pcbjam_sched::ContextId> &wxWasmContextWaits()
+{
+    static std::map<int, pcbjam_sched::ContextId> s_waits;
+    return s_waits;
+}
+}  // namespace
+
 extern "C" int wxWasmYieldUntil(int token)
 {
+    // Phase C: if this wait is running ON a scheduler context, park THAT
+    // context rather than suspending the stack in place. yield_park verifies
+    // the caller's frame really lies inside the running context's stack, so a
+    // fiber swapped in above it (a tool coroutine) is refused rather than
+    // silently saving the wrong stack — and falls back to the Asyncify park,
+    // which is exactly the pre-Phase-C behaviour.
+    const pcbjam_sched::ContextId self = pcbjam_sched::current();
+
+    if (self && pcbjam_sched::can_yield_here())
+    {
+        wxWasmContextWaits()[token] = self;
+        wxWasmNoteContextWaitJs(token);
+
+        const int result = pcbjam_sched::yield_park("wx-wait");
+        wxWasmContextWaits().erase(token);
+        return result;
+    }
+
     return wxWasmYieldUntilJs(token);
 }
+
+extern "C" {
+
+    // The shim's callback for a context-parked wait: mark it ready and let the
+    // next pump resume it. Never resumes inline — a wake that rewound inside
+    // the resolver's own JS turn is the whole class doc 13 §1.4 forbids.
+    // The shim's pump entry: resume whatever the registry says is ready, from
+    // a fresh JS task. Called after a context wake and by the top-level tick.
+    void EMSCRIPTEN_KEEPALIVE wxWasmSchedPump()
+    {
+        pcbjam_sched::drain_all();
+    }
+
+    void EMSCRIPTEN_KEEPALIVE wxWasmSchedResolveContextWait(int token, int result)
+    {
+        auto &waits = wxWasmContextWaits();
+        auto it = waits.find(token);
+
+        if (it == waits.end())
+            return;
+
+        pcbjam_sched::mark_ready(it->second, result);
+    }
+
+}  // extern "C"
 
 extern "C" void wxWasmResolveWait(int token, int result)
 {
@@ -392,6 +456,9 @@ EM_JS(void, wxWasmScheduleProcessEvents, (), {
     }, 0);
 });
 
+// Defined below with the dispatch context it drives.
+extern "C" void wxWasmDispatchOnContext();
+
 extern "C" {
 
     // The top-level loop's scheduled dispatch. A separate entry point from
@@ -409,10 +476,86 @@ extern "C" {
     // DoRun, so a throwing handler tears the loop down from either dispatcher.
     void EMSCRIPTEN_KEEPALIVE wxWasmTopLevelTick()
     {
-        ProcessEvents();
+        wxWasmDispatchOnContext();
     }
 
 }  // extern "C"
+
+// ----------------------------------------------------------------------------
+// The dispatch context (doc 22 Phase D) — ONE context, never a pool.
+//
+// Every wx handler chain runs here instead of on the main stack, which is what
+// lets a wait inside a handler PARK (Phase C) instead of suspending the stack
+// the whole runtime stands on. The pool idea from doc 20's reverted D2 is
+// deliberately absent: a context suspended in a modal is consumed for that
+// modal's lifetime, so a pool just wears a cap on the same leak. One context
+// suffices precisely because waits now yield it.
+//
+// ORDERING, load-bearing: this must exist before libcontext adopts its root,
+// so the scheduler owns the main stack alone and the root adopts the RUNNING
+// context instead. Two emscripten_fiber_t describing the main stack corrupt
+// each other on first entry (doc 22 §5, the one-root constraint).
+// ----------------------------------------------------------------------------
+namespace
+{
+pcbjam_sched::ContextId g_dispatchContext = 0;
+
+// Deeper than the scheduler's 128K default: a wx dispatch chain reaches deep
+// into KiCad (commit -> connectivity -> font work) before anything parks.
+constexpr size_t DISPATCH_STACK_BYTES = 1024 * 1024;
+constexpr size_t DISPATCH_ASYNCIFY_BYTES = 512 * 1024;
+
+void wxWasmDispatchEntry(void *)
+{
+    // Never returns: an emscripten fiber entry that returns ends the program.
+    for (;;)
+    {
+        ProcessEvents();
+
+        // One tick done. Park until the next kick rather than spinning; the
+        // scheduler resumes us from a fresh JS task.
+        pcbjam_sched::yield_park("dispatch-idle");
+    }
+}
+}  // namespace
+
+extern "C" void wxWasmDispatchOnContext()
+{
+    if (!wxTheApp)
+        return;
+
+    if (!g_dispatchContext)
+    {
+        g_dispatchContext = pcbjam_sched::fiber_create(
+            wxWasmDispatchEntry, NULL, NULL, DISPATCH_STACK_BYTES,
+            DISPATCH_ASYNCIFY_BYTES, "wx-dispatch");
+
+        if (!g_dispatchContext)
+        {
+            // Fall back to the pre-Phase-D path rather than losing the tick.
+            ProcessEvents();
+            return;
+        }
+    }
+
+    // Fresh (first tick) or parked at dispatch-idle: make it runnable. If it
+    // is parked deeper — inside a modal's wait — this is a no-op and the tick
+    // simply pumps whatever else is ready, which is the entire point of the
+    // phase: a blocked dispatch no longer blocks the runtime.
+    if (pcbjam_sched::status_of(g_dispatchContext) == pcbjam_sched::Status::Fresh)
+        pcbjam_sched::fiber_start(g_dispatchContext, 0);
+    else if (pcbjam_sched::status_of(g_dispatchContext) == pcbjam_sched::Status::Parked
+             && strcmp(pcbjam_sched::park_reason_of(g_dispatchContext),
+                       "dispatch-idle") == 0)
+        pcbjam_sched::mark_ready(g_dispatchContext, 0);
+
+    pcbjam_sched::drain_all();
+}
+
+extern "C" bool wxWasmOnDispatchContext()
+{
+    return g_dispatchContext && pcbjam_sched::current() == g_dispatchContext;
+}
 
 // ----------------------------------------------------------------------------
 // wxGUIEventLoop
