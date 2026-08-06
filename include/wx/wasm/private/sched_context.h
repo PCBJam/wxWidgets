@@ -198,6 +198,33 @@ ContextId fiber_current();
 bool fiber_release( ContextId aId );
 
 /**
+ * A symmetric swap expressed as a STAR transition (Phase B): park aFrom, make
+ * aTo runnable carrying aValue, and let the scheduler perform the entry.
+ * Returns the value handed back when somebody later transfers to aFrom.
+ *
+ * This is what lets libcontext's synchronous contract survive the flip. To the
+ * code running on aFrom the call still "returns when the other side yields
+ * back" — but in between, aFrom is parked and the scheduler owns the CPU, so
+ * nothing enters a context by inference and a wait can park anywhere without
+ * stranding its resumer.
+ *
+ * Must be called ON aFrom's stack, and aFrom must be the lane's current
+ * occupant; libcontext knows both, so neither is inferred here.
+ */
+intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue );
+
+/**
+ * Make a fiber-lane context runnable FROM THE SCHEDULER STACK, carrying
+ * aValue (Phase B). This is the lane's entry point: a transfer needs a
+ * running context to park, so the first one — and every kick from a JS task,
+ * e.g. the tick handing work to the dispatch context — has to come from here.
+ */
+bool fiber_start( ContextId aId, intptr_t aValue );
+
+/** Pump ready contexts until quiescent. Scheduler stack only. */
+size_t drain_all();
+
+/**
  * Registry + memory snapshot as JSON, for tests and the D1 memory gate:
  *   live/peakLive/created/finished, transitions, bytes/peakBytes,
  *   perContextBytes, and asyncify high-water usage (asyncifyHighWater) —
@@ -301,6 +328,10 @@ struct Context
     const char* park_reason = "";
     Status status = Status::Fresh;
     int result = 0;
+    // Fiber lane: the value a symmetric transfer hands to whoever is entered
+    // (libcontext's INVOCATION_ARGS pointer). Separate from `result` because
+    // it is pointer-width and carries the protocol, not a wake code.
+    intptr_t transfer = 0;
 
     emscripten_fiber_t fiber {};
     AlignedBuffer c_stack;
@@ -729,12 +760,19 @@ inline ContextId drain()
     ctx->status = Status::Running;
     ctx->resumes++;
 
+    // A fiber-lane context entered by the scheduler is also the lane's
+    // current occupant, so libcontext's view of "who is on the CPU" stays
+    // exact across a star transition (Phase B).
+    if( ctx->symmetric )
+        r.fiber_running = id;
+
     // Swap in. Returns when the context parks (yield_park) or finishes; both
     // clear running/transition before swapping back.
     emscripten_fiber_swap( &r.scheduler_fiber, &ctx->fiber );
 
     r.transition = false;
     r.running = 0;
+    r.fiber_running = 0;
 
     // The context object may still exist (parked) or be finished; either way
     // its buffer use is now measurable.
@@ -742,6 +780,35 @@ inline ContextId drain()
         note_asyncify_use( *back );
 
     return id;
+}
+
+
+/**
+ * Run ready contexts until the scheduler is quiescent (Phase B).
+ *
+ * A star transition is not a swap-and-return: when A transfers to B, A parks
+ * and B merely becomes RUNNABLE, so somebody has to keep draining or the work
+ * stalls. That somebody must be the scheduler stack — this is the top-level
+ * pump, called from a fresh JS task, never from a context.
+ *
+ * The cap is a livelock backstop, not a policy: a pair of contexts
+ * transferring to each other forever would otherwise hang the tab with no
+ * evidence. Hitting it beacons and leaves the rest queued for the next tick.
+ */
+inline size_t drain_all()
+{
+    size_t ran = 0;
+
+    while( drain() )
+    {
+        if( ++ran >= 4096 )
+        {
+            beacon( "DRAIN-CAP", "4096 transitions in one pump - suspected livelock", 0 );
+            break;
+        }
+    }
+
+    return ran;
 }
 
 
@@ -1030,6 +1097,86 @@ inline bool fiber_swap( ContextId aFrom, ContextId aTo )
 inline ContextId fiber_current()
 {
     return reg().fiber_running;
+}
+
+
+inline bool fiber_start( ContextId aId, intptr_t aValue )
+{
+    Registry& r = reg();
+    Context* ctx = find( aId );
+
+    if( !ctx || !ctx->symmetric )
+    {
+        beacon( "REFUSED", "fiber_start() unknown or non-fiber context", aId );
+        r.fiber_refusals++;
+        return false;
+    }
+
+    if( r.running != 0 )
+    {
+        // Starting from a context would be a transfer, and a transfer must
+        // park its source; going through here instead would leave two
+        // contexts runnable and the source's frame stranded.
+        beacon( "REFUSED", "fiber_start() from a context - use fiber_transfer()", aId );
+        r.fiber_refusals++;
+        return false;
+    }
+
+    if( ctx->status == Status::Running || ctx->status == Status::Ready )
+        return false;   // already runnable; not an error
+
+    ctx->transfer = aValue;
+    ctx->status = Status::Ready;
+    r.ready_fifo.push_back( aId );
+    return true;
+}
+
+
+inline intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue )
+{
+    Registry& r = reg();
+    Context* from = find( aFrom );
+    Context* to = find( aTo );
+
+    if( !from || !to || !from->symmetric || !to->symmetric )
+    {
+        beacon( "REFUSED", "fiber_transfer() with an unknown or non-fiber party", aTo );
+        r.fiber_refusals++;
+        return 0;
+    }
+
+    if( from == to )
+    {
+        beacon( "REFUSED", "fiber_transfer() self-transfer", aTo );
+        r.fiber_refusals++;
+        return 0;
+    }
+
+    // Hand the protocol value over and make the target RUNNABLE — not running.
+    // The scheduler performs every entry, which is the whole difference from
+    // Phase A's direct swap: nobody enters a context by deciding to.
+    to->transfer = aValue;
+
+    if( to->status != Status::Ready )
+    {
+        to->status = Status::Ready;
+        r.ready_fifo.push_back( aTo );
+    }
+
+    from->status = Status::Parked;
+    from->park_reason = "fiber-transfer";
+    from->parks++;
+    r.fiber_swaps++;
+    r.running = 0;
+    r.fiber_running = 0;
+    r.transition = false;   // the swap below completes this transition
+
+    // Yield to the scheduler, which will enter the target. Control returns
+    // here only when somebody later transfers to US.
+    emscripten_fiber_swap( &from->fiber, &r.scheduler_fiber );
+
+    note_asyncify_use( *from );
+    return from->transfer;
 }
 
 
