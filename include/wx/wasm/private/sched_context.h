@@ -244,6 +244,7 @@ struct Registry
     uint32_t finished = 0;
     uint32_t transitions = 0;
     uint32_t refusals = 0;
+    uint32_t foreign_stack_refusals = 0;   // yield_park from a fiber above a context
     size_t live = 0;
     size_t peak_live = 0;
     size_t bytes = 0;
@@ -311,6 +312,28 @@ inline void note_asyncify_use( Context& aCtx )
         beacon( "BUFFER-PRESSURE", detail, aCtx.id );
     }
 }
+
+/**
+ * Is the caller's frame inside aCtx's own C stack?
+ *
+ * The address of a local is the cheapest exact witness of which stack we are
+ * standing on. A context's stack occupies [base, base+size); a libcontext
+ * fiber swapped in above it runs on a different allocation entirely, so this
+ * separates "the context is running its own body" from "something else is
+ * running on top of the context".
+ */
+inline bool on_context_stack( const Context& aCtx )
+{
+    char probe = 0;
+    const char* here = &probe;
+    const char* low = aCtx.c_stack.base;
+
+    if( !low )
+        return false;
+
+    return here >= low && here < low + aCtx.c_stack.size;
+}
+
 
 inline Context* find( ContextId aId )
 {
@@ -479,6 +502,29 @@ inline int yield_park( const char* aReason )
         return -1;
     }
 
+    // STACK OWNERSHIP. The registry says which context is running, but a
+    // libcontext fiber may have been swapped in ON TOP of it — which is
+    // exactly the shape of a KiCad tool coroutine opening a dialog: the
+    // dispatch context is "running" while the live stack belongs to the tool
+    // fiber. Yielding here would save the TOOL fiber's stack into the DISPATCH
+    // context's fiber struct and hand it to the next resume: silent, total
+    // corruption, and by construction undetectable afterwards.
+    //
+    // So verify the frame we are standing on actually lies inside this
+    // context's C stack, and refuse if not. D3 must route such a wait
+    // differently (the tool coroutine has to become a context of its own);
+    // until it does, this refusal is what keeps the failure loud and local.
+    if( !on_context_stack( *ctx ) )
+    {
+        beacon( "REFUSED",
+                "yield_park() from a foreign stack (a fiber swapped in above this "
+                "context) - the wait must yield ITS OWN context",
+                ctx->id );
+        r.refusals++;
+        ++r.foreign_stack_refusals;
+        return -1;
+    }
+
     ctx->status = Status::Parked;
     ctx->park_reason = aReason ? aReason : "";
     ctx->parks++;
@@ -637,13 +683,13 @@ inline std::string stats_json()
     char buf[640];
     std::snprintf( buf, sizeof( buf ),
                    "{\"live\":%zu,\"peakLive\":%zu,\"created\":%u,\"finished\":%u,"
-                   "\"transitions\":%u,\"refusals\":%u,\"running\":%u,"
+                   "\"transitions\":%u,\"refusals\":%u,\"foreignStackRefusals\":%u,\"running\":%u,"
                    "\"transitionInFlight\":%s,\"readyQueued\":%zu,"
                    "\"bytes\":%zu,\"peakBytes\":%zu,"
                    "\"perContextBytes\":%zu,\"cStackBytes\":%zu,\"asyncifyBytes\":%zu,"
                    "\"asyncifyHighWater\":%zu}",
                    r.live, r.peak_live, r.created, r.finished,
-                   r.transitions, r.refusals, r.running,
+                   r.transitions, r.refusals, r.foreign_stack_refusals, r.running,
                    r.transition ? "true" : "false", r.ready_fifo.size(),
                    r.bytes, r.peak_bytes,
                    DEFAULT_C_STACK_BYTES + DEFAULT_ASYNCIFY_BYTES,
@@ -683,6 +729,7 @@ inline void reset_stats()
     r.finished = 0;
     r.transitions = 0;
     r.refusals = 0;
+    r.foreign_stack_refusals = 0;
     r.peak_live = r.live;
     r.peak_bytes = r.bytes;
     r.asyncify_high_water = 0;
