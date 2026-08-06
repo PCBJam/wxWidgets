@@ -13,9 +13,11 @@
 #include "wx/toplevel.h"
 #include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/mailbox.h"
+#include "wx/wasm/private/mainstack.h"
 #include "wx/wasm/private/yieldwait.h"
 
 #include <emscripten.h>
+#include <emscripten/stack.h>
 #include <stdio.h>   // printf: diagnostics land in the browser console
 
 // See wx/wasm/private/dispatch.h for the interlock contract.
@@ -278,6 +280,69 @@ extern "C" {
 // top-level main loop; >1 = a nested (quasi-modal) loop.
 static int s_wxRunDepth = 0;
 
+namespace
+{
+
+// Set by the host application (pcbjam's binding layer) to whatever can move
+// work onto the main stack — for KiCad, a tool coroutine's RunMainStack. wx
+// must not know about TOOL_MANAGER, so this stays a plain hook: absent, every
+// nested loop simply parks where it already stood.
+wxWasmMainStackRunner s_mainStackRunner = NULL;
+
+// The MAIN stack's bounds, captured once at top-level DoRun — the one moment
+// we are provably standing on it.
+//
+// They must be captured rather than queried live: emscripten_fiber_swap's
+// finishContextSwitch calls emscripten_stack_set_limits with the INCOMING
+// fiber's bounds, so emscripten_stack_get_base()/end() always describe
+// whatever stack is current, including a coroutine's. Querying them live
+// therefore reports "on the main stack" from everywhere and detects nothing —
+// which is exactly how a first attempt at this silently did nothing at all.
+uintptr_t s_mainStackBase = 0;
+uintptr_t s_mainStackEnd = 0;
+
+/** Is the caller's frame OUTSIDE the main stack, i.e. on a fiber? */
+bool wxWasmOnCoroutineStack()
+{
+    if( !s_mainStackBase )
+        return false;   // the main loop has not started; nothing else can be running
+
+    char probe = 0;
+    const uintptr_t here = reinterpret_cast<uintptr_t>(&probe);
+    // The main stack grows down from base to end; a coroutine's stack is a
+    // separate allocation, so its frames fall outside that interval.
+    return here > s_mainStackBase || here < s_mainStackEnd;
+}
+
+bool wxWasmRunOnMainStack(void (*aFunc)(void *), void *aArg)
+{
+    return s_mainStackRunner && s_mainStackRunner(aFunc, aArg) != 0;
+}
+
+// The nested loop's actual park, extracted so it can run either in place or on
+// the main stack. The opener's chain parks here for the dialog's whole
+// lifetime; the interlock is zeroed for the park's duration (manual
+// save/restore: destructors are not reliable across an Asyncify park) so the
+// legitimate dispatcher keeps running meanwhile. The nested loop is a
+// registered WAIT, not a pump (doc 17 S4): the top-level tick is the sole
+// dispatcher at any depth, and ScheduleExit()/Exit() resolves the innermost
+// "nested" wait to resume this stack.
+void wxWasmNestedWaitBody(void *)
+{
+    const int savedDispatchDepth = wxWasmDispatchDepth;
+    wxWasmDispatchDepth = 0;
+    const int token = wxWasmBeginWait("nested");
+    wxWasmYieldUntil(token);   // suspends until resolved
+    wxWasmDispatchRestore(savedDispatchDepth, "NestedLoop");
+}
+
+}  // namespace
+
+extern "C" void wxWasmSetMainStackRunner(wxWasmMainStackRunner aRunner)
+{
+    s_mainStackRunner = aRunner;
+}
+
 EM_JS(void, wxWasmExitNestedLoop, (), {
     // The nested loop is a registered wait (doc 17 S4).
     globalThis.__wxScheduler.resolveTopWait('nested', 0);
@@ -410,24 +475,32 @@ int wxGUIEventLoop::DoRun()
 
     wxWasmSchedulerAssertInstalled();
 
+    // Top-level DoRun runs on the main stack by construction: record its bounds
+    // while that is true, so nested loops can later tell whether they are
+    // standing somewhere else (see wxWasmOnCoroutineStack).
+    if (s_wxRunDepth == 0)
+    {
+        s_mainStackBase = emscripten_stack_get_base();
+        s_mainStackEnd = emscripten_stack_get_end();
+    }
+
     // A nested loop (a quasi-modal dialog opened from a tool) pumps via Asyncify; the
     // first (top-level) DoRun registers the rAF main loop then parks. Neither throws
     // (see the header comment and docs/features/wasm-exceptions/09).
     if (s_wxRunDepth++ > 0)
     {
-        // The opener's dispatch chain parks here for the nested loop's whole
-        // lifetime; the interlock is zeroed for the park's duration (manual
-        // save/restore: destructors are not reliable across an Asyncify park)
-        // so the legitimate dispatcher keeps running meanwhile.
-        const int savedDispatchDepth = wxWasmDispatchDepth;
-        wxWasmDispatchDepth = 0;
-        // The nested loop is a registered WAIT, not a pump (doc 17 S4). The
-        // top-level tick — which runs at ANY DoRun depth (see the while-loop
-        // below) — is the sole dispatcher; ScheduleExit()/Exit() resolves the
-        // innermost "nested" wait and this stack resumes.
-        const int token = wxWasmBeginWait("nested");
-        wxWasmYieldUntil(token);   // suspends until resolved
-        wxWasmDispatchRestore(savedDispatchDepth, "NestedLoop");
+        // A nested loop parks its whole stack for the dialog's lifetime, and
+        // WHICH stack that is decides whether the app survives it. On a tool
+        // coroutine's stack the park suspends the fiber's body where the fiber
+        // layer cannot see it: the stale-fiber guard quarantines the fiber and
+        // then refuses its own resume, so the dialog can never be closed by a
+        // click (docs/features/async/19). Bounce onto the main stack first —
+        // that suspends the coroutine the legitimate way, through a fiber swap
+        // the layer records, and leaves the park exactly where every
+        // non-tool dialog already puts it.
+        if (!(wxWasmOnCoroutineStack() && wxWasmRunOnMainStack(&wxWasmNestedWaitBody, NULL)))
+            wxWasmNestedWaitBody(NULL);
+
         --s_wxRunDepth;
         return 0;
     }
