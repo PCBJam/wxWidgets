@@ -46,6 +46,7 @@
 
 #include <emscripten/emscripten.h>
 #include <emscripten/fiber.h>
+#include <emscripten/stack.h>
 #include <emscripten/threading.h>
 
 
@@ -61,7 +62,9 @@ enum class Status
     Running,    ///< currently executing (at most one, plus the scheduler)
     Parked,     ///< yielded, waiting for mark_ready()
     Ready,      ///< mark_ready() called, waiting for drain() to swap it in
-    Finished    ///< entry returned; stack/buffer reclaimable
+    Finished,   ///< entry returned; stack/buffer reclaimable
+    Suspended   ///< fiber lane only: suspended by a symmetric swap; its saved
+                ///< rewind data is valid, so it is safe to enter (Phase A)
 };
 
 const char* status_name( Status aStatus );
@@ -121,6 +124,78 @@ Status status_of( ContextId aId );
 
 /** Destroy a Finished context and release its stack + buffer. */
 bool destroy( ContextId aId );
+
+// ---------------------------------------------------------------------------
+// The FIBER LANE (doc 22 Phase A) — libcontext's clients, absorbed.
+//
+// These carry libcontext's SYMMETRIC semantics — any registered fiber may swap
+// to any other, the caller decides — so that libcontext's wasm backend can
+// become a thin adapter over this registry with identical observable
+// behaviour. The registry then knows every tool fiber (stack range, buffer,
+// status) and performs every emscripten_fiber_swap in one place; the star
+// invariants above are untouched. Phase B collapses the two lanes into the
+// star; until then a symmetric context never enters the ready FIFO, is never
+// picked by drain(), and never counts against the star's memory gate (it has
+// its own counters).
+// ---------------------------------------------------------------------------
+
+/**
+ * Adopt the CURRENT stack (libcontext's main context) as the fiber lane's
+ * root. Allocates the asyncify buffer, marks the context Running, and makes it
+ * fiber_current(). Call exactly once, while actually running on that stack.
+ */
+ContextId fiber_adopt_current( size_t aAsyncifyBytes, const char* aLabel );
+
+/**
+ * Register a fiber whose C stack the CALLER owns (KiCad allocates coroutine
+ * stacks itself); the registry adopts the range [aStackBottom, aStackBottom +
+ * aStackBytes) for bookkeeping and allocates the asyncify buffer. aEntry is
+ * the raw emscripten fiber entry (it must never return — libcontext's
+ * trampoline). Fresh, i.e. enterable: its first swap-in takes the entry path.
+ */
+ContextId fiber_create( void ( *aEntry )( void* ), void* aArg,
+                        void* aStackBottom, size_t aStackBytes,
+                        size_t aAsyncifyBytes, const char* aLabel );
+
+/**
+ * Is aId safe to enter? A registry lookup — Fresh (first entry) or Suspended
+ * (valid saved rewind data). Running/unknown means entering would rewind
+ * stale or foreign state. This is the answer libcontext's swap_suspended
+ * flag guessed at; the adapter keeps that flag only as a cross-check.
+ */
+bool fiber_enterable( ContextId aId );
+
+/**
+ * THE symmetric swap: suspend aFrom and enter aTo. Every libcontext swap
+ * funnels through here, so the registry always knows who is on the CPU.
+ *
+ * aFrom is EXPLICIT, never inferred from fiber_current(): after a handleSleep
+ * park the lane's "current" is stale in exactly the way libcontext's
+ * g_current_context is (a wasm-only state neither layer can see), and an
+ * inferred from would mark the WRONG context Suspended — measured 2026-08-06,
+ * eeschema-collab: the real swapper stayed "Running" forever and every later
+ * jump into it was wrongly refused. The caller knows who is swapping out;
+ * mirroring its answer keeps the two layers in lockstep by construction.
+ *
+ * Deliberately does NOT refuse a non-enterable target (Phase A is
+ * behaviour-preserving; the policy refusal stays in jump_fcontext, reading
+ * fiber_enterable()) — it beacons and counts such a swap as a tripwire
+ * instead. Returns false (no swap) only for an unknown / non-fiber endpoint.
+ */
+bool fiber_swap( ContextId aFrom, ContextId aTo );
+
+/** The fiber lane's current occupant (the adopted root counts), 0 if none. */
+ContextId fiber_current();
+
+/**
+ * Unregister a fiber and free its asyncify buffer (its C stack belongs to the
+ * caller). ALWAYS releases — libcontext's refcount drop deleted the struct
+ * unconditionally, and a registry that refuses while the caller frees anyway
+ * holds a permanent ghost (measured 2026-08-06: the ghost then poisoned
+ * every later enterability answer). A release in the Suspended or Running
+ * state is counted; Running additionally beacons as a tripwire.
+ */
+bool fiber_release( ContextId aId );
 
 /**
  * Registry + memory snapshot as JSON, for tests and the D1 memory gate:
@@ -192,6 +267,18 @@ struct AlignedBuffer
                 ( reinterpret_cast<uintptr_t>( raw ) + 15u ) & ~uintptr_t( 15 ) );
     }
 
+    /**
+     * Track a range someone else owns (a KiCad-allocated coroutine stack):
+     * base/size describe it for bookkeeping and ownership checks, but
+     * release() must not free it — raw stays null so free(nullptr) is a no-op.
+     */
+    void adopt( void* aBase, size_t aBytes )
+    {
+        release();
+        base = static_cast<char*>( aBase );
+        size = aBytes;
+    }
+
     void release()
     {
         std::free( raw );
@@ -225,6 +312,11 @@ struct Context
     uint32_t parks = 0;
     uint32_t resumes = 0;
     size_t asyncify_high_water = 0;
+
+    // Fiber lane (Phase A): a libcontext client under symmetric-swap
+    // semantics. Never enters the ready FIFO, never picked by drain(),
+    // counted separately from the star's memory gate.
+    bool symmetric = false;
 };
 
 struct Registry
@@ -250,6 +342,23 @@ struct Registry
     size_t bytes = 0;
     size_t peak_bytes = 0;
     size_t asyncify_high_water = 0;
+
+    // Fiber lane (Phase A) — deliberately separate from the star's counters so
+    // the D1 memory gate (finished == created, live == 0 after the battery)
+    // keeps meaning what it meant.
+    ContextId fiber_running = 0;           // 0 = no fiber lane yet (root unadopted)
+    uint32_t fiber_created = 0;
+    uint32_t fiber_released = 0;
+    uint32_t fiber_swaps = 0;
+    uint32_t fiber_refusals = 0;
+    uint32_t fiber_released_suspended = 0;   // legal (refcount drop mid-suspend), counted
+    uint32_t fiber_released_running = 0;     // TRIPWIRE: refcount drop of a "running" fiber
+    uint32_t fiber_nonenterable_swaps = 0;   // TRIPWIRE: a swap into stale state
+    size_t fiber_live = 0;
+    size_t fiber_peak_live = 0;
+    size_t fiber_bytes = 0;
+    size_t fiber_peak_bytes = 0;
+    size_t fiber_asyncify_high_water = 0;
 };
 
 inline Registry& reg()
@@ -298,8 +407,13 @@ inline void note_asyncify_use( Context& aCtx )
     if( used > aCtx.asyncify_high_water )
         aCtx.asyncify_high_water = used;
 
-    if( used > reg().asyncify_high_water )
-        reg().asyncify_high_water = used;
+    // Per-lane high-water: the star's number feeds the D1 sizing gate, the
+    // fiber lane's feeds the Phase E "size from real bridges" decision.
+    size_t& lane_high_water =
+            aCtx.symmetric ? reg().fiber_asyncify_high_water : reg().asyncify_high_water;
+
+    if( used > lane_high_water )
+        lane_high_water = used;
 
     // Overflow here is silent corruption (libcontext's 512K comment documents
     // exactly that failure), so shout well before the edge rather than after.
@@ -404,6 +518,7 @@ inline const char* status_name( Status aStatus )
     case Status::Parked:   return "parked";
     case Status::Ready:    return "ready";
     case Status::Finished: return "finished";
+    case Status::Suspended: return "suspended";
     }
 
     return "?";
@@ -657,6 +772,15 @@ inline bool destroy( ContextId aId )
     if( !ctx )
         return false;
 
+    if( ctx->symmetric )
+    {
+        // Fiber-lane lifetimes go through fiber_release(): its rules (a
+        // suspended fiber MAY be dropped) are libcontext's, not the star's.
+        beacon( "REFUSED", "destroy() on a fiber-lane context - use fiber_release()", aId );
+        r.fiber_refusals++;
+        return false;
+    }
+
     if( ctx->status != Status::Finished )
     {
         // Freeing a parked context's stack would strand whatever is on it —
@@ -677,24 +801,304 @@ inline bool destroy( ContextId aId )
 }
 
 
+// ---------------------------------------------------------------------------
+// Fiber lane (doc 22 Phase A) — implementation
+// ---------------------------------------------------------------------------
+
+namespace detail
+{
+
+// Not a ceiling (a refusal here would change libcontext behaviour, which is
+// unbounded); a beacon threshold that turns "coroutines are leaking" into a
+// loud line long before the tab dies.
+constexpr size_t FIBER_POPULATION_BEACON = 256;
+
+inline Context* register_fiber_context( Context* aCtx )
+{
+    Registry& r = reg();
+
+    r.contexts[aCtx->id] = aCtx;
+    r.fiber_created++;
+    r.fiber_live++;
+
+    if( r.fiber_live > r.fiber_peak_live )
+        r.fiber_peak_live = r.fiber_live;
+
+    if( r.fiber_live == FIBER_POPULATION_BEACON )
+        beacon( "FIBER-POPULATION-HIGH", "live fiber count crossed the beacon threshold",
+                aCtx->id );
+
+    r.fiber_bytes += aCtx->c_stack.size + aCtx->asyncify_stack.size;
+
+    if( r.fiber_bytes > r.fiber_peak_bytes )
+        r.fiber_peak_bytes = r.fiber_bytes;
+
+    return aCtx;
+}
+
+} // namespace detail
+
+
+inline ContextId fiber_adopt_current( size_t aAsyncifyBytes, const char* aLabel )
+{
+    Registry& r = reg();
+
+    if( !on_main_thread() )
+    {
+        beacon( "REFUSED", "fiber_adopt_current() off the main thread", 0 );
+        r.fiber_refusals++;
+        return 0;
+    }
+
+    auto* ctx = new( std::nothrow ) Context();
+
+    if( !ctx )
+    {
+        beacon( "REFUSED", "fiber_adopt_current() allocation failed", 0 );
+        r.fiber_refusals++;
+        return 0;
+    }
+
+    ctx->id = r.next_id++;
+    ctx->label = aLabel ? aLabel : "";
+    ctx->symmetric = true;
+    ctx->asyncify_stack.allocate( aAsyncifyBytes );
+
+    if( !ctx->asyncify_stack.base )
+    {
+        beacon( "REFUSED", "fiber_adopt_current() asyncify allocation failed", 0 );
+        r.fiber_refusals++;
+        delete ctx;
+        return 0;
+    }
+
+    // Adoption runs ON the stack being adopted, so the live limits describe it
+    // (the one situation where a live query is trustworthy — doc 22 §7 trap 2).
+    // Range is informational: the root's swaps are driven by its own frames.
+    ctx->c_stack.adopt( reinterpret_cast<void*>( emscripten_stack_get_end() ),
+                        static_cast<size_t>( emscripten_stack_get_base()
+                                             - emscripten_stack_get_end() ) );
+
+    emscripten_fiber_init_from_current_context( &ctx->fiber,
+                                                ctx->asyncify_stack.base,
+                                                ctx->asyncify_stack.size );
+
+    ctx->status = Status::Running;
+    ctx->park_reason = "adopted";
+
+    register_fiber_context( ctx );
+    r.fiber_running = ctx->id;
+    return ctx->id;
+}
+
+
+inline ContextId fiber_create( void ( *aEntry )( void* ), void* aArg,
+                               void* aStackBottom, size_t aStackBytes,
+                               size_t aAsyncifyBytes, const char* aLabel )
+{
+    Registry& r = reg();
+
+    if( !on_main_thread() )
+    {
+        beacon( "REFUSED", "fiber_create() off the main thread", 0 );
+        r.fiber_refusals++;
+        return 0;
+    }
+
+    if( !aEntry || !aStackBottom || !aStackBytes )
+    {
+        beacon( "REFUSED", "fiber_create() with a null entry or stack", 0 );
+        r.fiber_refusals++;
+        return 0;
+    }
+
+    auto* ctx = new( std::nothrow ) Context();
+
+    if( !ctx )
+    {
+        beacon( "REFUSED", "fiber_create() allocation failed", 0 );
+        r.fiber_refusals++;
+        return 0;
+    }
+
+    ctx->id = r.next_id++;
+    ctx->label = aLabel ? aLabel : "";
+    ctx->symmetric = true;
+    ctx->entry = aEntry;
+    ctx->arg = aArg;
+    ctx->c_stack.adopt( aStackBottom, aStackBytes );
+    ctx->asyncify_stack.allocate( aAsyncifyBytes );
+
+    if( !ctx->asyncify_stack.base )
+    {
+        beacon( "REFUSED", "fiber_create() asyncify allocation failed", 0 );
+        r.fiber_refusals++;
+        delete ctx;
+        return 0;
+    }
+
+    // The entry is the caller's own trampoline (libcontext's), not the star's
+    // context_trampoline: the fiber lane preserves the caller's protocol.
+    emscripten_fiber_init( &ctx->fiber, aEntry, aArg,
+                           aStackBottom, aStackBytes,
+                           ctx->asyncify_stack.base, ctx->asyncify_stack.size );
+
+    ctx->status = Status::Fresh;   // enterable: first swap-in takes the entry path
+    ctx->park_reason = "created";
+
+    register_fiber_context( ctx );
+    return ctx->id;
+}
+
+
+inline bool fiber_enterable( ContextId aId )
+{
+    Context* ctx = find( aId );
+
+    if( !ctx || !ctx->symmetric )
+        return false;
+
+    return ctx->status == Status::Fresh || ctx->status == Status::Suspended;
+}
+
+
+inline bool fiber_swap( ContextId aFrom, ContextId aTo )
+{
+    Registry& r = reg();
+    Context* to = find( aTo );
+
+    if( !to || !to->symmetric )
+    {
+        // Unknown target = the caller holds a stale id (today: use-after-free
+        // and a crash; here: a loud refusal the caller can contain).
+        beacon( "REFUSED", "fiber_swap() unknown or non-fiber target", aTo );
+        r.fiber_refusals++;
+        return false;
+    }
+
+    Context* from = find( aFrom );
+
+    if( !from || !from->symmetric )
+    {
+        beacon( "REFUSED", "fiber_swap() unknown or non-fiber source", aFrom );
+        r.fiber_refusals++;
+        return false;
+    }
+
+    if( from == to )
+    {
+        beacon( "REFUSED", "fiber_swap() self-swap", aTo );
+        r.fiber_refusals++;
+        return false;
+    }
+
+    // Phase A is behaviour-preserving, so a swap into stale state is COUNTED,
+    // not vetoed: the policy refusal lives in jump_fcontext (which reads
+    // fiber_enterable() before calling here). Any firing is a tripwire —
+    // a caller bypassed the policy.
+    if( to->status != Status::Fresh && to->status != Status::Suspended )
+    {
+        char detail[96];
+        std::snprintf( detail, sizeof( detail ),
+                       "swap into a %s context - stale rewind state",
+                       status_name( to->status ) );
+        beacon( "FIBER-SWAP-NONENTERABLE", detail, aTo );
+        r.fiber_nonenterable_swaps++;
+    }
+
+    from->status = Status::Suspended;
+    from->park_reason = "fiber-swap-out";
+    from->parks++;
+    to->status = Status::Running;
+    to->resumes++;
+    r.fiber_running = aTo;
+    r.fiber_swaps++;
+
+    // Measure the TARGET's buffer now, while it still holds its suspended
+    // capture — after the swap consumes it the pointer is back at base and
+    // the high-water would always read 0 (the Phase E sizing input).
+    note_asyncify_use( *to );
+
+    emscripten_fiber_swap( &from->fiber, &to->fiber );
+
+    // Resumed: whoever swapped back in already set our status and
+    // fiber_running through this same funnel.
+    return true;
+}
+
+
+inline ContextId fiber_current()
+{
+    return reg().fiber_running;
+}
+
+
+inline bool fiber_release( ContextId aId )
+{
+    Registry& r = reg();
+    Context* ctx = find( aId );
+
+    if( !ctx || !ctx->symmetric )
+        return false;
+
+    if( ctx->status == Status::Running )
+    {
+        // "Running" here usually means the registry's view is stale (the
+        // fiber is asyncify-parked below a JS turn, or an aborted tool is
+        // being torn down). libcontext's refcount drop always deleted the
+        // struct in this state, so the registry must let go too — refusing
+        // while the caller frees anyway leaves a permanent ghost that
+        // poisons every later enterability answer (measured 2026-08-06,
+        // eeschema-collab). Beacon as a tripwire, then release.
+        beacon( "FIBER-RELEASE-RUNNING", "released while the registry says running", aId );
+        r.fiber_released_running++;
+
+        if( r.fiber_running == aId )
+            r.fiber_running = 0;
+    }
+
+    if( ctx->status == Status::Suspended )
+        r.fiber_released_suspended++;
+
+    r.fiber_bytes -= ctx->c_stack.size + ctx->asyncify_stack.size;
+    r.fiber_live--;
+    r.fiber_released++;
+    r.contexts.erase( aId );
+    delete ctx;
+    return true;
+}
+
+
 inline std::string stats_json()
 {
     Registry& r = reg();
-    char buf[640];
+    char buf[1024];
     std::snprintf( buf, sizeof( buf ),
                    "{\"live\":%zu,\"peakLive\":%zu,\"created\":%u,\"finished\":%u,"
                    "\"transitions\":%u,\"refusals\":%u,\"foreignStackRefusals\":%u,\"running\":%u,"
                    "\"transitionInFlight\":%s,\"readyQueued\":%zu,"
                    "\"bytes\":%zu,\"peakBytes\":%zu,"
                    "\"perContextBytes\":%zu,\"cStackBytes\":%zu,\"asyncifyBytes\":%zu,"
-                   "\"asyncifyHighWater\":%zu}",
+                   "\"asyncifyHighWater\":%zu,"
+                   "\"fiberLive\":%zu,\"fiberPeakLive\":%zu,\"fiberCreated\":%u,"
+                   "\"fiberReleased\":%u,\"fiberSwaps\":%u,\"fiberRefusals\":%u,"
+                   "\"fiberReleasedSuspended\":%u,\"fiberReleasedRunning\":%u,"
+                   "\"fiberNonEnterableSwaps\":%u,"
+                   "\"fiberRunning\":%u,\"fiberBytes\":%zu,\"fiberPeakBytes\":%zu,"
+                   "\"fiberAsyncifyHighWater\":%zu}",
                    r.live, r.peak_live, r.created, r.finished,
                    r.transitions, r.refusals, r.foreign_stack_refusals, r.running,
                    r.transition ? "true" : "false", r.ready_fifo.size(),
                    r.bytes, r.peak_bytes,
                    DEFAULT_C_STACK_BYTES + DEFAULT_ASYNCIFY_BYTES,
                    DEFAULT_C_STACK_BYTES, DEFAULT_ASYNCIFY_BYTES,
-                   r.asyncify_high_water );
+                   r.asyncify_high_water,
+                   r.fiber_live, r.fiber_peak_live, r.fiber_created,
+                   r.fiber_released, r.fiber_swaps, r.fiber_refusals,
+                   r.fiber_released_suspended, r.fiber_released_running,
+                   r.fiber_nonenterable_swaps,
+                   r.fiber_running, r.fiber_bytes, r.fiber_peak_bytes,
+                   r.fiber_asyncify_high_water );
     return buf;
 }
 
@@ -706,11 +1110,13 @@ inline std::string registry_json()
 
     for( const auto& [id, ctx] : reg().contexts )
     {
-        char entry[256];
+        char entry[288];
         std::snprintf( entry, sizeof( entry ),
-                       "%s{\"id\":%u,\"label\":\"%s\",\"status\":\"%s\",\"reason\":\"%s\","
+                       "%s{\"id\":%u,\"kind\":\"%s\",\"label\":\"%s\",\"status\":\"%s\","
+                       "\"reason\":\"%s\","
                        "\"parks\":%u,\"resumes\":%u,\"asyncifyHighWater\":%zu}",
-                       first ? "" : ",", id, ctx->label, status_name( ctx->status ),
+                       first ? "" : ",", id, ctx->symmetric ? "fiber" : "star",
+                       ctx->label, status_name( ctx->status ),
                        ctx->park_reason, ctx->parks, ctx->resumes,
                        ctx->asyncify_high_water );
         out += entry;
@@ -733,6 +1139,16 @@ inline void reset_stats()
     r.peak_live = r.live;
     r.peak_bytes = r.bytes;
     r.asyncify_high_water = 0;
+    r.fiber_created = 0;
+    r.fiber_released = 0;
+    r.fiber_swaps = 0;
+    r.fiber_refusals = 0;
+    r.fiber_released_suspended = 0;
+    r.fiber_released_running = 0;
+    r.fiber_nonenterable_swaps = 0;
+    r.fiber_peak_live = r.fiber_live;
+    r.fiber_peak_bytes = r.fiber_bytes;
+    r.fiber_asyncify_high_water = 0;
 }
 
 } // namespace pcbjam_sched
