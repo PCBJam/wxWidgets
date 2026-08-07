@@ -785,6 +785,31 @@ extern "C" bool wxWasmMainLoopDetached()
     return g_mainLoopDetached;
 }
 
+extern "C" int wxWasmContextWakeIsPumpOwned(unsigned id)
+{
+    // The main-loop context is resumed by the rAF pump and each dispatch
+    // context by the tick; those parks are the pumps' own contract. A second
+    // party parking them with its own wake source gives one context two
+    // owners — measured 2026-08-07: the main-thread-sleep shim parked the
+    // main-loop context, and the frame wake then resumed a capture the sleep
+    // wake had already consumed (a doRewind trap arriving through
+    // wxWasmArmFrameWake). Contexts listed here must keep sleeping in place;
+    // everything else (tool coroutines) may park (wasm/shims/context_sleep.cpp).
+    if (!id)
+        return 0;
+
+    if (id == g_mainLoopContext)
+        return 1;
+
+    for (pcbjam_sched::ContextId dispatchId : wxWasmDispatchContexts())
+    {
+        if (dispatchId == id)
+            return 1;
+    }
+
+    return 0;
+}
+
 // ----------------------------------------------------------------------------
 // wxGUIEventLoop
 // ----------------------------------------------------------------------------
