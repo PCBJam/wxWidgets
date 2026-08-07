@@ -461,7 +461,10 @@ EM_JS(void, wxWasmScheduleProcessEvents, (), {
 // Defined below with the dispatch context it drives.
 extern "C" void wxWasmDispatchOnContext();
 
-// Doc 22 flip staging switch — see wxWasmTopLevelTick.
+// Doc 22 flip staging switch — see wxWasmTopLevelTick. Measured 2026-08-07:
+// flipping this ON engages D+C+B-transfers together and surfaces the two
+// remaining Phase B semantic gaps (doc 22 §10 D-on entry) — re-enable when
+// Phase B owns coroutine lifetimes.
 #define wxWASM_STAR_DISPATCH 0
 
 extern "C" {

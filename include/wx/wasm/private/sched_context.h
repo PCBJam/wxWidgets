@@ -1024,9 +1024,34 @@ inline ContextId fiber_create( void ( *aEntry )( void* ), void* aArg,
     // A null stack means "you own it": the scheduler's own long-lived contexts
     // (the dispatch context) have no KiCad allocation behind them.
     if( aStackBottom )
-        ctx->c_stack.adopt( aStackBottom, aStackBytes );
+    {
+        // Trap 1 (doc 22 §7): a fiber C stack must be 16-aligned or every
+        // EM_ASM on it traps in readEmAsmArgs. Adopted stacks are whatever
+        // the caller allocated — KiCad's COROUTINE maps pages (aligned), but
+        // a plain new char[] is 8-aligned and lands on 8-mod-16 by heap-
+        // history luck, which reads as an "environmental" failure because any
+        // unrelated allocation change moves it. Adopt the largest aligned
+        // sub-range instead of trusting luck: bottom rounds up, size rounds
+        // down, top stays 16-aligned (≤30 bytes lost).
+        char* rawBottom = static_cast<char*>( aStackBottom );
+        char* alignedBottom = reinterpret_cast<char*>(
+                ( reinterpret_cast<uintptr_t>( rawBottom ) + 15u ) & ~uintptr_t( 15 ) );
+        const size_t dropped = static_cast<size_t>( alignedBottom - rawBottom );
+
+        if( aStackBytes <= dropped )
+        {
+            beacon( "REFUSED", "fiber_create() stack too small to align", 0 );
+            r.fiber_refusals++;
+            delete ctx;
+            return 0;
+        }
+
+        ctx->c_stack.adopt( alignedBottom, ( aStackBytes - dropped ) & ~size_t( 15 ) );
+    }
     else
+    {
         ctx->c_stack.allocate( aStackBytes );
+    }
 
     aStackBottom = ctx->c_stack.base;
     aStackBytes = ctx->c_stack.size;
