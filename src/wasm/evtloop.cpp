@@ -10,9 +10,11 @@
 
 #include "wx/app.h"
 #include "wx/evtloop.h"
+#include "wx/init.h"
 #include "wx/toplevel.h"
 #include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/mailbox.h"
+#include "wx/wasm/private/mainloop.h"
 #include "wx/wasm/private/mainstack.h"
 #include "wx/wasm/private/sched_context.h"
 #include "wx/wasm/private/yieldwait.h"
@@ -459,6 +461,9 @@ EM_JS(void, wxWasmScheduleProcessEvents, (), {
 // Defined below with the dispatch context it drives.
 extern "C" void wxWasmDispatchOnContext();
 
+// Doc 22 flip staging switch — see wxWasmTopLevelTick.
+#define wxWASM_STAR_DISPATCH 0
+
 extern "C" {
 
     // The top-level loop's scheduled dispatch. A separate entry point from
@@ -476,7 +481,16 @@ extern "C" {
     // DoRun, so a throwing handler tears the loop down from either dispatcher.
     void EMSCRIPTEN_KEEPALIVE wxWasmTopLevelTick()
     {
+        // Doc 22 flip staging: Phase D (dispatch on a context) is built but
+        // held OFF until D5 (the main loop on a context) gates green alone —
+        // the measured overlapped-wake came from running both while the main
+        // loop still Asyncify-parked per frame. Flip to 1 to re-enable D on
+        // top of a proven scheduler-only main stack.
+#if wxWASM_STAR_DISPATCH
         wxWasmDispatchOnContext();
+#else
+        ProcessEvents();
+#endif
     }
 
 }  // extern "C"
@@ -558,6 +572,125 @@ extern "C" bool wxWasmOnDispatchContext()
 }
 
 // ----------------------------------------------------------------------------
+// The main-loop context (doc 22 D5).
+//
+// The top-level loop's per-frame wait used to be an Asyncify park of the MAIN
+// stack (wxWasmYieldToBrowser) — doc 21's W2, "safe by construction" only
+// while dispatch also ran there. The moment the scheduler swaps contexts from
+// a tick, that park and the transitions interleave over one Asyncify slot
+// (the measured overlapped-wake). So the loop itself moves onto a context
+// whose per-frame wait is yield_park; OnRun and main() RETURN, the runtime
+// stays alive (EXIT_RUNTIME=0), and a rAF-armed pump drives the loop from a
+// clean main stack that is only ever the scheduler.
+// ----------------------------------------------------------------------------
+namespace
+{
+pcbjam_sched::ContextId g_mainLoopContext = 0;
+bool g_mainLoopDetached = false;
+int g_mainLoopResult = 0;
+
+// The loop context carries DoRun's one-time setup (top-window layout) and the
+// whole app teardown at exit, so size it like the dispatch context rather
+// than the scheduler default.
+constexpr size_t MAIN_LOOP_STACK_BYTES = 1024 * 1024;
+constexpr size_t MAIN_LOOP_ASYNCIFY_BYTES = 512 * 1024;
+
+void wxWasmMainLoopEntry(void *arg)
+{
+    wxApp *app = static_cast<wxApp *>(arg);
+
+    g_mainLoopResult = app->RunMainLoopOnContext();
+
+    // The loop exited: the app really is ending. Run the teardown wxEntry
+    // skipped when OnRun detached — OnExit, then the wxUninitialize that
+    // releases the pinned init count and performs wxEntryCleanup (which
+    // deletes the app; `app` is dangling below this point).
+    app->OnExit();
+    wxUninitialize();
+
+    // A raw fiber entry must never return (emscripten ends the program), and
+    // nothing marks this context ready again, so the park is terminal.
+    for (;;)
+        pcbjam_sched::yield_park("main-loop-exited");
+}
+}  // namespace
+
+// One frame's wake: rAF is the same cadence the old in-place park awaited.
+// The callback is a fresh JS task, which is exactly what drain_all() requires.
+EM_JS(void, wxWasmArmFrameWake, (), {
+    requestAnimationFrame(function () {
+        Module["_wxWasmMainLoopPump"]();
+    });
+});
+
+// The FIRST entry must also come from a clean JS task, AFTER main() has
+// returned: entering from OnRun's own frame would capture main()/wxEntry
+// frames into the scheduler fiber's buffer, and main would then "return"
+// inside some later pump's rewind.
+EM_JS(void, wxWasmArmMainLoopKick, (), {
+    setTimeout(function () {
+        Module["_wxWasmMainLoopPump"]();
+    }, 0);
+});
+
+extern "C" {
+
+    // Enter or resume the main-loop context from a clean stack. Mirrors
+    // wxWasmDispatchOnContext's shape: Fresh means first entry, a "frame"
+    // park means the per-frame wait — anything else (a wait parked deeper)
+    // is left alone and the pump just runs whatever else is ready.
+    void EMSCRIPTEN_KEEPALIVE wxWasmMainLoopPump()
+    {
+        if (!g_mainLoopContext)
+            return;
+
+        const pcbjam_sched::Status st = pcbjam_sched::status_of(g_mainLoopContext);
+
+        if (st == pcbjam_sched::Status::Fresh)
+            pcbjam_sched::fiber_start(g_mainLoopContext, 0);
+        else if (st == pcbjam_sched::Status::Parked
+                 && strcmp(pcbjam_sched::park_reason_of(g_mainLoopContext),
+                           "frame") == 0)
+            pcbjam_sched::mark_ready(g_mainLoopContext, 0);
+
+        pcbjam_sched::drain_all();
+    }
+
+}  // extern "C"
+
+// Staging toggle for A/B diagnosis: 0 = run the loop inline (pre-D5 shape).
+#define wxWASM_D5_DETACH 1
+
+extern "C" bool wxWasmDetachMainLoop(wxApp *app)
+{
+    if (!wxWASM_D5_DETACH || g_mainLoopContext || !app)
+        return false;
+
+    // Capture the MAIN stack's bounds here: OnRun is the last moment we are
+    // provably standing on it. DoRun now runs on the loop context, where a
+    // live query would record the CONTEXT's bounds and every later stack
+    // classification would silently be wrong (doc 22 §7 trap 2).
+    s_mainStackBase = emscripten_stack_get_base();
+    s_mainStackEnd = emscripten_stack_get_end();
+
+    g_mainLoopContext = pcbjam_sched::fiber_create(
+        wxWasmMainLoopEntry, app, NULL, MAIN_LOOP_STACK_BYTES,
+        MAIN_LOOP_ASYNCIFY_BYTES, "wx-main-loop");
+
+    if (!g_mainLoopContext)
+        return false;
+
+    g_mainLoopDetached = true;
+    wxWasmArmMainLoopKick();
+    return true;
+}
+
+extern "C" bool wxWasmMainLoopDetached()
+{
+    return g_mainLoopDetached;
+}
+
+// ----------------------------------------------------------------------------
 // wxGUIEventLoop
 // ----------------------------------------------------------------------------
 
@@ -618,10 +751,14 @@ int wxGUIEventLoop::DoRun()
 
     wxWasmSchedulerAssertInstalled();
 
-    // Top-level DoRun runs on the main stack by construction: record its bounds
-    // while that is true, so nested loops can later tell whether they are
-    // standing somewhere else (see wxWasmOnCoroutineStack).
-    if (s_wxRunDepth == 0)
+    // Record the main stack's bounds so nested loops can later tell whether
+    // they are standing somewhere else (see wxWasmOnCoroutineStack). Under D5
+    // the detach already captured them in wxWasmDetachMainLoop — top-level
+    // DoRun runs on the loop CONTEXT there, so a live query here would record
+    // the context's bounds and misclassify every later stack. Only the
+    // non-detached fallback still captures here, where depth-0 DoRun really
+    // is on the main stack.
+    if (s_wxRunDepth == 0 && !s_mainStackBase)
     {
         s_mainStackBase = emscripten_stack_get_base();
         s_mainStackEnd = emscripten_stack_get_end();
@@ -662,10 +799,11 @@ int wxGUIEventLoop::DoRun()
         topWindow->Refresh();
     }
 
-    // Run ProcessEvents on the real main C stack, yielding one animation frame between
-    // ticks. No throw (fatal under native wasm-EH), no permanent handleAsync park (which
-    // blocks coroutine fiber swaps — see wxWasmYieldToBrowser). m_shouldExit, set by
-    // ScheduleExit(), ends the loop after the current tick.
+    // One tick per animation frame. No throw (fatal under native wasm-EH), and
+    // under D5 no Asyncify park of the stack we stand on either: this loop runs
+    // on the main-loop CONTEXT, so the per-frame wait is a context park the
+    // rAF pump resolves — the main stack stays the scheduler's alone.
+    // m_shouldExit, set by ScheduleExit(), ends the loop after the current tick.
     while (!m_shouldExit)
     {
         // Schedule, don't dispatch: see wxWasmScheduleProcessEvents. The tick's
@@ -680,7 +818,21 @@ int wxGUIEventLoop::DoRun()
         // single plain-call tick and the scheduler's consume-once/deferred-wake
         // guards it is closed.
         wxWasmScheduleProcessEvents();
-        wxWasmYieldToBrowser();
+
+        if (pcbjam_sched::can_yield_here())
+        {
+            // D5: arm the next frame's wake, then yield this context to the
+            // scheduler. The rAF callback (a fresh JS task) marks us ready and
+            // drains — indistinguishable, in this frame, from the old await.
+            wxWasmArmFrameWake();
+            pcbjam_sched::yield_park("frame");
+        }
+        else
+        {
+            // Non-detached fallback (context creation failed): the pre-D5
+            // in-place park of the main stack.
+            wxWasmYieldToBrowser();
+        }
     }
     --s_wxRunDepth;
 

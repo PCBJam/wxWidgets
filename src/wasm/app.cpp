@@ -21,6 +21,7 @@
 #include "wx/private/eventloopsourcesmanager.h"
 #include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/mailbox.h"
+#include "wx/wasm/private/mainloop.h"
 #include "wx/wasm/private/display.h"
 #include "wx/wasm/private/keyboard.h"
 #include "wx/wasm/private/mouse.h"
@@ -50,6 +51,22 @@ wxApp::wxApp()
 wxApp::~wxApp()
 {
     delete m_display;
+}
+
+int wxApp::OnRun()
+{
+    // D5 (pcbjam docs/features/async/22): the main loop moves onto a scheduler
+    // context whose per-frame wait is a context park. The main stack is then
+    // the scheduler's and nothing else — the per-frame Asyncify park this
+    // replaces interleaved with scheduler transitions over one Asyncify slot
+    // (the measured "overlapped-wake" class). This frame returns immediately;
+    // wxEntry sees the detach and skips its teardown (the loop context runs it
+    // when the app really exits).
+    if (wxWasmDetachMainLoop(this))
+        return 0;
+
+    // Context creation failed: run the loop in place, exactly as before D5.
+    return wxAppBase::OnRun();
 }
 
 // Defined in toplevel.cpp. True if `win` is, or contains, a wxGLCanvas — the 3D viewer,

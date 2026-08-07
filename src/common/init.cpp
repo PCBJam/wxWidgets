@@ -52,6 +52,14 @@
 
 #include "wx/private/localeset.h"
 
+#ifdef __WXWASM__
+// D5 (pcbjam docs/features/async/22): under wasm, OnRun hands the main loop to
+// a scheduler context and returns immediately — the app keeps running, driven
+// by browser ticks, so the teardown below OnRun must NOT run on that path.
+// Defined in src/wasm/evtloop.cpp.
+extern "C" bool wxWasmMainLoopDetached();
+#endif
+
 // ----------------------------------------------------------------------------
 // private classes
 // ----------------------------------------------------------------------------
@@ -488,13 +496,38 @@ int wxEntryReal(int& argc, wxChar **argv)
         class CallOnExit
         {
         public:
-            ~CallOnExit() { wxTheApp->OnExit(); }
+            ~CallOnExit()
+            {
+#ifdef __WXWASM__
+                // A detached main loop is still running: its context calls
+                // OnExit itself when the loop really exits.
+                if ( wxWasmMainLoopDetached() )
+                    return;
+#endif
+                wxTheApp->OnExit();
+            }
         } callOnExit;
 
         WX_SUPPRESS_UNUSED_WARN(callOnExit);
 
         // app execution
+#ifdef __WXWASM__
+        {
+            const int mainLoopResult = wxTheApp->OnRun();
+
+            // D5: OnRun detached — the loop keeps running on a scheduler
+            // context after this frame (and main()) return, with the runtime
+            // alive. Pin the init count so the wxInitializer above skips
+            // wxEntryCleanup; the loop context balances it with its own
+            // wxUninitialize when the app really exits.
+            if ( wxWasmMainLoopDetached() )
+                wxAtomicInc(gs_initData.nInitCount);
+
+            return mainLoopResult;
+        }
+#else
         return wxTheApp->OnRun();
+#endif
     }
     wxCATCH_ALL( wxTheApp->OnUnhandledException(); return -1; )
 }

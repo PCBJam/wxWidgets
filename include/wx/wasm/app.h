@@ -28,6 +28,15 @@ public:
     wxApp();
     virtual ~wxApp();
 
+    // D5 (pcbjam docs/features/async/22): hand the main loop to a scheduler
+    // context and return immediately — the app keeps running, driven by
+    // browser frame ticks, and main() returns with the runtime alive.
+    virtual int OnRun() wxOVERRIDE;
+
+    // The detached main-loop context body runs the stock main loop through
+    // this thunk; public only for the context entry in evtloop.cpp.
+    int RunMainLoopOnContext() { return wxAppBase::OnRun(); }
+
     // deferGLCanvasWindows: skip a synchronous repaint of any non-main window hosting a
     // wxGLCanvas (the 3D viewer, whose paint runs the multi-threaded CPU raytracer). Used
     // on the mouse-button repaint path (HandleMouseEvent), which is driven synchronously
