@@ -23,6 +23,11 @@
 #include "wx/wasm/private/mailbox.h"
 #include "wx/wasm/private/mainloop.h"
 #include "wx/wasm/private/display.h"
+
+// Defined in evtloop.cpp: run work on a dispatch context instead of the stack
+// it arrived on (doc 22 §10 — every entry that can reach a tool coroutine must
+// go through the scheduler, or the rewind paths do not match).
+extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg);
 #include "wx/wasm/private/keyboard.h"
 #include "wx/wasm/private/mouse.h"
 #include "wx/wasm/private/timer.h"
@@ -683,6 +688,141 @@ const char *GetEventName(int eventType)
     return "(Unknown)";
 }
 
+// ----------------------------------------------------------------------------
+// DOM entries run on a dispatch context, not on the stack they arrive on
+// (pcbjam docs/features/async/22 §10).
+//
+// A DOM handler enters wasm on the MAIN stack. Dispatching there reaches a
+// KiCad tool coroutine through libcontext's DIRECT symmetric swap, while the
+// tick reaches that same coroutine through the dispatch context as a STAR
+// TRANSFER — and a capture written by one path cannot be rewound by the other
+// ("index out of bounds" in doRewind, measured on every canvas tool). So the
+// handler bodies below are packaged as jobs and handed to the scheduler.
+//
+// LIFETIME. A job usually runs to completion inside wxWasmRunOnDispatchContext
+// (the context parks again and the pump returns), but it MAY park — a click
+// that opens a modal keeps the job alive for the dialog's lifetime. The job is
+// therefore heap-owned, and ownership goes to whoever finishes last: the job
+// deletes itself if the caller has already given up on it, otherwise the
+// caller deletes it and reads its result.
+// ----------------------------------------------------------------------------
+namespace
+{
+
+struct wxWasmDomJob
+{
+    wxApp *app = NULL;
+    bool finished = false;
+    bool abandoned = false;
+};
+
+/** Run aJob via the scheduler; true if it completed before returning. */
+bool wxWasmRunDomJob(void (*aFn)(void *), wxWasmDomJob *aJob)
+{
+    wxWasmRunOnDispatchContext(aFn, aJob);
+
+    if (aJob->finished)
+        return true;
+
+    // Still parked (a modal, a lib fetch): it owns itself from here.
+    aJob->abandoned = true;
+    return false;
+}
+
+/** Job epilogue: hand the allocation to whoever is still around. */
+void wxWasmFinishDomJob(wxWasmDomJob *aJob)
+{
+    if (aJob->abandoned)
+        delete aJob;
+    else
+        aJob->finished = true;
+}
+
+struct wxWasmMouseJob : wxWasmDomJob
+{
+    wxMouseEvent event;
+    bool wheel = false;
+    // Touch-down synthesises a motion event before the button (see
+    // TouchCallback); both must run on the same stack, in order.
+    bool precedingMotion = false;
+};
+
+void wxWasmRunMouseJob(void *arg)
+{
+    wxWasmMouseJob *job = static_cast<wxWasmMouseJob *>(arg);
+
+    if (job->wheel)
+    {
+        job->app->HandleMouseWheelEvent(&job->event);
+    }
+    else
+    {
+        if (job->precedingMotion)
+        {
+            wxMouseEvent moveEvent(job->event);
+            moveEvent.SetEventType(wxEVT_MOTION);
+            moveEvent.SetLeftDown(false);
+            moveEvent.m_clickCount = 0;
+            job->app->HandleMouseEvent(&moveEvent);
+        }
+
+        job->app->HandleMouseEvent(&job->event);
+    }
+
+    wxWasmFinishDomJob(job);
+}
+
+struct wxWasmKeyJob : wxWasmDomJob
+{
+    wxKeyEvent event;
+    // The browser needs a synchronous answer; the job writes it here before it
+    // can park, and a job that parks anyway leaves the caller's default.
+    bool preventDefault = true;
+};
+
+void wxWasmRunKeyJob(void *arg)
+{
+    wxWasmKeyJob *job = static_cast<wxWasmKeyJob *>(arg);
+    wxApp *app = job->app;
+    wxKeyEvent &event = job->event;
+
+    if (event.GetEventType() == wxEVT_KEY_DOWN)
+    {
+        wxKeyEvent charHookEvent(wxEVT_CHAR_HOOK, event);
+
+        if (!app->HandleKeyEvent(&charHookEvent) ||
+            charHookEvent.IsNextEventAllowed())
+        {
+            // The browser does not generate char events for some key codes
+            if (KeyCodeNeedsCharEvent(event.GetKeyCode()))
+            {
+                if (!app->HandleKeyEvent(&event))
+                {
+                    wxKeyEvent charEvent(wxEVT_CHAR, event);
+                    app->HandleKeyEvent(&charEvent);
+                }
+            }
+            else
+            {
+                // By default, emscripten generates char events
+                job->preventDefault = app->HandleKeyEvent(&event);
+            }
+        }
+        else
+        {
+            job->preventDefault = false;
+        }
+    }
+    else
+    {
+        app->HandleKeyEvent(&event);
+    }
+
+    wxWasmFinishDomJob(job);
+}
+
+}  // namespace
+
 EM_BOOL KeyCallback(int eventType,
                     const EmscriptenKeyboardEvent *emscriptenEvent,
                     void *userData)
@@ -724,37 +864,18 @@ EM_BOOL KeyCallback(int eventType,
                        static_cast<const char*>(key_char.utf8_str()));
         */
 
-        if (event.GetEventType() == wxEVT_KEY_DOWN)
-        {
-            wxKeyEvent charHookEvent(wxEVT_CHAR_HOOK, event);
+        wxWasmKeyJob* job = new wxWasmKeyJob();
+        job->app = app;
+        job->event = event;
 
-            if (!app->HandleKeyEvent(&charHookEvent) ||
-                charHookEvent.IsNextEventAllowed())
-            {
-                // The browser does not generate char events for some key codes
-                if (KeyCodeNeedsCharEvent(event.GetKeyCode()))
-                {
-                    if (!app->HandleKeyEvent(&event))
-                    {
-                        wxKeyEvent charEvent(wxEVT_CHAR, event);
-                        app->HandleKeyEvent(&charEvent);
-                    }
-                }
-                else
-                {
-                    // By default, emscripten generates char events
-                    preventDefault = app->HandleKeyEvent(&event);
-                }
-            }
-            else
-            {
-                preventDefault = false;
-            }
-        }
-        else
+        if (wxWasmRunDomJob(&wxWasmRunKeyJob, job))
         {
-            app->HandleKeyEvent(&event);
+            preventDefault = job->preventDefault;
+            delete job;
         }
+        // else: the handler parked (a modal opened from a key). It owns
+        // itself now, and preventDefault keeps its default — the browser
+        // cannot be kept waiting for a dialog.
     }
 
     return preventDefault;
@@ -772,7 +893,12 @@ EM_BOOL MouseCallback(int eventType,
 
     if (EmscriptenMouseEventToWXEvent(eventType, *emscriptenEvent, &event))
     {
-        app->HandleMouseEvent(&event);
+        wxWasmMouseJob* job = new wxWasmMouseJob();
+        job->app = app;
+        job->event = event;
+
+        if (wxWasmRunDomJob(&wxWasmRunMouseJob, job))
+            delete job;
     }
 
     return true;
@@ -790,18 +916,17 @@ EM_BOOL TouchCallback(int eventType,
 
     if (EmscriptenTouchEventToWXEvent(eventType, *emscriptenEvent, &event))
     {
-        if (event.GetEventType() == wxEVT_LEFT_DOWN)
-        {
-            // Mirroring browser behavior, move the mouse to the new location
-            // before sending the mouse down event.
-            wxMouseEvent moveEvent(event);
-            moveEvent.SetEventType(wxEVT_MOTION);
-            moveEvent.SetLeftDown(false);
-            moveEvent.m_clickCount = 0;
-            app->HandleMouseEvent(&moveEvent);
+        wxWasmMouseJob* job = new wxWasmMouseJob();
+        job->app = app;
+        job->event = event;
+        // Mirroring browser behavior, move the mouse to the new location
+        // before sending the mouse down event (synthesised inside the job so
+        // both events reach wx on the same stack, in order).
+        job->precedingMotion = (event.GetEventType() == wxEVT_LEFT_DOWN);
 
-        }
-        app->HandleMouseEvent(&event);
+        if (wxWasmRunDomJob(&wxWasmRunMouseJob, job))
+            delete job;
+
         return true;
     } else {
         return false;
@@ -823,7 +948,13 @@ EM_BOOL WheelCallback(int WXUNUSED(eventType),
 
     if (EmscriptenWheelEventToWXEvent(*emscriptenEvent, wxVERTICAL, &event))
     {
-        app->HandleMouseWheelEvent(&event);
+        wxWasmMouseJob* job = new wxWasmMouseJob();
+        job->app = app;
+        job->event = event;
+        job->wheel = true;
+
+        if (wxWasmRunDomJob(&wxWasmRunMouseJob, job))
+            delete job;
     }
 
     return true;

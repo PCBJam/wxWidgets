@@ -27,6 +27,12 @@
 #include <map>
 #include <vector>
 
+// Run work on a dispatch context instead of the stack it arrived on (defined
+// with the dispatch contexts below; declared here for the entries near the top
+// of this file). See its definition for why every entry that can reach a tool
+// coroutine must go through the scheduler.
+extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg);
+
 // See wx/wasm/private/dispatch.h for the interlock contract.
 int wxWasmDispatchDepth = 0;
 
@@ -164,7 +170,11 @@ extern "C" {
     // interlock free), not the kind of stack it runs on.
     void EMSCRIPTEN_KEEPALIVE wxWasmMailboxTick()
     {
-        wxWasmMailboxDeliver();
+        // A delivered timer handler can reach a tool coroutine exactly like a
+        // DOM event can, so it takes the same route: run it on a dispatch
+        // context rather than on the main stack this tick arrived on (doc 22
+        // §10 — one entry path per coroutine, or the rewinds do not match).
+        wxWasmRunOnDispatchContext([](void *) { wxWasmMailboxDeliver(); }, NULL);
     }
 
 }  // extern "C"
@@ -566,11 +576,43 @@ std::vector<pcbjam_sched::ContextId> &wxWasmDispatchContexts()
     return s_contexts;
 }
 
+// Work handed to a dispatch context by an entry that arrived on the MAIN
+// stack — a DOM event handler, a mailbox timer delivery. See
+// wxWasmRunOnDispatchContext for why those may not run where they land.
+struct wxWasmDispatchJob
+{
+    void (*fn)(void *);
+    void *arg;
+};
+
+std::vector<wxWasmDispatchJob> &wxWasmDispatchJobs()
+{
+    static std::vector<wxWasmDispatchJob> s_jobs;
+    return s_jobs;
+}
+
+void wxWasmRunQueuedJobs()
+{
+    auto &jobs = wxWasmDispatchJobs();
+
+    // Index-based: a job may queue another (a handler that posts an event),
+    // and erase-front while running would invalidate the iterator.
+    while (!jobs.empty())
+    {
+        const wxWasmDispatchJob job = jobs.front();
+        jobs.erase(jobs.begin());
+        job.fn(job.arg);
+    }
+}
+
 void wxWasmDispatchEntry(void *)
 {
     // Never returns: an emscripten fiber entry that returns ends the program.
     for (;;)
     {
+        // Handed-off entries first: they are the reason this context exists
+        // for anyone but the tick, and they are already ordered.
+        wxWasmRunQueuedJobs();
         ProcessEvents();
 
         // One tick done. Park until the next kick rather than spinning; the
@@ -783,6 +825,52 @@ extern "C" bool wxWasmDetachMainLoop(wxApp *app)
 extern "C" bool wxWasmMainLoopDetached()
 {
     return g_mainLoopDetached;
+}
+
+extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg)
+{
+    // WHY THIS EXISTS (doc 22 §10, measured 2026-08-07). A DOM event handler
+    // enters wasm on the MAIN stack, and if it dispatches there it reaches a
+    // KiCad tool coroutine through libcontext's DIRECT symmetric swap — while
+    // the tick reaches that same coroutine through the dispatch context as a
+    // STAR TRANSFER. A capture written by one path cannot be rewound by the
+    // other: `index out of bounds` in doRewind, on every canvas tool. Every
+    // entry into a coroutine must therefore go through the scheduler.
+    //
+    // The job runs SYNCHRONOUSLY in the common case: drain_all returns once
+    // the context parks again, which for a job that does not itself park is
+    // after it completed. Callers that need an answer (a key handler's
+    // preventDefault) read it from their own job struct; callers whose job
+    // parks (a click that opens a modal) get the same "returns while the work
+    // continues" semantics the pre-D DOM handlers already had.
+    if (!fn)
+        return;
+
+#if wxWASM_STAR_DISPATCH
+    // Already on a dispatch context: same-stack recursion is what wxYield and
+    // nested Dispatch() already do, and it keeps the ordering the caller
+    // expects.
+    if (!wxTheApp || wxWasmOnDispatchContext())
+    {
+        fn(arg);
+        return;
+    }
+
+    // Some OTHER context is what the registry calls running — which happens
+    // while a context's stack is Asyncify-parked in place (the bridges, until
+    // Phase E). drain() would refuse, so the job would never run: dispatch
+    // here instead. This is the narrow mixed-mode window Phase E closes.
+    if (pcbjam_sched::current() != 0 || pcbjam_sched::transition_in_flight())
+    {
+        fn(arg);
+        return;
+    }
+
+    wxWasmDispatchJobs().push_back({fn, arg});
+    wxWasmDispatchOnContext();
+#else
+    fn(arg);
+#endif
 }
 
 extern "C" int wxWasmContextWakeIsPumpOwned(unsigned id)
