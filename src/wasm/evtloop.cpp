@@ -25,6 +25,7 @@
 #include <string.h>  // strcmp: park-reason comparison
 
 #include <map>
+#include <vector>
 
 // See wx/wasm/private/dispatch.h for the interlock contract.
 int wxWasmDispatchDepth = 0;
@@ -300,6 +301,17 @@ extern "C" {
         wxWasmDispatchAbandon();
     }
 
+    // The scheduler's half of the same containment (doc 22 Phase B): an
+    // exception escaping a context propagates out THROUGH drain()'s fiber
+    // swap, so its post-swap bookkeeping never runs and the registry would
+    // refuse every later drain ("transition in flight") — a dead pump, and
+    // with it every unresolved wait. Called from the same JS error paths as
+    // wx_dispatch_abandon.
+    void EMSCRIPTEN_KEEPALIVE wxWasmSchedAbandon()
+    {
+        pcbjam_sched::abandon_transition();
+    }
+
     void EMSCRIPTEN_KEEPALIVE ProcessEvents()
     {
         if (!wxTheApp)
@@ -443,6 +455,10 @@ EM_JS(void, wxWasmScheduleProcessEvents, (), {
             // Mirror the DOM handlers' guard: a trap here would otherwise leave
             // the dispatch interlock held by a chain that no longer exists.
             if (Module["_wx_dispatch_abandon"]) Module["_wx_dispatch_abandon"]();
+            // Same for the scheduler: the exception came out through drain()'s
+            // fiber swap, so the transition it started is still "in flight"
+            // and every later pump would refuse to run (doc 22 Phase B).
+            if (Module["_wxWasmSchedAbandon"]) Module["_wxWasmSchedAbandon"]();
             // If a quasi-modal's nested loop is open, tear it down. A throwing
             // handler must not leave the parked nested DoRun unresolved or it
             // never returns — a silent stall (the asyncify-races
@@ -461,10 +477,16 @@ EM_JS(void, wxWasmScheduleProcessEvents, (), {
 // Defined below with the dispatch context it drives.
 extern "C" void wxWasmDispatchOnContext();
 
-// Doc 22 flip staging switch — see wxWasmTopLevelTick. Measured 2026-08-07:
-// flipping this ON engages D+C+B-transfers together and surfaces the two
-// remaining Phase B semantic gaps (doc 22 §10 D-on entry) — re-enable when
-// Phase B owns coroutine lifetimes.
+// Doc 22 flip staging switch — see wxWasmTopLevelTick.
+//
+// OFF. At D-on the wx battery is green (395/1, the 1 pre-existing), but the
+// KiCad suite loses four canvas-tool specs to `index out of bounds` in
+// doRewind — the blue screen itself. Cause (doc 22 §10 "Phase B at D-on"):
+// real tool coroutines PARK IN PLACE inside their bodies, and a star transfer
+// over an in-place-parked stack rewinds state the fiber layer cannot see.
+// The harness never modelled that, which is why it goes green while KiCad
+// does not. D turns back on when the tool-body park sites are contexts too
+// (C+E completion) — not before.
 #define wxWASM_STAR_DISPATCH 0
 
 extern "C" {
@@ -499,14 +521,28 @@ extern "C" {
 }  // extern "C"
 
 // ----------------------------------------------------------------------------
-// The dispatch context (doc 22 Phase D) — ONE context, never a pool.
+// The dispatch contexts (doc 22 Phase D) — an IDLE-REUSE set, bounded by
+// nesting depth, not by tick rate.
 //
 // Every wx handler chain runs here instead of on the main stack, which is what
 // lets a wait inside a handler PARK (Phase C) instead of suspending the stack
-// the whole runtime stands on. The pool idea from doc 20's reverted D2 is
-// deliberately absent: a context suspended in a modal is consumed for that
-// modal's lifetime, so a pool just wears a cap on the same leak. One context
-// suffices precisely because waits now yield it.
+// the whole runtime stands on.
+//
+// WHY NOT ONE (measured 2026-08-07, races nested_quasi_modal_pump_error):
+// a nested quasi-modal loop is a WAIT that only some LATER dispatch can
+// resolve — the pending event that closes the dialog, or the throwing handler
+// whose error path releases it. With a single context, the loop's own park
+// consumes the only dispatcher, so nothing ever dispatches that event and the
+// wait is unresolvable: the app wedges. "A blocked dispatch no longer blocks
+// the runtime" only holds if something else can dispatch.
+//
+// WHY THIS IS NOT D2's POOL (doc 20 §10 — 8 contexts burned in 30 ms): D2 took
+// a FRESH context per tick while one sat suspended, so the count grew with the
+// tick rate — a leak wearing a cap. Here a tick REUSES any context parked at
+// "dispatch-idle" and only creates one when every existing context is parked
+// deeper (i.e. inside a wait). A context finishes its ProcessEvents and
+// returns to idle as soon as its wait resolves, so the live count is bounded
+// by actual modal-nesting depth (1 in steady state, 2-3 under nested dialogs).
 //
 // ORDERING, load-bearing: this must exist before libcontext adopts its root,
 // so the scheduler owns the main stack alone and the root adopts the RUNNING
@@ -515,12 +551,20 @@ extern "C" {
 // ----------------------------------------------------------------------------
 namespace
 {
-pcbjam_sched::ContextId g_dispatchContext = 0;
-
 // Deeper than the scheduler's 128K default: a wx dispatch chain reaches deep
 // into KiCad (commit -> connectivity -> font work) before anything parks.
 constexpr size_t DISPATCH_STACK_BYTES = 1024 * 1024;
 constexpr size_t DISPATCH_ASYNCIFY_BYTES = 512 * 1024;
+
+// Nesting deeper than this is a bug, not a UI: beacon and drop the tick
+// rather than allocating without end.
+constexpr size_t MAX_DISPATCH_CONTEXTS = 16;
+
+std::vector<pcbjam_sched::ContextId> &wxWasmDispatchContexts()
+{
+    static std::vector<pcbjam_sched::ContextId> s_contexts;
+    return s_contexts;
+}
 
 void wxWasmDispatchEntry(void *)
 {
@@ -530,9 +574,22 @@ void wxWasmDispatchEntry(void *)
         ProcessEvents();
 
         // One tick done. Park until the next kick rather than spinning; the
-        // scheduler resumes us from a fresh JS task.
+        // scheduler resumes us from a fresh JS task. Parking HERE is what
+        // returns this context to the reusable set.
         pcbjam_sched::yield_park("dispatch-idle");
     }
+}
+
+/** Is this context ready to take a tick (never entered, or idle)? */
+bool wxWasmDispatchAvailable(pcbjam_sched::ContextId id)
+{
+    const pcbjam_sched::Status st = pcbjam_sched::status_of(id);
+
+    if (st == pcbjam_sched::Status::Fresh)
+        return true;
+
+    return st == pcbjam_sched::Status::Parked
+           && strcmp(pcbjam_sched::park_reason_of(id), "dispatch-idle") == 0;
 }
 }  // namespace
 
@@ -541,37 +598,72 @@ extern "C" void wxWasmDispatchOnContext()
     if (!wxTheApp)
         return;
 
-    if (!g_dispatchContext)
-    {
-        g_dispatchContext = pcbjam_sched::fiber_create(
-            wxWasmDispatchEntry, NULL, NULL, DISPATCH_STACK_BYTES,
-            DISPATCH_ASYNCIFY_BYTES, "wx-dispatch");
+    auto &contexts = wxWasmDispatchContexts();
 
-        if (!g_dispatchContext)
-        {
-            // Fall back to the pre-Phase-D path rather than losing the tick.
-            ProcessEvents();
-            return;
-        }
+    // Drop contexts poisoned by abandon_transition (a handler died abnormally
+    // and left a half-unwound stack): they are Finished and must never be
+    // entered again, and keeping them would count against the ceiling.
+    for (size_t i = contexts.size(); i-- > 0;)
+    {
+        if (pcbjam_sched::status_of(contexts[i]) == pcbjam_sched::Status::Finished)
+            contexts.erase(contexts.begin() + i);
     }
 
-    // Fresh (first tick) or parked at dispatch-idle: make it runnable. If it
-    // is parked deeper — inside a modal's wait — this is a no-op and the tick
-    // simply pumps whatever else is ready, which is the entire point of the
-    // phase: a blocked dispatch no longer blocks the runtime.
-    if (pcbjam_sched::status_of(g_dispatchContext) == pcbjam_sched::Status::Fresh)
-        pcbjam_sched::fiber_start(g_dispatchContext, 0);
-    else if (pcbjam_sched::status_of(g_dispatchContext) == pcbjam_sched::Status::Parked
-             && strcmp(pcbjam_sched::park_reason_of(g_dispatchContext),
-                       "dispatch-idle") == 0)
-        pcbjam_sched::mark_ready(g_dispatchContext, 0);
+    // Reuse an idle context if there is one; only allocate when every context
+    // we own is parked deeper (inside a wait), which is exactly the nested
+    // case that needs an additional dispatcher.
+    for (pcbjam_sched::ContextId id : contexts)
+    {
+        if (!wxWasmDispatchAvailable(id))
+            continue;
 
+        if (pcbjam_sched::status_of(id) == pcbjam_sched::Status::Fresh)
+            pcbjam_sched::fiber_start(id, 0);
+        else
+            pcbjam_sched::mark_ready(id, 0);
+
+        pcbjam_sched::drain_all();
+        return;
+    }
+
+    if (contexts.size() >= MAX_DISPATCH_CONTEXTS)
+    {
+        printf("[wx-dispatch] %zu dispatch contexts all parked in waits - "
+               "dropping this tick (nesting runaway?)\n", contexts.size());
+        pcbjam_sched::drain_all();
+        return;
+    }
+
+    const pcbjam_sched::ContextId fresh = pcbjam_sched::fiber_create(
+        wxWasmDispatchEntry, NULL, NULL, DISPATCH_STACK_BYTES,
+        DISPATCH_ASYNCIFY_BYTES, "wx-dispatch");
+
+    if (!fresh)
+    {
+        // Fall back to the pre-Phase-D path rather than losing the tick.
+        ProcessEvents();
+        return;
+    }
+
+    contexts.push_back(fresh);
+    pcbjam_sched::fiber_start(fresh, 0);
     pcbjam_sched::drain_all();
 }
 
 extern "C" bool wxWasmOnDispatchContext()
 {
-    return g_dispatchContext && pcbjam_sched::current() == g_dispatchContext;
+    const pcbjam_sched::ContextId cur = pcbjam_sched::current();
+
+    if (!cur)
+        return false;
+
+    for (pcbjam_sched::ContextId id : wxWasmDispatchContexts())
+    {
+        if (id == cur)
+            return true;
+    }
+
+    return false;
 }
 
 // ----------------------------------------------------------------------------

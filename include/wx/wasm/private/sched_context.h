@@ -125,6 +125,21 @@ bool can_yield_here();
 /** True while a swap is in flight; drain() refuses to start another. */
 bool transition_in_flight();
 
+/**
+ * Containment for a context that died abnormally (Phase B): an exception —
+ * including a JS one thrown inside a handler — propagates out THROUGH the
+ * scheduler's fiber swap, so drain()'s post-swap bookkeeping never runs and
+ * the registry stays "transition in flight" forever, refusing every later
+ * drain and wedging the whole pump.
+ *
+ * Call from the error path of whatever JS entry drove the pump (the mirror of
+ * wx_dispatch_abandon for the interlock). Releases the transition and
+ * POISONS the context that was running — its C++ stack is half-unwound, so it
+ * is marked Finished and must never be entered again. Returns true if a
+ * transition was actually abandoned.
+ */
+bool abandon_transition();
+
 /** The running context's id, or 0 when the scheduler stack is running. */
 ContextId current();
 
@@ -223,6 +238,14 @@ bool fiber_release( ContextId aId );
  * occupant; libcontext knows both, so neither is inferred here.
  */
 intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue );
+
+/**
+ * A coroutine's TERMINAL transfer (Phase B): hand aValue to aTo, mark aFrom
+ * Finished (never re-queued, never re-entered — a later transfer into it is
+ * refused into the caller's ghost contract), and yield forever. Replaces the
+ * legacy trampoline's ghost re-entry loop on the transfer lane.
+ */
+void fiber_finish_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue );
 
 /**
  * Make a fiber-lane context runnable FROM THE SCHEDULER STACK, carrying
@@ -836,6 +859,34 @@ inline bool transition_in_flight()
 }
 
 
+inline bool abandon_transition()
+{
+    Registry& r = reg();
+
+    if( !r.transition && !r.running )
+        return false;
+
+    if( Context* ctx = find( r.running ) )
+    {
+        // The context's stack is half-unwound by the escaping exception: its
+        // saved capture describes frames that no longer exist. Finished means
+        // "terminal" everywhere in this layer — drain() never picks it,
+        // fiber_transfer refuses into it, fiber_release lets it go quietly.
+        beacon( "TRANSITION-ABANDONED",
+                "a context died abnormally (exception through the swap) - poisoned",
+                ctx->id );
+        ctx->status = Status::Finished;
+        ctx->park_reason = "abandoned";
+        r.finished++;
+    }
+
+    r.transition = false;
+    r.running = 0;
+    r.fiber_running = 0;
+    return true;
+}
+
+
 inline ContextId current()
 {
     return reg().running;
@@ -1095,7 +1146,12 @@ inline bool fiber_enterable( ContextId aId )
     if( !ctx || !ctx->symmetric )
         return false;
 
-    return ctx->status == Status::Fresh || ctx->status == Status::Suspended;
+    // Phase B: a star-parked context (fiber_transfer parked it, or a wake
+    // already marked it Ready) holds a valid capture exactly like a
+    // symmetric Suspended one — only Running (stale) and Finished (terminal)
+    // states are unenterable.
+    return ctx->status == Status::Fresh || ctx->status == Status::Suspended
+        || ctx->status == Status::Parked || ctx->status == Status::Ready;
 }
 
 
@@ -1132,8 +1188,10 @@ inline bool fiber_swap( ContextId aFrom, ContextId aTo )
     // Phase A is behaviour-preserving, so a swap into stale state is COUNTED,
     // not vetoed: the policy refusal lives in jump_fcontext (which reads
     // fiber_enterable() before calling here). Any firing is a tripwire —
-    // a caller bypassed the policy.
-    if( to->status != Status::Fresh && to->status != Status::Suspended )
+    // a caller bypassed the policy. The valid-state set is fiber_enterable's
+    // (Phase B added the star statuses: a transfer-parked context holds a
+    // capture as valid as a symmetric Suspended one).
+    if( !fiber_enterable( aTo ) )
     {
         char detail[96];
         std::snprintf( detail, sizeof( detail ),
@@ -1222,6 +1280,18 @@ inline intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue 
         return 0;
     }
 
+    // Phase B: a Finished context is TERMINAL — its trampoline took the
+    // finish-transfer and will never run again. Transferring into it is a
+    // ghost jump (a stale handle); refuse WITHOUT parking the source, so the
+    // caller's jump_fcontext sees an unchanged epoch and takes its
+    // established ghost contract (null INVOCATION_ARGS).
+    if( to->status == Status::Finished )
+    {
+        beacon( "FIBER-TRANSFER-INTO-FINISHED", "ghost transfer refused", aTo );
+        r.fiber_refusals++;
+        return 0;
+    }
+
     // Hand the protocol value over and make the target RUNNABLE — not running.
     // The scheduler performs every entry, which is the whole difference from
     // Phase A's direct swap: nobody enters a context by deciding to.
@@ -1247,6 +1317,65 @@ inline intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue 
 
     note_asyncify_use( *from );
     return from->transfer;
+}
+
+
+/**
+ * A coroutine's TERMINAL transfer (Phase B): its entry has returned, so hand
+ * aValue to aTo, mark aFrom Finished — never re-queueable, never re-entered —
+ * and yield to the scheduler forever. The legacy trampoline's "if someone
+ * swaps back to us, loop" ghost re-entry is replaced by the registry refusing
+ * transfers into Finished contexts (the caller's ghost contract handles it).
+ * Must be called ON aFrom's stack; never returns control to the caller.
+ */
+inline void fiber_finish_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue )
+{
+    Registry& r = reg();
+    Context* from = find( aFrom );
+    Context* to = find( aTo );
+
+    if( !from || !from->symmetric )
+    {
+        beacon( "REFUSED", "fiber_finish_transfer() unknown source", aFrom );
+        r.fiber_refusals++;
+        return;
+    }
+
+    if( to && to->symmetric && to->status != Status::Finished )
+    {
+        to->transfer = aValue;
+
+        if( to->status != Status::Ready )
+        {
+            to->status = Status::Ready;
+            r.ready_fifo.push_back( aTo );
+        }
+    }
+    else
+    {
+        beacon( "FIBER-FINISH-ORPHAN", "finish-transfer target unavailable", aTo );
+    }
+
+    from->status = Status::Finished;
+    from->park_reason = "finished";
+    from->parks++;
+    r.fiber_swaps++;
+    r.running = 0;
+    r.fiber_running = 0;
+    r.transition = false;
+
+    // Terminal yield: drain() only picks Ready contexts, so this swap never
+    // returns. The fiber's stack and buffer are reclaimed by fiber_release
+    // (libcontext's refcount) — Finished status makes that release quiet.
+    emscripten_fiber_swap( &from->fiber, &r.scheduler_fiber );
+
+    // Unreachable in practice; a raw fiber entry must never return, so if a
+    // buggy resume ever lands here, park forever rather than fall out.
+    for( ;; )
+    {
+        from->status = Status::Finished;
+        emscripten_fiber_swap( &from->fiber, &r.scheduler_fiber );
+    }
 }
 
 
