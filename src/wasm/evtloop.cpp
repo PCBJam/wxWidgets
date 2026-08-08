@@ -214,6 +214,19 @@ EM_JS(void, wxWasmNoteContextWaitJs, (int token), {
     globalThis.__wxScheduler.noteContextWait(token);
 });
 
+// Phase E early-resolve window: a bridge whose request settles before the C++
+// frame reaches the park (a provider answering from cache, or a test page with
+// no provider at all) resolves the wait first. The shim retains such entries
+// with the result attached; peek-and-consume here instead of parking a context
+// whose wake has already been spent — that park is unresumable by construction.
+EM_JS(int, wxWasmWaitEarlyResolvedJs, (int token), {
+    return globalThis.__wxScheduler.waitEarlyResolved(token);
+});
+
+EM_JS(int, wxWasmTakeWaitResultJs, (int token), {
+    return globalThis.__wxScheduler.takeWaitResult(token);
+});
+
 namespace
 {
 // token -> the context parked on it (doc 22 Phase C). Small and short-lived:
@@ -237,6 +250,13 @@ extern "C" int wxWasmYieldUntil(int token)
 
     if (self && pcbjam_sched::can_yield_here())
     {
+        // Already resolved before we could park (Phase E early-resolve
+        // window): consume the retained result instead of parking a context
+        // nobody will resume. Nothing can interleave between this check and
+        // the park below — wasm holds the thread for the whole block.
+        if (wxWasmWaitEarlyResolvedJs(token))
+            return wxWasmTakeWaitResultJs(token);
+
         wxWasmContextWaits()[token] = self;
         wxWasmNoteContextWaitJs(token);
 
@@ -266,9 +286,22 @@ extern "C" {
         auto it = waits.find(token);
 
         if (it == waits.end())
+        {
+            // A resolve the shim routed here but no context is parked on: the
+            // wake is dropped and the waiter (if any) hangs. Every legitimate
+            // path registers the token before parking, so this must stay loud.
+            EM_ASM({ console.warn("[wx-wait] resolve for unregistered context-wait token " + $0); },
+                   token);
             return;
+        }
 
-        pcbjam_sched::mark_ready(it->second, result);
+        if (!pcbjam_sched::mark_ready(it->second, result))
+        {
+            // mark_ready beacons the generic refusal; add the wait identity so
+            // a lost wake can be tied back to its token in the log.
+            EM_ASM({ console.warn("[wx-wait] mark_ready refused for token " + $0 + " ctx " + $1); },
+                   token, (int) it->second);
+        }
     }
 
 }  // extern "C"
