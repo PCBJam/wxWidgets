@@ -603,7 +603,12 @@ extern "C" void wxWasmDispatchOnContext();
 // The harness never modelled that, which is why it goes green while KiCad
 // does not. D turns back on when the tool-body park sites are contexts too
 // (C+E completion) — not before.
-#define wxWASM_STAR_DISPATCH 0
+// THE FLIP (docs/features/async/22 §5, landed 2026-08-08): dispatch contexts,
+// context waits and star transfers are ON permanently. Every prior increment
+// (D5 main-loop context, DOM entries on dispatch contexts, K1-K7 bridges as
+// token waits, gaps 1+2) was gated individually at this setting; the lever
+// specs are re-pinned to the post-flip invariant in the same commit.
+#define wxWASM_STAR_DISPATCH 1
 
 extern "C" {
 
