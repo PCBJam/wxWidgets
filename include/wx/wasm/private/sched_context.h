@@ -377,6 +377,11 @@ struct Context
     uint32_t parks = 0;
     uint32_t resumes = 0;
     size_t asyncify_high_water = 0;
+    // Capture size of the most recent LIVE sample (a park's in-flight
+    // asyncify use). Unlike the high-water it is per-park, so a waiter that
+    // resumes can attribute the depth to its own wait kind — Phase E's
+    // buffer-sizing input (doc 21 §2b).
+    size_t last_park_use = 0;
 
     // Fiber lane (Phase A): a libcontext client under symmetric-swap
     // semantics. Never enters the ready FIFO, never picked by drain(),
@@ -468,6 +473,11 @@ inline size_t asyncify_used( const Context& aCtx )
 inline void note_asyncify_use( Context& aCtx )
 {
     const size_t used = asyncify_used( aCtx );
+
+    // Only live captures are meaningful (after a resume consumes the capture
+    // the pointer is back at base and this reads 0 — keep the last real one).
+    if( used > 0 )
+        aCtx.last_park_use = used;
 
     if( used > aCtx.asyncify_high_water )
         aCtx.asyncify_high_water = used;
@@ -897,6 +907,13 @@ inline Status status_of( ContextId aId )
 {
     Context* ctx = find( aId );
     return ctx ? ctx->status : Status::Finished;
+}
+
+
+inline size_t last_park_use_of( ContextId aId )
+{
+    Context* ctx = find( aId );
+    return ctx ? ctx->last_park_use : 0;
 }
 
 

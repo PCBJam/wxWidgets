@@ -223,6 +223,56 @@ EM_JS(int, wxWasmWaitEarlyResolvedJs, (int token), {
     return globalThis.__wxScheduler.waitEarlyResolved(token);
 });
 
+// The wait's kind, readable only BEFORE the resolve deletes the entry — so it
+// is copied out at park time for the per-kind telemetry below.
+EM_JS(void, wxWasmWaitKindJs, (int token, char *out, int cap), {
+    const e = globalThis.__wxScheduler.waits.get(token);
+    stringToUTF8((e && e.kind) || "?", out, cap);
+});
+
+namespace {
+
+// Phase E buffer sizing (doc 21 §2b): deepest observed context park per wait
+// kind. A new maximum beacons, so each bridge's high-water can be read
+// straight out of any suite log instead of being guessed from D1's synthetic
+// floor. Fixed table: the kind set is small and known ("lib", "fp-lib", "3d",
+// "occ", "ngspice", "modal", "nested", ...).
+struct WaitKindHighWater
+{
+    char kind[16];
+    size_t bytes;
+};
+
+WaitKindHighWater s_waitKindHw[16];
+
+void noteWaitKindParkUse(const char *kind, size_t used)
+{
+    if (!used || !kind || !*kind)
+        return;
+
+    for (auto &slot : s_waitKindHw)
+    {
+        if (slot.kind[0] == '\0')
+        {
+            snprintf(slot.kind, sizeof(slot.kind), "%s", kind);
+        }
+        else if (strcmp(slot.kind, kind) != 0)
+        {
+            continue;
+        }
+
+        if (used > slot.bytes)
+        {
+            slot.bytes = used;
+            EM_ASM({ console.log("[wx-wait] high-water " + UTF8ToString($0) + "=" + $1 + "B"); },
+                   slot.kind, (int) used);
+        }
+        return;
+    }
+}
+
+}  // namespace
+
 EM_JS(int, wxWasmTakeWaitResultJs, (int token), {
     return globalThis.__wxScheduler.takeWaitResult(token);
 });
@@ -257,11 +307,18 @@ extern "C" int wxWasmYieldUntil(int token)
         if (wxWasmWaitEarlyResolvedJs(token))
             return wxWasmTakeWaitResultJs(token);
 
+        char kind[16];
+        wxWasmWaitKindJs(token, kind, sizeof(kind));
+
         wxWasmContextWaits()[token] = self;
         wxWasmNoteContextWaitJs(token);
 
         const int result = pcbjam_sched::yield_park("wx-wait");
         wxWasmContextWaits().erase(token);
+
+        // The registry sampled this park's live capture at swap-out; fold it
+        // into the per-kind high-water now that we know whose park it was.
+        noteWaitKindParkUse(kind, pcbjam_sched::last_park_use_of(self));
         return result;
     }
 
@@ -438,6 +495,22 @@ bool wxWasmOnCoroutineStack()
 bool wxWasmRunOnMainStack(void (*aFunc)(void *), void *aArg)
 {
     return s_mainStackRunner && s_mainStackRunner(aFunc, aArg) != 0;
+}
+
+extern "C" {
+
+    // Phase E telemetry: the shim's handleSleep wrapper calls this as a leaf
+    // probe when a FRESH in-place park starts, counting parks that begin on a
+    // non-main stack (a tool coroutine or a scheduler context). Doc 22 §5's
+    // Phase E invariant is that this count reaches ZERO at the flip; until
+    // then it measures exactly how much in-place-park-on-fiber-stack exposure
+    // remains (the doc-19 class). Leaf-safe: called from the import frame
+    // before any unwind begins.
+    int EMSCRIPTEN_KEEPALIVE wxWasmProbeOnFiberStack()
+    {
+        return wxWasmOnCoroutineStack() ? 1 : 0;
+    }
+
 }
 
 // The nested loop's actual park, extracted so it can run either in place or on
