@@ -17,6 +17,8 @@
 
 #include <emscripten.h>
 
+#include "wx/wasm/private/yieldwait.h"
+
 //-----------------------------------------------------------------------------
 // JavaScript helper functions using Asyncify for Local Font Access API
 //-----------------------------------------------------------------------------
@@ -27,28 +29,36 @@ EM_JS(bool, js_isFontAccessAPIAvailable, (), {
            typeof window.queryLocalFonts === 'function';
 });
 
-// Enumerate font face names using Local Font Access API
-// Returns: number of fonts found, -1 on error/permission denied
-// Font names are stored in the provided array (caller allocates pointers, we allocate strings)
-EM_ASYNC_JS(int, js_enumerateFonts, (char** fontNames, int maxFonts, bool fixedWidthOnly), {
+// W5, Phase E shape (docs/features/async/22 §5): the enumeration opens a wait
+// token, starts the query, and waits via wxWasmYieldUntil instead of
+// Asyncify-parking in place. All output writes happen in the resolve callback
+// BEFORE resolveWait — the parked caller reads them only after it resumes,
+// the same ordering the in-place park had. Resolution always defers to at
+// least a microtask (the early-resolve contract).
+//
+// Wait result: number of fonts found, -1 on error/permission denied.
+// Font names are stored in the provided array (caller allocates pointers, we
+// allocate strings).
+EM_JS(void, js_enumerateFontsStart, (int token, char** fontNames, int maxFonts, bool fixedWidthOnly), {
+    const finish = (v) => globalThis.__wxScheduler.resolveWait(token, v);
+
     if (typeof window === 'undefined' ||
         typeof window.queryLocalFonts !== 'function') {
         console.warn('[wxFontEnumerator] Local Font Access API not available');
-        return -1;
+        Promise.resolve().then(() => finish(-1));
+        return;
     }
 
-    try {
-        // Add timeout to prevent hanging
-        const timeoutMs = 5000;
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Font enumeration timed out')), timeoutMs);
-        });
+    // Add timeout to prevent hanging
+    const timeoutMs = 5000;
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Font enumeration timed out')), timeoutMs);
+    });
 
-        const fonts = await Promise.race([
-            window.queryLocalFonts(),
-            timeoutPromise
-        ]);
-
+    Promise.race([
+        window.queryLocalFonts(),
+        timeoutPromise
+    ]).then((fonts) => {
         // Get unique family names
         const familySet = new Set();
         for (const font of fonts) {
@@ -72,14 +82,14 @@ EM_ASYNC_JS(int, js_enumerateFonts, (char** fontNames, int maxFonts, bool fixedW
                 for (let j = 0; j < i; j++) {
                     _free(HEAPU32[fontNames/4 + j]);
                 }
-                return -1;
+                return finish(-1);
             }
             stringToUTF8(name, ptr, len);
             HEAPU32[fontNames/4 + i] = ptr;
         }
 
-        return count;
-    } catch (err) {
+        finish(count);
+    }).catch((err) => {
         if (err.name === 'NotAllowedError') {
             console.warn('[wxFontEnumerator] Font access permission denied');
         } else if (err.message && err.message.includes('timed out')) {
@@ -87,8 +97,8 @@ EM_ASYNC_JS(int, js_enumerateFonts, (char** fontNames, int maxFonts, bool fixedW
         } else {
             console.error('[wxFontEnumerator] Font enumeration error: ' + err.message);
         }
-        return -1;
-    }
+        finish(-1);
+    });
 });
 
 //-----------------------------------------------------------------------------
@@ -116,7 +126,9 @@ bool wxFontEnumerator::EnumerateFacenames(wxFontEncoding WXUNUSED(encoding),
     }
 
     // Call JavaScript to enumerate fonts
-    int count = js_enumerateFonts(fontNames, MAX_FONTS, fixedWidthOnly);
+    const int token = wxWasmBeginWait("font");
+    js_enumerateFontsStart(token, fontNames, MAX_FONTS, fixedWidthOnly);
+    int count = wxWasmYieldUntil(token);
 
     if (count < 0)
     {
