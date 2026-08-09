@@ -472,8 +472,13 @@ namespace
 uintptr_t s_mainStackBase = 0;
 uintptr_t s_mainStackEnd = 0;
 
-/** Is the caller's frame OUTSIDE the main stack, i.e. on a fiber? */
-bool wxWasmOnCoroutineStack()
+/**
+ * Is the caller's frame OUTSIDE the main stack, i.e. on a fiber? No callers
+ * since F2/F3 replaced the shim probe with the registry-scan
+ * (context_owning_current_stack); kept as a diagnostic until the
+ * captured-bounds machinery is retired wholesale.
+ */
+[[maybe_unused]] bool wxWasmOnCoroutineStack()
 {
     if( !s_mainStackBase )
         return false;   // the main loop has not started; nothing else can be running
@@ -487,16 +492,30 @@ bool wxWasmOnCoroutineStack()
 
 extern "C" {
 
-    // Phase E telemetry: the shim's handleSleep wrapper calls this as a leaf
-    // probe when a FRESH in-place park starts, counting parks that begin on a
-    // non-main stack (a tool coroutine or a scheduler context). Doc 22 §5's
-    // Phase E invariant is that this count reaches ZERO at the flip; until
-    // then it measures exactly how much in-place-park-on-fiber-stack exposure
-    // remains (the doc-19 class). Leaf-safe: called from the import frame
-    // before any unwind begins.
-    int EMSCRIPTEN_KEEPALIVE wxWasmProbeOnFiberStack()
+    // Phase F: the shim's handleSleep wrapper reports every fresh IN-PLACE
+    // park to the registry. Begin() answers which context (if any) owns the
+    // parking stack and records the park against it; End() clears it when the
+    // park's wake completes. While recorded, fiber_enterable()/fiber_transfer
+    // refuse entering that context — the registry-owned replacement for the
+    // shim's quarantine (doc 22 §10 F2/F3). Returns 0 for main-stack parks
+    // (nothing to guard — the scheduler stack has no fiber capture to
+    // corrupt). Leaf-safe: called from the import frame before any unwind
+    // begins / after the wake fully rewound.
+    unsigned EMSCRIPTEN_KEEPALIVE wxWasmSchedInplaceParkBegin()
     {
-        return wxWasmOnCoroutineStack() ? 1 : 0;
+        const pcbjam_sched::ContextId id =
+                pcbjam_sched::context_owning_current_stack();
+
+        if (id)
+            pcbjam_sched::note_inplace_park(id, +1);
+
+        return id;
+    }
+
+    void EMSCRIPTEN_KEEPALIVE wxWasmSchedInplaceParkEnd(unsigned id)
+    {
+        if (id)
+            pcbjam_sched::note_inplace_park(id, -1);
     }
 
 }

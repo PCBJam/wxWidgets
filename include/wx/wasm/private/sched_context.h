@@ -382,6 +382,14 @@ struct Context
     // resumes can attribute the depth to its own wait kind — Phase E's
     // buffer-sizing input (doc 21 §2b).
     size_t last_park_use = 0;
+    // Phase F: in-flight IN-PLACE asyncify parks on this context's stack
+    // (handleSleep parks the registry cannot see through its own swaps). Fed
+    // by the shim at park start/end; a context with one in flight holds a
+    // STALE fiber capture and must not be entered by swap or transfer — its
+    // own wake is the only legitimate resume. This is the fact the shim's
+    // quarantine used to hold privately; owning it here is what made that
+    // guard deletable (doc 22 §10 F2/F3).
+    int inplace_parks = 0;
 
     // Fiber lane (Phase A): a libcontext client under symmetric-swap
     // semantics. Never enters the ready FIFO, never picked by drain(),
@@ -521,6 +529,47 @@ inline bool on_context_stack( const Context& aCtx )
         return false;
 
     return here >= low && here < low + aCtx.c_stack.size;
+}
+
+
+/**
+ * Which registered context owns the CALLER'S stack frame? 0 when the frame is
+ * on the main/scheduler stack (or an unregistered stack). Leaf-safe: a plain
+ * range scan, no state changes — the shim calls this through an export at
+ * in-place park start to attribute the park to its context (Phase F).
+ */
+inline ContextId context_owning_current_stack()
+{
+    char probe = 0;
+    const char* here = &probe;
+
+    for( auto& [id, ctx] : reg().contexts )
+    {
+        const char* low = ctx->c_stack.base;
+
+        if( low && here >= low && here < low + ctx->c_stack.size )
+            return id;
+    }
+
+    return 0;
+}
+
+
+/** Phase F: the shim reports in-place park start (+1) / end (-1) here. */
+inline void note_inplace_park( ContextId aId, int aDelta )
+{
+    auto it = reg().contexts.find( aId );
+
+    if( it == reg().contexts.end() )
+        return;
+
+    it->second->inplace_parks += aDelta;
+
+    if( it->second->inplace_parks < 0 )
+    {
+        beacon( "INPLACE-PARK-UNDERFLOW", "more park ends than starts", aId );
+        it->second->inplace_parks = 0;
+    }
 }
 
 
@@ -1163,6 +1212,16 @@ inline bool fiber_enterable( ContextId aId )
     if( !ctx || !ctx->symmetric )
         return false;
 
+    // Phase F: a context whose body holds an in-flight IN-PLACE asyncify park
+    // is unenterable regardless of status — its fiber capture is stale (the
+    // park suspended the body without a fiber swap) and only its own wake may
+    // resume it. This is the registry-owned version of the fact the shim's
+    // quarantine used to track privately; the laundering bypass (a stale
+    // g_current_context re-marking swap_suspended on the parked fiber) cannot
+    // deceive it, because it never consults the protocol's own flags.
+    if( ctx->inplace_parks > 0 )
+        return false;
+
     // Phase B: a star-parked context (fiber_transfer parked it, or a wake
     // already marked it Ready) holds a valid capture exactly like a
     // symmetric Suspended one — only Running (stale) and Finished (terminal)
@@ -1305,6 +1364,18 @@ inline intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue 
     if( to->status == Status::Finished )
     {
         beacon( "FIBER-TRANSFER-INTO-FINISHED", "ghost transfer refused", aTo );
+        r.fiber_refusals++;
+        return 0;
+    }
+
+    // Phase F: same contract for a target whose body holds an in-flight
+    // in-place park — entering it would rewind a stale fiber capture. Refuse
+    // WITHOUT parking the source, so the caller takes the ghost contract; the
+    // parked body completes via its own wake.
+    if( to->inplace_parks > 0 )
+    {
+        beacon( "FIBER-TRANSFER-INTO-INPLACE-PARKED",
+                "target's body holds an in-flight asyncify park", aTo );
         r.fiber_refusals++;
         return 0;
     }
