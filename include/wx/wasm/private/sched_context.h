@@ -391,6 +391,14 @@ struct Context
     // guard deletable (doc 22 §10 F2/F3).
     int inplace_parks = 0;
 
+    // Phase F (doc 22 §10 gap 1, the S2 deferred-wake law applied to the
+    // registry): a resolve that arrives while THIS context is Running (a
+    // re-entrant close — the footprint chooser resumes its own opener before
+    // the modal's resolve lands) must NOT be dropped. Record it here; the
+    // next yield_park delivers it, so the wait resumes instead of hanging.
+    bool has_pending_wake = false;
+    int  pending_wake_result = 0;
+
     // Fiber lane (Phase A): a libcontext client under symmetric-swap
     // semantics. Never enters the ready FIFO, never picked by drain(),
     // counted separately from the star's memory gate.
@@ -415,6 +423,7 @@ struct Registry
     uint32_t transitions = 0;
     uint32_t refusals = 0;
     uint32_t foreign_stack_refusals = 0;   // yield_park from a fiber above a context
+    uint32_t deferred_wakes = 0;           // Phase F gap 1: resolve-while-running, queued not dropped
     size_t live = 0;
     size_t peak_live = 0;
     size_t bytes = 0;
@@ -770,6 +779,20 @@ inline int yield_park( const char* aReason )
     r.running = 0;
     r.transition = false;   // the swap below completes this transition
 
+    // Phase F gap 1: a wake that arrived while this context was still Running
+    // (a re-entrant resolve that raced ahead of this very park) was queued
+    // rather than dropped. Deliver it now — the context is Parked, so it is
+    // immediately eligible: mark it Ready and let the scheduler's drain swap
+    // it back in on the next turn. Without this the wait hangs forever (the
+    // footprint chooser's dead-app-after-close).
+    if( ctx->has_pending_wake )
+    {
+        ctx->has_pending_wake = false;
+        ctx->result = ctx->pending_wake_result;
+        ctx->status = Status::Ready;
+        r.ready_fifo.push_back( ctx->id );
+    }
+
     // Yield to the scheduler. Control returns here when drain() swaps us back
     // in after mark_ready() — and ONLY then, because Parked→Ready→resume is
     // the single path in.
@@ -791,6 +814,22 @@ inline bool mark_ready( ContextId aId, int aResult )
         beacon( "REFUSED", "mark_ready() for an unknown context", aId );
         r.refusals++;
         return false;
+    }
+
+    if( ctx->status == Status::Running )
+    {
+        // Phase F gap 1: the resolve raced ahead of the park — this context is
+        // running a re-entrant chain that has not yet reached the yield it
+        // will resume from (the footprint chooser resuming its own modal
+        // opener). Dropping the wake hangs the wait; QUEUE it and let the
+        // next yield_park deliver it. The S2 deferred-wake law, applied to the
+        // registry. A second pending wake for the same context keeps the LAST
+        // result (the innermost resolve), which is what a LIFO wait stack
+        // wants.
+        ctx->has_pending_wake = true;
+        ctx->pending_wake_result = aResult;
+        ++r.deferred_wakes;
+        return true;
     }
 
     if( ctx->status != Status::Parked )
