@@ -15,7 +15,6 @@
 #include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/mailbox.h"
 #include "wx/wasm/private/mainloop.h"
-#include "wx/wasm/private/mainstack.h"
 #include "wx/wasm/private/sched_context.h"
 #include "wx/wasm/private/yieldwait.h"
 
@@ -461,12 +460,6 @@ static int s_wxRunDepth = 0;
 namespace
 {
 
-// Set by the host application (pcbjam's binding layer) to whatever can move
-// work onto the main stack — for KiCad, a tool coroutine's RunMainStack. wx
-// must not know about TOOL_MANAGER, so this stays a plain hook: absent, every
-// nested loop simply parks where it already stood.
-wxWasmMainStackRunner s_mainStackRunner = NULL;
-
 // The MAIN stack's bounds, captured once at top-level DoRun — the one moment
 // we are provably standing on it.
 //
@@ -490,11 +483,6 @@ bool wxWasmOnCoroutineStack()
     // The main stack grows down from base to end; a coroutine's stack is a
     // separate allocation, so its frames fall outside that interval.
     return here > s_mainStackBase || here < s_mainStackEnd;
-}
-
-bool wxWasmRunOnMainStack(void (*aFunc)(void *), void *aArg)
-{
-    return s_mainStackRunner && s_mainStackRunner(aFunc, aArg) != 0;
 }
 
 extern "C" {
@@ -531,11 +519,6 @@ void wxWasmNestedWaitBody(void *)
 }
 
 }  // namespace
-
-extern "C" void wxWasmSetMainStackRunner(wxWasmMainStackRunner aRunner)
-{
-    s_mainStackRunner = aRunner;
-}
 
 EM_JS(void, wxWasmExitNestedLoop, (), {
     // The nested loop is a registered wait (doc 17 S4).
@@ -1088,17 +1071,13 @@ int wxGUIEventLoop::DoRun()
     // (see the header comment and docs/features/wasm-exceptions/09).
     if (s_wxRunDepth++ > 0)
     {
-        // A nested loop parks its whole stack for the dialog's lifetime, and
-        // WHICH stack that is decides whether the app survives it. On a tool
-        // coroutine's stack the park suspends the fiber's body where the fiber
-        // layer cannot see it: the stale-fiber guard quarantines the fiber and
-        // then refuses its own resume, so the dialog can never be closed by a
-        // click (docs/features/async/19). Bounce onto the main stack first —
-        // that suspends the coroutine the legitimate way, through a fiber swap
-        // the layer records, and leaves the park exactly where every
-        // non-tool dialog already puts it.
-        if (!(wxWasmOnCoroutineStack() && wxWasmRunOnMainStack(&wxWasmNestedWaitBody, NULL)))
-            wxWasmNestedWaitBody(NULL);
+        // Phase F (docs/features/async/22 §10): the doc-19 mainstack bounce is
+        // GONE. Post-flip the wait body's wxWasmYieldUntil parks the OWNING
+        // scheduler context — a tool coroutine included (context_sleep set the
+        // precedent) — so a nested loop opened from a tool suspends that
+        // tool's context through the registry, which is what the bounce
+        // approximated from outside.
+        wxWasmNestedWaitBody(NULL);
 
         --s_wxRunDepth;
         return 0;
