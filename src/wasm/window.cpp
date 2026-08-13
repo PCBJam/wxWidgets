@@ -720,7 +720,6 @@ void wxWindowWasm::DestroyScrollbarDom()
 // wxDialog::ShowModal: no C++ object's destructor needs to survive the
 // Asyncify suspension (which is unreliable here). No per-popup pump exists —
 // the top-level tick dispatches while this chain is parked (doc 17 S4).
-#ifdef PCBJAM_JSPI
 // JSPI: route the menu promise through the shim's shadow-stack discipline
 // (jspi-scheduler.js promiseYield; emscripten #27364).
 EM_ASYNC_JS(int, wxDomPopupMenuModal,
@@ -729,13 +728,6 @@ EM_ASYNC_JS(int, wxDomPopupMenuModal,
         Module['wxShowContextMenu'](UTF8ToString(json), invokerDomId, x, y),
         'popup');
 });
-#else
-EM_ASYNC_JS(int, wxDomPopupMenuModal,
-            (const char *json, int invokerDomId, int x, int y), {
-    return await Module['wxShowContextMenu'](UTF8ToString(json),
-                                             invokerDomId, x, y);
-});
-#endif
 
 bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
 {

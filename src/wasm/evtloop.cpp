@@ -16,7 +16,6 @@
 #include "wx/wasm/private/mailbox.h"
 #include "wx/wasm/private/mainloop.h"
 #include "wx/wasm/private/mainstack.h"
-#include "wx/wasm/private/sched_context.h"
 #include "wx/wasm/private/yieldwait.h"
 
 #include <emscripten.h>
@@ -278,112 +277,15 @@ EM_JS(int, wxWasmTakeWaitResultJs, (int token), {
     return globalThis.__wxScheduler.takeWaitResult(token);
 });
 
-namespace
-{
-// token -> the context parked on it (doc 22 Phase C). Small and short-lived:
-// one entry per outstanding wait, erased on resolve.
-std::map<int, pcbjam_sched::ContextId> &wxWasmContextWaits()
-{
-    static std::map<int, pcbjam_sched::ContextId> s_waits;
-    return s_waits;
-}
-}  // namespace
-
 extern "C" int wxWasmYieldUntil(int token)
 {
-#ifdef PCBJAM_JSPI
     // JSPI: every activation suspends uniformly through the wait import; there
     // are no scheduler contexts to park. Early-resolve still short-circuits.
     if (wxWasmWaitEarlyResolvedJs(token))
         return wxWasmTakeWaitResultJs(token);
 
     return wxWasmYieldUntilJs(token);
-#else
-    // Phase C: if this wait is running ON a scheduler context, park THAT
-    // context rather than suspending the stack in place. yield_park verifies
-    // the caller's frame really lies inside the running context's stack, so a
-    // fiber swapped in above it (a tool coroutine) is refused rather than
-    // silently saving the wrong stack — and falls back to the Asyncify park,
-    // which is exactly the pre-Phase-C behaviour.
-    const pcbjam_sched::ContextId self = pcbjam_sched::current();
-
-    if (self && pcbjam_sched::can_yield_here())
-    {
-        // Already resolved before we could park (Phase E early-resolve
-        // window): consume the retained result instead of parking a context
-        // nobody will resume. Nothing can interleave between this check and
-        // the park below — wasm holds the thread for the whole block.
-        if (wxWasmWaitEarlyResolvedJs(token))
-            return wxWasmTakeWaitResultJs(token);
-
-        char kind[16];
-        wxWasmWaitKindJs(token, kind, sizeof(kind));
-
-        wxWasmContextWaits()[token] = self;
-        wxWasmNoteContextWaitJs(token);
-
-        const int result = pcbjam_sched::yield_park("wx-wait");
-        wxWasmContextWaits().erase(token);
-
-        // The registry sampled this park's live capture at swap-out; fold it
-        // into the per-kind high-water now that we know whose park it was.
-        noteWaitKindParkUse(kind, pcbjam_sched::last_park_use_of(self));
-        return result;
-    }
-
-    return wxWasmYieldUntilJs(token);
-#endif // PCBJAM_JSPI
 }
-
-extern "C" {
-
-    // The shim's callback for a context-parked wait: mark it ready and let the
-    // next pump resume it. Never resumes inline — a wake that rewound inside
-    // the resolver's own JS turn is the whole class doc 13 §1.4 forbids.
-    // The shim's pump entry: resume whatever the registry says is ready, from
-    // a fresh JS task. Called after a context wake and by the top-level tick.
-    void EMSCRIPTEN_KEEPALIVE wxWasmSchedPump()
-    {
-#ifndef PCBJAM_JSPI
-        // JSPI: no scheduler contexts exist; wakes resume activations through
-        // their wait promises directly, so the pump is a benign no-op kept
-        // only for JS callers' compatibility during the transition.
-        pcbjam_sched::drain_all();
-#endif
-    }
-
-    void EMSCRIPTEN_KEEPALIVE wxWasmSchedResolveContextWait(int token, int result)
-    {
-        auto &waits = wxWasmContextWaits();
-        auto it = waits.find(token);
-
-        if (it == waits.end())
-        {
-            // A resolve the shim routed here but no context is parked on: the
-            // wake is dropped and the waiter (if any) hangs. Every legitimate
-            // path registers the token before parking, so this must stay loud.
-            EM_ASM({ console.warn("[wx-wait] resolve for unregistered context-wait token " + $0); },
-                   token);
-            return;
-        }
-
-#ifndef PCBJAM_JSPI
-        if (!pcbjam_sched::mark_ready(it->second, result))
-        {
-            // mark_ready beacons the generic refusal; add the wait identity so
-            // a lost wake can be tied back to its token in the log.
-            EM_ASM({ console.warn("[wx-wait] mark_ready refused for token " + $0 + " ctx " + $1); },
-                   token, (int) it->second);
-        }
-#else
-        // JSPI: context waits are never registered (wxWasmYieldUntil always
-        // suspends through the wait promise), so reaching here means a shim
-        // routing bug — the loud warn above already fired.
-        (void) it;
-#endif
-    }
-
-}  // extern "C"
 
 extern "C" void wxWasmResolveWait(int token, int result)
 {
@@ -431,9 +333,6 @@ extern "C" {
     // wx_dispatch_abandon.
     void EMSCRIPTEN_KEEPALIVE wxWasmSchedAbandon()
     {
-#ifndef PCBJAM_JSPI
-        pcbjam_sched::abandon_transition();
-#endif
     }
 
     void EMSCRIPTEN_KEEPALIVE ProcessEvents()
@@ -491,69 +390,9 @@ namespace
 // nested loop simply parks where it already stood.
 wxWasmMainStackRunner s_mainStackRunner = NULL;
 
-// The MAIN stack's bounds, captured once at top-level DoRun — the one moment
-// we are provably standing on it.
-//
-// They must be captured rather than queried live: emscripten_fiber_swap's
-// finishContextSwitch calls emscripten_stack_set_limits with the INCOMING
-// fiber's bounds, so emscripten_stack_get_base()/end() always describe
-// whatever stack is current, including a coroutine's. Querying them live
-// therefore reports "on the main stack" from everywhere and detects nothing —
-// which is exactly how a first attempt at this silently did nothing at all.
-uintptr_t s_mainStackBase = 0;
-uintptr_t s_mainStackEnd = 0;
-
-/**
- * Is the caller's frame OUTSIDE the main stack, i.e. on a fiber? No callers
- * since F2/F3 replaced the shim probe with the registry-scan
- * (context_owning_current_stack); kept as a diagnostic until the
- * captured-bounds machinery is retired wholesale.
- */
-[[maybe_unused]] bool wxWasmOnCoroutineStack()
-{
-    if( !s_mainStackBase )
-        return false;   // the main loop has not started; nothing else can be running
-
-    char probe = 0;
-    const uintptr_t here = reinterpret_cast<uintptr_t>(&probe);
-    // The main stack grows down from base to end; a coroutine's stack is a
-    // separate allocation, so its frames fall outside that interval.
-    return here > s_mainStackBase || here < s_mainStackEnd;
-}
-
 bool wxWasmRunOnMainStack(void (*aFunc)(void *), void *aArg)
 {
     return s_mainStackRunner && s_mainStackRunner(aFunc, aArg) != 0;
-}
-
-extern "C" {
-
-    // Phase F: the shim's handleSleep wrapper reports every fresh IN-PLACE
-    // park to the registry. Begin() answers which context (if any) owns the
-    // parking stack and records the park against it; End() clears it when the
-    // park's wake completes. While recorded, fiber_enterable()/fiber_transfer
-    // refuse entering that context — the registry-owned replacement for the
-    // shim's quarantine (doc 22 §10 F2/F3). Returns 0 for main-stack parks
-    // (nothing to guard — the scheduler stack has no fiber capture to
-    // corrupt). Leaf-safe: called from the import frame before any unwind
-    // begins / after the wake fully rewound.
-    unsigned EMSCRIPTEN_KEEPALIVE wxWasmSchedInplaceParkBegin()
-    {
-        const pcbjam_sched::ContextId id =
-                pcbjam_sched::context_owning_current_stack();
-
-        if (id)
-            pcbjam_sched::note_inplace_park(id, +1);
-
-        return id;
-    }
-
-    void EMSCRIPTEN_KEEPALIVE wxWasmSchedInplaceParkEnd(unsigned id)
-    {
-        if (id)
-            pcbjam_sched::note_inplace_park(id, -1);
-    }
-
 }
 
 // The nested loop's actual park, extracted so it can run either in place or on
@@ -591,17 +430,11 @@ EM_JS(void, wxWasmExitNestedLoop, (), {
 // handleAsync park, which is "in flight" for the app's whole life and makes a tool-
 // coroutine fiber swap abort ("cannot stop an async operation in flight"). With this
 // per-frame yield the slot is free whenever ProcessEvents runs (docs/features/async/13).
-#ifdef PCBJAM_JSPI
 // JSPI: route through the shim so the frame park shares the one shadow-stack
 // discipline implementation (jspi-scheduler.js _suspendOn; emscripten #27364).
 EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
     await globalThis.__wxScheduler.frameYield();
 });
-#else
-EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
-    await new Promise(function (resolve) { requestAnimationFrame(resolve); });
-});
-#endif
 
 // Deliver the tick's events from a FRESH JS task instead of inline in the main
 // loop (docs/features/async/16 round 6). Everything after wxWasmYieldToBrowser()
@@ -691,317 +524,21 @@ extern "C" {
         // the measured overlapped-wake came from running both while the main
         // loop still Asyncify-parked per frame. Flip to 1 to re-enable D on
         // top of a proven scheduler-only main stack.
-#if defined(PCBJAM_JSPI)
         // JSPI: the tick itself is a promising export — dispatch directly; a
         // handler that suspends parks this tick's own activation.
         ProcessEvents();
-#elif wxWASM_STAR_DISPATCH
-        wxWasmDispatchOnContext();
-#else
-        ProcessEvents();
-#endif
     }
 
 }  // extern "C"
 
-// ----------------------------------------------------------------------------
-// The dispatch contexts (doc 22 Phase D) — an IDLE-REUSE set, bounded by
-// nesting depth, not by tick rate.
-//
-// Every wx handler chain runs here instead of on the main stack, which is what
-// lets a wait inside a handler PARK (Phase C) instead of suspending the stack
-// the whole runtime stands on.
-//
-// WHY NOT ONE (measured 2026-08-07, races nested_quasi_modal_pump_error):
-// a nested quasi-modal loop is a WAIT that only some LATER dispatch can
-// resolve — the pending event that closes the dialog, or the throwing handler
-// whose error path releases it. With a single context, the loop's own park
-// consumes the only dispatcher, so nothing ever dispatches that event and the
-// wait is unresolvable: the app wedges. "A blocked dispatch no longer blocks
-// the runtime" only holds if something else can dispatch.
-//
-// WHY THIS IS NOT D2's POOL (doc 20 §10 — 8 contexts burned in 30 ms): D2 took
-// a FRESH context per tick while one sat suspended, so the count grew with the
-// tick rate — a leak wearing a cap. Here a tick REUSES any context parked at
-// "dispatch-idle" and only creates one when every existing context is parked
-// deeper (i.e. inside a wait). A context finishes its ProcessEvents and
-// returns to idle as soon as its wait resolves, so the live count is bounded
-// by actual modal-nesting depth (1 in steady state, 2-3 under nested dialogs).
-//
-// ORDERING, load-bearing: this must exist before libcontext adopts its root,
-// so the scheduler owns the main stack alone and the root adopts the RUNNING
-// context instead. Two emscripten_fiber_t describing the main stack corrupt
-// each other on first entry (doc 22 §5, the one-root constraint).
-// ----------------------------------------------------------------------------
-namespace
+// The D5 main-loop detach is fiber-era machinery with no JSPI successor:
+// under JSPI OnRun runs the loop inline on promising activations and wxEntry
+// must do its own teardown. Shared init.cpp still probes the detach state.
+extern "C" bool wxWasmMainLoopDetached()
 {
-// Deeper than the scheduler's 128K default: a wx dispatch chain reaches deep
-// into KiCad (commit -> connectivity -> font work) before anything parks.
-constexpr size_t DISPATCH_STACK_BYTES = 1024 * 1024;
-constexpr size_t DISPATCH_ASYNCIFY_BYTES = 512 * 1024;
-
-// Nesting deeper than this is a bug, not a UI: beacon and drop the tick
-// rather than allocating without end.
-constexpr size_t MAX_DISPATCH_CONTEXTS = 16;
-
-std::vector<pcbjam_sched::ContextId> &wxWasmDispatchContexts()
-{
-    static std::vector<pcbjam_sched::ContextId> s_contexts;
-    return s_contexts;
-}
-
-// Work handed to a dispatch context by an entry that arrived on the MAIN
-// stack — a DOM event handler, a mailbox timer delivery. See
-// wxWasmRunOnDispatchContext for why those may not run where they land.
-struct wxWasmDispatchJob
-{
-    void (*fn)(void *);
-    void *arg;
-};
-
-std::vector<wxWasmDispatchJob> &wxWasmDispatchJobs()
-{
-    static std::vector<wxWasmDispatchJob> s_jobs;
-    return s_jobs;
-}
-
-void wxWasmRunQueuedJobs()
-{
-    auto &jobs = wxWasmDispatchJobs();
-
-    // Index-based: a job may queue another (a handler that posts an event),
-    // and erase-front while running would invalidate the iterator.
-    while (!jobs.empty())
-    {
-        const wxWasmDispatchJob job = jobs.front();
-        jobs.erase(jobs.begin());
-        job.fn(job.arg);
-    }
-}
-
-void wxWasmDispatchEntry(void *)
-{
-    // Never returns: an emscripten fiber entry that returns ends the program.
-    for (;;)
-    {
-        // Handed-off entries first: they are the reason this context exists
-        // for anyone but the tick, and they are already ordered.
-        wxWasmRunQueuedJobs();
-        ProcessEvents();
-
-        // One tick done. Park until the next kick rather than spinning; the
-        // scheduler resumes us from a fresh JS task. Parking HERE is what
-        // returns this context to the reusable set.
-        pcbjam_sched::yield_park("dispatch-idle");
-    }
-}
-
-/** Is this context ready to take a tick (never entered, or idle)? */
-bool wxWasmDispatchAvailable(pcbjam_sched::ContextId id)
-{
-    const pcbjam_sched::Status st = pcbjam_sched::status_of(id);
-
-    if (st == pcbjam_sched::Status::Fresh)
-        return true;
-
-    return st == pcbjam_sched::Status::Parked
-           && strcmp(pcbjam_sched::park_reason_of(id), "dispatch-idle") == 0;
-}
-}  // namespace
-
-extern "C" void wxWasmDispatchOnContext()
-{
-    if (!wxTheApp)
-        return;
-
-    auto &contexts = wxWasmDispatchContexts();
-
-    // Drop contexts poisoned by abandon_transition (a handler died abnormally
-    // and left a half-unwound stack): they are Finished and must never be
-    // entered again, and keeping them would count against the ceiling.
-    for (size_t i = contexts.size(); i-- > 0;)
-    {
-        if (pcbjam_sched::status_of(contexts[i]) == pcbjam_sched::Status::Finished)
-            contexts.erase(contexts.begin() + i);
-    }
-
-    // Reuse an idle context if there is one; only allocate when every context
-    // we own is parked deeper (inside a wait), which is exactly the nested
-    // case that needs an additional dispatcher.
-    for (pcbjam_sched::ContextId id : contexts)
-    {
-        if (!wxWasmDispatchAvailable(id))
-            continue;
-
-        if (pcbjam_sched::status_of(id) == pcbjam_sched::Status::Fresh)
-            pcbjam_sched::fiber_start(id, 0);
-        else
-            pcbjam_sched::mark_ready(id, 0);
-
-        pcbjam_sched::drain_all();
-        return;
-    }
-
-    if (contexts.size() >= MAX_DISPATCH_CONTEXTS)
-    {
-        printf("[wx-dispatch] %zu dispatch contexts all parked in waits - "
-               "dropping this tick (nesting runaway?)\n", contexts.size());
-        pcbjam_sched::drain_all();
-        return;
-    }
-
-    const pcbjam_sched::ContextId fresh = pcbjam_sched::fiber_create(
-        wxWasmDispatchEntry, NULL, NULL, DISPATCH_STACK_BYTES,
-        DISPATCH_ASYNCIFY_BYTES, "wx-dispatch");
-
-    if (!fresh)
-    {
-        // Fall back to the pre-Phase-D path rather than losing the tick.
-        ProcessEvents();
-        return;
-    }
-
-    contexts.push_back(fresh);
-    pcbjam_sched::fiber_start(fresh, 0);
-    pcbjam_sched::drain_all();
-}
-
-extern "C" bool wxWasmOnDispatchContext()
-{
-    const pcbjam_sched::ContextId cur = pcbjam_sched::current();
-
-    if (!cur)
-        return false;
-
-    for (pcbjam_sched::ContextId id : wxWasmDispatchContexts())
-    {
-        if (id == cur)
-            return true;
-    }
-
     return false;
 }
 
-// ----------------------------------------------------------------------------
-// The main-loop context (doc 22 D5).
-//
-// The top-level loop's per-frame wait used to be an Asyncify park of the MAIN
-// stack (wxWasmYieldToBrowser) — doc 21's W2, "safe by construction" only
-// while dispatch also ran there. The moment the scheduler swaps contexts from
-// a tick, that park and the transitions interleave over one Asyncify slot
-// (the measured overlapped-wake). So the loop itself moves onto a context
-// whose per-frame wait is yield_park; OnRun and main() RETURN, the runtime
-// stays alive (EXIT_RUNTIME=0), and a rAF-armed pump drives the loop from a
-// clean main stack that is only ever the scheduler.
-// ----------------------------------------------------------------------------
-namespace
-{
-pcbjam_sched::ContextId g_mainLoopContext = 0;
-bool g_mainLoopDetached = false;
-int g_mainLoopResult = 0;
-
-// The loop context carries DoRun's one-time setup (top-window layout) and the
-// whole app teardown at exit, so size it like the dispatch context rather
-// than the scheduler default.
-constexpr size_t MAIN_LOOP_STACK_BYTES = 1024 * 1024;
-constexpr size_t MAIN_LOOP_ASYNCIFY_BYTES = 512 * 1024;
-
-void wxWasmMainLoopEntry(void *arg)
-{
-    wxApp *app = static_cast<wxApp *>(arg);
-
-    g_mainLoopResult = app->RunMainLoopOnContext();
-
-    // The loop exited: the app really is ending. Run the teardown wxEntry
-    // skipped when OnRun detached — OnExit, then the wxUninitialize that
-    // releases the pinned init count and performs wxEntryCleanup (which
-    // deletes the app; `app` is dangling below this point).
-    app->OnExit();
-    wxUninitialize();
-
-    // A raw fiber entry must never return (emscripten ends the program), and
-    // nothing marks this context ready again, so the park is terminal.
-    for (;;)
-        pcbjam_sched::yield_park("main-loop-exited");
-}
-}  // namespace
-
-// One frame's wake: rAF is the same cadence the old in-place park awaited.
-// The callback is a fresh JS task, which is exactly what drain_all() requires.
-EM_JS(void, wxWasmArmFrameWake, (), {
-    requestAnimationFrame(function () {
-        Module["_wxWasmMainLoopPump"]();
-    });
-});
-
-// The FIRST entry must also come from a clean JS task, AFTER main() has
-// returned: entering from OnRun's own frame would capture main()/wxEntry
-// frames into the scheduler fiber's buffer, and main would then "return"
-// inside some later pump's rewind.
-EM_JS(void, wxWasmArmMainLoopKick, (), {
-    setTimeout(function () {
-        Module["_wxWasmMainLoopPump"]();
-    }, 0);
-});
-
-extern "C" {
-
-    // Enter or resume the main-loop context from a clean stack. Mirrors
-    // wxWasmDispatchOnContext's shape: Fresh means first entry, a "frame"
-    // park means the per-frame wait — anything else (a wait parked deeper)
-    // is left alone and the pump just runs whatever else is ready.
-    void EMSCRIPTEN_KEEPALIVE wxWasmMainLoopPump()
-    {
-        if (!g_mainLoopContext)
-            return;
-
-        const pcbjam_sched::Status st = pcbjam_sched::status_of(g_mainLoopContext);
-
-        if (st == pcbjam_sched::Status::Fresh)
-            pcbjam_sched::fiber_start(g_mainLoopContext, 0);
-        else if (st == pcbjam_sched::Status::Parked
-                 && strcmp(pcbjam_sched::park_reason_of(g_mainLoopContext),
-                           "frame") == 0)
-            pcbjam_sched::mark_ready(g_mainLoopContext, 0);
-
-        pcbjam_sched::drain_all();
-    }
-
-}  // extern "C"
-
-// Staging toggle for A/B diagnosis: 0 = run the loop inline (pre-D5 shape).
-#define wxWASM_D5_DETACH 1
-
-extern "C" bool wxWasmDetachMainLoop(wxApp *app)
-{
-    if (!wxWASM_D5_DETACH || g_mainLoopContext || !app)
-        return false;
-
-    // Capture the MAIN stack's bounds here: OnRun is the last moment we are
-    // provably standing on it. DoRun now runs on the loop context, where a
-    // live query would record the CONTEXT's bounds and every later stack
-    // classification would silently be wrong (doc 22 §7 trap 2).
-    s_mainStackBase = emscripten_stack_get_base();
-    s_mainStackEnd = emscripten_stack_get_end();
-
-    g_mainLoopContext = pcbjam_sched::fiber_create(
-        wxWasmMainLoopEntry, app, NULL, MAIN_LOOP_STACK_BYTES,
-        MAIN_LOOP_ASYNCIFY_BYTES, "wx-main-loop");
-
-    if (!g_mainLoopContext)
-        return false;
-
-    g_mainLoopDetached = true;
-    wxWasmArmMainLoopKick();
-    return true;
-}
-
-extern "C" bool wxWasmMainLoopDetached()
-{
-    return g_mainLoopDetached;
-}
-
-#ifdef PCBJAM_JSPI
 // JSPI plain-entry job lane: emscripten_set_*_callback entries cannot suspend
 // (they are not promising exports), so their jobs queue here and the promising
 // wxWasmJobTick delivers them from a fresh task, in order.
@@ -1058,7 +595,6 @@ extern "C" void EMSCRIPTEN_KEEPALIVE wxWasmJobTick()
 
     job.fn(job.arg);
 }
-#endif // PCBJAM_JSPI
 
 extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg)
 {
@@ -1079,7 +615,6 @@ extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg)
     if (!fn)
         return;
 
-#ifdef PCBJAM_JSPI
     // JSPI: the two-path rewind mismatch this function existed to prevent is
     // unrepresentable — but WHERE the job may run still matters. Only a
     // PROMISING activation may suspend; the emscripten_set_*_callback DOM
@@ -1100,56 +635,6 @@ extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg)
         wxWasmJspiJobs().push_back({fn, arg});
         wxWasmArmJspiJobTickJs();
     }
-#elif wxWASM_STAR_DISPATCH
-    // Already on a dispatch context: same-stack recursion is what wxYield and
-    // nested Dispatch() already do, and it keeps the ordering the caller
-    // expects.
-    if (!wxTheApp || wxWasmOnDispatchContext())
-    {
-        fn(arg);
-        return;
-    }
-
-    // Some OTHER context is what the registry calls running — which happens
-    // while a context's stack is Asyncify-parked in place (the bridges, until
-    // Phase E). drain() would refuse, so the job would never run: dispatch
-    // here instead. This is the narrow mixed-mode window Phase E closes.
-    if (pcbjam_sched::current() != 0 || pcbjam_sched::transition_in_flight())
-    {
-        fn(arg);
-        return;
-    }
-
-    wxWasmDispatchJobs().push_back({fn, arg});
-    wxWasmDispatchOnContext();
-#else
-    fn(arg);
-#endif
-}
-
-extern "C" int wxWasmContextWakeIsPumpOwned(unsigned id)
-{
-    // The main-loop context is resumed by the rAF pump and each dispatch
-    // context by the tick; those parks are the pumps' own contract. A second
-    // party parking them with its own wake source gives one context two
-    // owners — measured 2026-08-07: the main-thread-sleep shim parked the
-    // main-loop context, and the frame wake then resumed a capture the sleep
-    // wake had already consumed (a doRewind trap arriving through
-    // wxWasmArmFrameWake). Contexts listed here must keep sleeping in place;
-    // everything else (tool coroutines) may park (wasm/shims/context_sleep.cpp).
-    if (!id)
-        return 0;
-
-    if (id == g_mainLoopContext)
-        return 1;
-
-    for (pcbjam_sched::ContextId dispatchId : wxWasmDispatchContexts())
-    {
-        if (dispatchId == id)
-            return 1;
-    }
-
-    return 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -1213,43 +698,16 @@ int wxGUIEventLoop::DoRun()
 
     wxWasmSchedulerAssertInstalled();
 
-    // Record the main stack's bounds so nested loops can later tell whether
-    // they are standing somewhere else (see wxWasmOnCoroutineStack). Under D5
-    // the detach already captured them in wxWasmDetachMainLoop — top-level
-    // DoRun runs on the loop CONTEXT there, so a live query here would record
-    // the context's bounds and misclassify every later stack. Only the
-    // non-detached fallback still captures here, where depth-0 DoRun really
-    // is on the main stack.
-    if (s_wxRunDepth == 0 && !s_mainStackBase)
-    {
-        s_mainStackBase = emscripten_stack_get_base();
-        s_mainStackEnd = emscripten_stack_get_end();
-    }
-
     // A nested loop (a quasi-modal dialog opened from a tool) pumps via Asyncify; the
     // first (top-level) DoRun registers the rAF main loop then parks. Neither throws
     // (see the header comment and docs/features/wasm-exceptions/09).
     if (s_wxRunDepth++ > 0)
     {
-#ifdef PCBJAM_JSPI
         // JSPI: a nested loop is a registered "nested" wait that suspends
         // whatever activation is running — a tool coroutine's own activation
         // included. There is no stale-fiber guard to trip and no capture to
         // misattribute, so the doc-19 mainstack bounce is unnecessary.
         wxWasmNestedWaitBody(NULL);
-#else
-        // A nested loop parks its whole stack for the dialog's lifetime, and
-        // WHICH stack that is decides whether the app survives it. On a tool
-        // coroutine's stack the park suspends the fiber's body where the fiber
-        // layer cannot see it: the stale-fiber guard quarantines the fiber and
-        // then refuses its own resume, so the dialog can never be closed by a
-        // click (docs/features/async/19). Bounce onto the main stack first —
-        // that suspends the coroutine the legitimate way, through a fiber swap
-        // the layer records, and leaves the park exactly where every
-        // non-tool dialog already puts it.
-        if (!(wxWasmOnCoroutineStack() && wxWasmRunOnMainStack(&wxWasmNestedWaitBody, NULL)))
-            wxWasmNestedWaitBody(NULL);
-#endif
 
         --s_wxRunDepth;
         return 0;
@@ -1289,26 +747,9 @@ int wxGUIEventLoop::DoRun()
         // guards it is closed.
         wxWasmScheduleProcessEvents();
 
-#ifdef PCBJAM_JSPI
         // JSPI: main() is a promising export; this loop's activation suspends
         // for exactly one animation frame per tick. No contexts, no pumps.
         wxWasmYieldToBrowser();
-#else
-        if (pcbjam_sched::can_yield_here())
-        {
-            // D5: arm the next frame's wake, then yield this context to the
-            // scheduler. The rAF callback (a fresh JS task) marks us ready and
-            // drains — indistinguishable, in this frame, from the old await.
-            wxWasmArmFrameWake();
-            pcbjam_sched::yield_park("frame");
-        }
-        else
-        {
-            // Non-detached fallback (context creation failed): the pre-D5
-            // in-place park of the main stack.
-            wxWasmYieldToBrowser();
-        }
-#endif
     }
     --s_wxRunDepth;
 

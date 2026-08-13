@@ -18,7 +18,6 @@ class WXDLLIMPEXP_FWD_CORE wxApp;
 // Hand the main loop to a scheduler context and arm its first pump (a fresh
 // JS task, after main() has returned). Returns false if the context could not
 // be created — the caller must then run the loop inline, as before D5.
-extern "C" bool wxWasmDetachMainLoop(wxApp *app);
 
 // True from a successful detach until the app really exits. wxEntry reads
 // this to skip OnExit + wxEntryCleanup on its return path (the loop context
