@@ -53,6 +53,8 @@
 #include "wx/private/localeset.h"
 
 #ifdef __WXWASM__
+#include "wx/wasm/private/execution_owner.h"
+
 // D5 (pcbjam docs/features/async/22): under wasm, OnRun hands the main loop to
 // a scheduler context and returns immediately — the app keeps running, driven
 // by browser ticks, so the teardown below OnRun must NOT run on that path.
@@ -482,6 +484,29 @@ int wxEntryReal(int& argc, wxChar **argv)
 #endif
         return -1;
     }
+
+#ifdef __WXWASM__
+    class StartupOwnerGuard
+    {
+    public:
+        StartupOwnerGuard() : m_owner(wxWasmExecutionBeginStartup()) {}
+        ~StartupOwnerGuard()
+        {
+            if (m_owner && !wxWasmExecutionEndStartup(m_owner))
+                wxWasmExecutionFailStop("startup owner refused terminal release");
+        }
+
+        bool IsOk() const { return static_cast<bool>(m_owner); }
+
+    private:
+        wx_wasm_execution::OwnerToken m_owner;
+    } startupOwner;
+
+    WX_SUPPRESS_UNUSED_WARN(startupOwner);
+
+    if ( !startupOwner.IsOk() )
+        return -1;
+#endif
 
     wxTRY
     {

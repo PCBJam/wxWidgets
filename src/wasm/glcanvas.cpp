@@ -16,6 +16,7 @@
 #if wxUSE_GLCANVAS
 
 #include "wx/glcanvas.h"
+#include "wx/nonownedwnd.h"
 
 #ifndef WX_PRECOMP
     #include "wx/log.h"
@@ -391,11 +392,17 @@ bool wxGLCanvas::Create(wxWindow *parent,
     if ( !wxWindow::Create(parent, id, pos, size, style, name) )
         return false;
 
-    // Create a dedicated GL canvas element in JavaScript
-    // This canvas is separate from the 2D UI canvas to avoid context conflicts
+    // Create a dedicated GL canvas element in JavaScript.  Pass the owning
+    // top-level window's semantic role instead of asking JavaScript to infer it
+    // from which other canvases happen to be visible.  During GAL recovery the
+    // replacement is constructed before the failed main-frame canvas is
+    // destroyed, so a visibility-based inference misclassifies the replacement
+    // as a secondary-frame surface.
+    const wxNonOwnedWindow* const topLevel = GetTopLevelWindow();
+    const bool isMainFrame = topLevel && topLevel->IsMainFrame();
     m_cssId = EM_ASM_INT({
-        return createGLCanvas(true);
-    });
+        return createGLCanvas(!!$0);
+    }, isMainFrame);
 
     // Position the GL canvas element to match this window's screen position
     wxPoint screenPos = GetScreenPosition();

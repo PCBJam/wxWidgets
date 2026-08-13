@@ -85,6 +85,22 @@ void wxNonOwnedWindow::SetSizer(wxSizer *sizer, bool deleteOld)
     Layout();
 }
 
+void wxNonOwnedWindow::DoEnable(bool enable)
+{
+    // Keep the normal wxWindow state/registry update, then mirror the native
+    // top-level enabled state to the browser container. Child DOM controls are
+    // intentionally not toggled one by one: the container is the atomic input
+    // boundary, just as an OS top-level window is on native ports.
+    wxNonOwnedWindowBase::DoEnable(enable);
+
+    if (m_cssId != wxID_NONE)
+    {
+        EM_ASM({
+            setWindowEnabled($0, $1);
+        }, m_cssId, enable);
+    }
+}
+
 void wxNonOwnedWindow::DoSetSize(int x, int y,
                                  int width, int height,
                                  int sizeFlags)

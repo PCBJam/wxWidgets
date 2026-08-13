@@ -52,6 +52,8 @@ public:
     void HandlePaintRequests();
 
 protected:
+    virtual void DoEnable(bool enable) wxOVERRIDE;
+
     virtual void DoSetSize(int x, int y,
                            int width, int height,
                            int sizeFlags = wxSIZE_AUTO) wxOVERRIDE;

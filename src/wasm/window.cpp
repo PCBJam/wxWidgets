@@ -17,13 +17,16 @@
 #include "wx/log.h"
 #include "wx/menu.h"
 #include "wx/nonownedwnd.h"
+#include "wx/weakref.h"
 #include "wx/wasm/private/display.h"
 
 #include "wx/settings.h"
-#include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/dom.h"
+#include "wx/wasm/private/execution_owner.h"
 
 #include <emscripten.h>
+
+#include <vector>
 
 #if wxUSE_COMBOBOX || wxUSE_COMBOCTRL
 #include "wx/combo.h"
@@ -118,7 +121,8 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
                 $4, $5, $6, $7,
                 $8 ? $8.toString() : null,
                 $9 ? true : false,
-                $10 ? true : false
+                $10 ? true : false,
+                $11
             );
         },
         id,
@@ -129,7 +133,8 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
         size.GetWidth(), size.GetHeight(),
         parentId,
         visible ? 1 : 0,
-        enabled ? 1 : 0);
+        enabled ? 1 : 0,
+        window->WasmGetDomId());
     } else {
         EM_ASM({
             wxElementUpdate(
@@ -140,7 +145,8 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
                 $4, $5, $6, $7,
                 $8 ? $8.toString() : null,
                 $9 ? true : false,
-                $10 ? true : false
+                $10 ? true : false,
+                $11
             );
         },
         id,
@@ -151,7 +157,8 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
         size.GetWidth(), size.GetHeight(),
         parentId,
         visible ? 1 : 0,
-        enabled ? 1 : 0);
+        enabled ? 1 : 0,
+        window->WasmGetDomId());
     }
 }
 
@@ -291,6 +298,11 @@ bool wxWindowWasm::WasmCreateDomNode(const char *tag, const char *typeAttr)
     wxDomSetShown(m_domId, IsShownOnScreen());
     UpdateDomGeometry();
 
+    // CreateBase registered the wxWindow before the derived control created
+    // its browser node. Publish that identity immediately: controls that keep
+    // their initial geometry might otherwise retain domId=0 forever.
+    UpdateElementRegistry(this, false);
+
     return true;
 }
 
@@ -350,13 +362,14 @@ void wxWindowWasm::UpdateDomGeometryRecursive(const wxRect *ancestorClip)
     // (0,0). The element box needs the top-left: without the correction a
     // wxNotebook's box (tab strip included) rendered a strip-height too
     // low, overlapping its own page area.
-    const wxPoint pos = GetScreenPosition() - GetClientAreaOrigin()
-                        - tlw->GetScreenPosition();
+    const wxPoint screenPos = GetScreenPosition() - GetClientAreaOrigin();
+    const wxPoint pos = screenPos - tlw->GetScreenPosition();
 
     if ( m_domId )
     {
         // Element is absolutely positioned inside the TLW container div.
-        wxDomSetRect(m_domId, pos.x, pos.y, m_width, m_height);
+        wxDomSetRect(m_domId, pos.x, pos.y, m_width, m_height,
+                     screenPos.x, screenPos.y);
 
         // Clip to the accumulated ancestor viewport (clip-path insets are
         // relative to the element's own box). Cached: the common case is
@@ -658,7 +671,10 @@ void wxWindowWasm::PositionScrollbarDom(const wxPoint& tlwTopLeft,
             r = wxRect(clientTL.x, clientTL.y + client.y - sbWidth,
                        client.x, sbWidth);
 
-        wxDomSetRect(m_scrollbarDom[i], r.x, r.y, r.width, r.height);
+        const wxPoint screenPos = GetTopLevelWindow()->GetScreenPosition()
+                                  + r.GetPosition();
+        wxDomSetRect(m_scrollbarDom[i], r.x, r.y, r.width, r.height,
+                     screenPos.x, screenPos.y);
 
         // Clip to the ancestor viewport (same inset math as m_domId).
         int t = 0, rr = 0, b = 0, l = 0;
@@ -714,6 +730,27 @@ void wxWindowWasm::DestroyScrollbarDom()
 
 #if wxUSE_MENUS
 
+// Popup selection requests close from a browser listener. The request changes
+// owner control state only. The Promise resolver remains parked in JS until
+// the central lease record observes that the exact child reached zero.
+extern "C" int EMSCRIPTEN_KEEPALIVE
+wx_popup_lease_request_close(const void *scope, int result)
+{
+    return wxWasmExecutionRequestModalClose(scope, result) ? 1 : 0;
+}
+
+EM_JS(int, wxDomCompletePopupLease, (const void *scope, int result), {
+    var complete = Module['wxCompleteContextMenuLease'];
+    return typeof complete === 'function' && complete(scope, result | 0)
+            ? 1 : 0;
+});
+
+static void wxPopupLeaseReady(const void *scope, int result)
+{
+    if (!wxDomCompletePopupLease(scope, result))
+        wxWasmExecutionFailStop("popup Promise lost its exact lease resolver");
+}
+
 // Shows the DOM context menu and BLOCKS until an item is chosen or the menu
 // is dismissed, returning the chosen command id (-1 = cancelled). The whole
 // modal lifetime lives in JS (Module.wxShowContextMenu), mirroring
@@ -721,9 +758,10 @@ void wxWindowWasm::DestroyScrollbarDom()
 // Asyncify suspension (which is unreliable here). No per-popup pump exists —
 // the top-level tick dispatches while this chain is parked (doc 17 S4).
 EM_ASYNC_JS(int, wxDomPopupMenuModal,
-            (const char *json, int invokerDomId, int x, int y), {
+            (const char *json, int invokerDomId, int x, int y,
+             const void *leaseScope), {
     return await Module['wxShowContextMenu'](UTF8ToString(json),
-                                             invokerDomId, x, y);
+                                             invokerDomId, x, y, leaseScope);
 });
 
 bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
@@ -739,15 +777,24 @@ bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
     const int vx = (x == wxDefaultCoord) ? -1 : x;
     const int vy = (y == wxDefaultCoord) ? -1 : y;
 
-    // The invoking dispatch chain parks for the menu's whole lifetime; event
-    // dispatch must keep running meanwhile (the menu itself and the rest of
-    // the UI), so zero the dispatch interlock for the park's duration
-    // (manual save/restore: destructors are not reliable across the park).
-    const int savedDispatchDepth = wxWasmDispatchDepth;
-    wxWasmDispatchDepth = 0;
+    const wx_wasm_execution::LeaseToken executionLease =
+            wxWasmExecutionOpenModalLease(
+                    menu, wxWasmExecutionScopeForWindow(this),
+                    wx_wasm_execution::WorkBit(
+                            wx_wasm_execution::WorkClass::ModalLifecycle),
+                    0, wxPopupLeaseReady);
+
+    if (!executionLease)
+        return false;
+
+    // The invoking owner remains represented for the menu's whole lifetime;
+    // the popup lease admits only its exact lifecycle callback.
     const int chosenId =
-        wxDomPopupMenuModal(json.utf8_str(), WasmGetDomId(), vx, vy);
-    wxWasmDispatchRestore(savedDispatchDepth, "PopupMenu");
+        wxDomPopupMenuModal(json.utf8_str(), WasmGetDomId(), vx, vy, menu);
+
+    // Native completion resolves the Promise only after the exact leased child
+    // is gone, so closing cannot race a retained affiliated continuation.
+    wxWasmExecutionCloseModalLease(menu, executionLease);
 
     if ( chosenId < 0 )
         return false; // cancelled
@@ -841,26 +888,43 @@ void wxWindowWasm::Lower()
 static void DismissChildPopups(wxWindowWasm* window)
 {
 #if wxUSE_COMBOBOX || wxUSE_COMBOCTRL
-    wxWindowList& children = window->GetChildren();
-    for (wxWindowList::iterator i = children.begin(); i != children.end(); ++i)
-    {
-        wxWindow* child = *i;
-        if (child)
-        {
-            // Check if this child is a wxComboCtrl with an open popup
-            wxComboCtrlBase* combo = dynamic_cast<wxComboCtrlBase*>(child);
-            if (combo && combo->IsPopupShown())
-            {
-                combo->HidePopup(true);
-            }
+    // HidePopup() sends wxEVT_COMBOBOX_CLOSEUP synchronously. A handler for
+    // that event can destroy or reparent this combo, one of its siblings, or a
+    // descendant. Iterating the live wxWindowList across that call therefore
+    // retains a list node which the callback is allowed to remove.
+    //
+    // Snapshot weak window identities instead. A destroyed child clears its
+    // weak reference, and a reparented child no longer belongs to this subtree.
+    // Re-read both facts after HidePopup() before touching the child again.
+    std::vector<wxWeakRef<wxWindow>> children;
+    children.reserve(window->GetChildren().size());
 
-            // Recursively check grandchildren
-            wxWindowWasm* wasmChild = dynamic_cast<wxWindowWasm*>(child);
-            if (wasmChild)
-            {
-                DismissChildPopups(wasmChild);
-            }
-        }
+    for (wxWindowList::iterator i = window->GetChildren().begin();
+         i != window->GetChildren().end(); ++i)
+    {
+        children.emplace_back(*i);
+    }
+
+    for (wxWeakRef<wxWindow>& childRef : children)
+    {
+        wxWindow* child = childRef.get();
+        if (!child || child->GetParent() != window)
+            continue;
+
+        // Check if this child is a wxComboCtrl with an open popup.
+        wxComboCtrlBase* combo = dynamic_cast<wxComboCtrlBase*>(child);
+        if (combo && combo->IsPopupShown())
+            combo->HidePopup(true);
+
+        child = childRef.get();
+        if (!child || child->GetParent() != window)
+            continue;
+
+        // Recursively check grandchildren only while this snapshot identity is
+        // still a child of the subtree being hidden.
+        wxWindowWasm* wasmChild = dynamic_cast<wxWindowWasm*>(child);
+        if (wasmChild)
+            DismissChildPopups(wasmChild);
     }
 #else
     wxUnusedVar(window);

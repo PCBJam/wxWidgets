@@ -24,6 +24,10 @@
 #include "wx/eventfilter.h"
 #include "wx/evtloop.h"
 
+#ifdef __WXWASM__
+    #include "wx/wasm/private/execution_owner.h"
+#endif
+
 #ifndef WX_PRECOMP
     #include "wx/list.h"
     #include "wx/log.h"
@@ -1218,6 +1222,14 @@ wxEvtHandler::wxEvtHandler()
 
 wxEvtHandler::~wxEvtHandler()
 {
+#ifdef __WXWASM__
+    // The association table is keyed by this raw pointer.  Make base-class
+    // destruction the authoritative lifetime edge so an address reused by a
+    // later handler cannot inherit a stale modal scope.  Explicit unregisters
+    // by current users remain harmless and idempotent.
+    wxWasmExecutionForgetPendingEventHandler(this);
+#endif
+
     Unlink();
 
     if (m_dynamicEvents)
@@ -1348,6 +1360,75 @@ void wxEvtHandler::QueueEvent(wxEvent *event)
         return;
     }
 
+#ifdef __WXWASM__
+    // Record semantic provenance before the event becomes visible in the
+    // physical pending list. This is also the retention admission edge: the
+    // void QueueEvent API has already transferred ownership, so a terminal
+    // overflow deletes the new event here instead of growing without bound.
+    // A duplicate pointer is already owned by the list and must not be freed
+    // a second time.
+    const wx_wasm_execution::PendingEventTagDisposition pendingDisposition =
+            wxWasmExecutionTagPendingEvent(event, this);
+
+    if (pendingDisposition
+            != wx_wasm_execution::PendingEventTagDisposition::Accepted)
+    {
+        if (pendingDisposition
+                == wx_wasm_execution::PendingEventTagDisposition::
+                        RejectedDeleteEvent)
+        {
+            delete event;
+        }
+
+        // A worker cannot touch the main-thread coordinator. Wake the normal
+        // pump so it consumes the exact terminal failure latch promptly.
+        wxWakeUpIdle();
+        return;
+    }
+#endif
+
+#ifdef __WXWASM__
+    // Physical publication is the second half of QueueEvent's ownership
+    // transfer.  Keep it transactional with the provenance inserted above:
+    // either both the event node and handler index become visible, or neither
+    // does.  The RAII locker is essential because either allocation can throw.
+    bool published = false;
+    {
+        wxCRIT_SECT_LOCKER( pendingEventsLocker, m_pendingEventsLock );
+        wxList::compatibility_iterator appended;
+
+        try
+        {
+            if ( !m_pendingEvents )
+                m_pendingEvents = new wxList;
+
+            appended = m_pendingEvents->Append(event);
+
+            if ( appended )
+            {
+                // Keep the historical #9093 ordering: the handler index is
+                // published while its pending-list lock is still held.
+                wxTheApp->AppendPendingEventHandler(this);
+                published = true;
+            }
+        }
+        catch (...)
+        {
+            // Roll back a node appended before the handler-index allocation
+            // failed. wxList does not own event here.
+            if ( appended && m_pendingEvents )
+                m_pendingEvents->Erase(appended);
+        }
+    }
+
+    if ( !published )
+    {
+        wxWasmExecutionRejectPendingEventStorage(event);
+        delete event;
+        wxWakeUpIdle();
+        return;
+    }
+#else
     // 1) Add this event to our list of pending events
     wxENTER_CRIT_SECT( m_pendingEventsLock );
 
@@ -1368,6 +1449,7 @@ void wxEvtHandler::QueueEvent(wxEvent *event)
     // breaking the invariant that a handler should be in the list iff it has
     // any pending events to process
     wxLEAVE_CRIT_SECT( m_pendingEventsLock );
+#endif
 
     // 3) Inform the system that new pending events are somewhere,
     //    and that these should be processed in idle time.
@@ -1376,6 +1458,17 @@ void wxEvtHandler::QueueEvent(wxEvent *event)
 
 void wxEvtHandler::DeletePendingEvents()
 {
+#ifdef __WXWASM__
+    if (m_pendingEvents)
+    {
+        for (wxList::compatibility_iterator node = m_pendingEvents->GetFirst();
+             node; node = node->GetNext())
+        {
+            wxWasmExecutionForgetPendingEvent(node->GetData());
+        }
+    }
+#endif
+
     if (m_pendingEvents)
         m_pendingEvents->DeleteContents(true);
     wxDELETE(m_pendingEvents);
@@ -1405,28 +1498,57 @@ void wxEvtHandler::ProcessPendingEvents()
     wxList::compatibility_iterator node = m_pendingEvents->GetFirst();
     wxEvent* pEvent = static_cast<wxEvent *>(node->GetData());
 
-    // find the first event which can be processed now:
+    // Find the first event which can be processed now. Selective wxYield and
+    // the Wasm semantic owner are independent predicates over the same
+    // physical queue.
     wxEventLoopBase* evtLoop = wxEventLoopBase::GetActive();
-    if (evtLoop && evtLoop->IsYielding())
+    while (node && pEvent)
     {
-        while (node && pEvent && !evtLoop->IsEventAllowedInsideYield(pEvent->GetEventCategory()))
-        {
-            node = node->GetNext();
-            pEvent = node ? static_cast<wxEvent *>(node->GetData()) : NULL;
-        }
+        bool allowed = !evtLoop || !evtLoop->IsYielding()
+                       || evtLoop->IsEventAllowedInsideYield(
+                               pEvent->GetEventCategory());
 
-        if (!node)
-        {
-            // all our events are NOT processable now... signal this:
-            wxTheApp->DelayPendingEventHandler(this);
+#ifdef __WXWASM__
+        allowed = allowed && wxWasmExecutionMayProcessPendingEvent(pEvent);
+#endif
 
-            // see the comment at the beginning of evtloop.h header for the
-            // logic behind YieldFor() and behind DelayPendingEventHandler()
+        if (allowed)
+            break;
 
-            wxLEAVE_CRIT_SECT( m_pendingEventsLock );
+        node = node->GetNext();
+        pEvent = node ? static_cast<wxEvent *>(node->GetData()) : NULL;
+    }
 
-            return;
-        }
+    if (node && !pEvent)
+    {
+        // A null payload violates the physical pending-list invariant.  Do not
+        // reinterpret it as "all events blocked" (which would delay it
+        // forever), and never construct wxEventPtr(nullptr) only to
+        // dereference it below.
+        m_pendingEvents->Erase(node);
+        if ( m_pendingEvents->IsEmpty() )
+            wxTheApp->RemovePendingEventHandler(this);
+        wxLEAVE_CRIT_SECT( m_pendingEventsLock );
+
+#ifdef __WXWASM__
+        wxWasmExecutionFailStop("wx pending-event list contains a null event");
+#else
+        wxFAIL_MSG("pending-event list contains a null event");
+#endif
+        return;
+    }
+
+    if (!node)
+    {
+        // all our events are NOT processable now... signal this:
+        wxTheApp->DelayPendingEventHandler(this);
+
+        // see the comment at the beginning of evtloop.h header for the
+        // logic behind YieldFor() and behind DelayPendingEventHandler()
+
+        wxLEAVE_CRIT_SECT( m_pendingEventsLock );
+
+        return;
     }
 
     wxEventPtr event(pEvent);
@@ -1435,6 +1557,10 @@ void wxEvtHandler::ProcessPendingEvents()
     // nested event loop, for example from a modal dialog, might process the
     // same event again.
     m_pendingEvents->Erase(node);
+
+#ifdef __WXWASM__
+    wxWasmExecutionForgetPendingEvent(pEvent);
+#endif
 
     if ( m_pendingEvents->IsEmpty() )
     {
@@ -2132,4 +2258,3 @@ bool wxEventBlocker::ProcessEvent(wxEvent& event)
 }
 
 #endif // wxUSE_GUI
-

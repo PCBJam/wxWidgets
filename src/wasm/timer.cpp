@@ -13,13 +13,13 @@
 #include "wx/app.h"
 #include "wx/evtloop.h"
 #include "wx/log.h"
+#include "wx/window.h"
 
-#include "wx/wasm/private/dispatch.h"
+#include "wx/wasm/private/execution_owner.h"
 #include "wx/wasm/private/mailbox.h"
 #include "wx/wasm/private/timer.h"
 
 #include <emscripten.h>
-#include <stdio.h>   // printf: diagnostics land in the browser console
 
 // ----------------------------------------------------------------------------
 // wxTimerImpl
@@ -29,6 +29,11 @@ void TimerCallback(void *userData)
 {
     TimerCallbackFunc *callbackFunc = static_cast<TimerCallbackFunc *>(userData);
     callbackFunc->Run();
+}
+
+void DiscardTimerCallback(void *userData)
+{
+    static_cast<TimerCallbackFunc *>(userData)->Discard();
 }
 
 bool wxWasmTimerImpl::Start(int millisecs, bool oneShot)
@@ -43,87 +48,127 @@ bool wxWasmTimerImpl::Start(int millisecs, bool oneShot)
     // Data gets freed by callback.
     m_callbackFunc = new TimerCallbackFunc(this);
 
-    ScheduleFirstInterval();
-
-    return true;
+    // A zero mailbox identity means the scheduler did not accept ownership.
+    // Its synchronous discard callback has already cleared m_callbackFunc.
+    return ScheduleFirstInterval();
 }
 
 void wxWasmTimerImpl::Stop()
 {
-    wxASSERT_MSG(m_callbackFunc != NULL, wxT("timer should be running"));
+    if (!m_callbackFunc)
+        return;
 
-    // Set a flag that tells the callback to cancel when it fires.
-    m_callbackFunc->Cancel();
+    TimerCallbackFunc * const callbackFunc = m_callbackFunc;
     m_callbackFunc = NULL;
+    callbackFunc->Cancel();
+
+    const wxWasmMailboxTimerId timerId = m_mailboxTimerId;
+    m_mailboxTimerId = 0;
+
+    // If JavaScript still owns the exact timer/mailbox record, cancellation
+    // prevents all future native delivery and this callback can be discarded
+    // now. Otherwise the typed native queue owns it and will run or discard it
+    // exactly once; its canceled flag makes that later Run() inert.
+    if (timerId && wxWasmMailboxCancel(timerId))
+        callbackFunc->Discard();
 }
 
-void wxWasmTimerImpl::ScheduleFirstInterval()
+bool wxWasmTimerImpl::ScheduleFirstInterval()
 {
     int intervalMs = m_timer->GetInterval();
     m_deadlineMs = wxGetUTCTimeMillis() + intervalMs;
 
-    ScheduleTimerCallback(intervalMs, m_callbackFunc);
+    return ScheduleTimerCallback(intervalMs, m_callbackFunc);
 }
 
-void wxWasmTimerImpl::ScheduleNextInterval()
+bool wxWasmTimerImpl::ScheduleNextInterval()
 {
-    int intervalMs = m_timer->GetInterval();
+    const int intervalMs = wxMax(m_timer->GetInterval(), 1);
 
     m_deadlineMs += intervalMs;
 
-    int timeLeftMs = (m_deadlineMs - wxGetUTCTimeMillis()).ToLong();
+    const wxLongLong now = wxGetUTCTimeMillis();
+
+    // Preserve the periodic phase without replaying one callback for every
+    // interval missed while owner admission was closed.
+    if (m_deadlineMs <= now)
+    {
+        const int elapsedMs = (now - m_deadlineMs).ToLong();
+        const int missedIntervals = elapsedMs / intervalMs + 1;
+        m_deadlineMs += missedIntervals * intervalMs;
+    }
+
+    int timeLeftMs = (m_deadlineMs - now).ToLong();
     timeLeftMs = wxMax(timeLeftMs, 0);
     timeLeftMs = wxMin(timeLeftMs, intervalMs);
 
-    ScheduleTimerCallback(timeLeftMs, m_callbackFunc);
+    return ScheduleTimerCallback(timeLeftMs, m_callbackFunc);
 }
 
-void wxWasmTimerImpl::ScheduleTimerCallback(int millisecs, TimerCallbackFunc *callbackFunc)
+bool wxWasmTimerImpl::ScheduleTimerCallback(
+        int millisecs, TimerCallbackFunc *callbackFunc)
 {
-    // The expiry lands in the mailbox and the event pump delivers it from a
-    // clean dispatch context (docs/features/async/17 S1), so a timer can no
-    // longer enter the wasm on top of a parked chain — Run()'s parked-retry
-    // below is a tripwire that should never fire.
-    wxWasmMailboxEnqueueAfter(TimerCallback, callbackFunc, millisecs);
+    wx_wasm_execution::WorkClass workClass =
+            wx_wasm_execution::WorkClass::Ordinary;
+    wx_wasm_execution::ScopeToken targetScope;
+
+    // A timer owned by a window is modal lifecycle work for that exact native
+    // top-level family. This is required by the symbol chooser: its panel-owned
+    // open-libraries timer completes the dialog's own workflow. A timer owned
+    // by the main frame has a different scope and cannot borrow that lease.
+    wxWindow *ownerWindow = wxDynamicCast(m_timer->GetOwner(), wxWindow);
+    if (ownerWindow)
+    {
+        targetScope = wxWasmExecutionScopeForWindow(ownerWindow);
+        if (targetScope)
+            workClass = wx_wasm_execution::WorkClass::ModalLifecycle;
+    }
+
+    callbackFunc->SetDeliveryScope(targetScope);
+    wxASSERT_MSG(m_mailboxTimerId == 0,
+                 wxT("timer already owns a mailbox reservation"));
+    m_mailboxTimerId = wxWasmMailboxEnqueueAfterScoped(
+            TimerCallback, callbackFunc, millisecs,
+            workClass, targetScope, DiscardTimerCallback);
+    return m_mailboxTimerId != 0;
+}
+
+void TimerCallbackFunc::Discard()
+{
+    // Stop the timer's ownership link before deleting a delivery that the
+    // bounded execution queue refused. A canceled callback can outlive its
+    // timer implementation, so do not dereference m_timer in that case.
+    if (!m_canceled && m_timer && m_timer->m_callbackFunc == this)
+    {
+        m_timer->m_callbackFunc = NULL;
+        m_timer->m_mailboxTimerId = 0;
+    }
+
+    m_canceled = true;
+    if (!m_executing)
+        delete this;
 }
 
 void TimerCallbackFunc::Run()
 {
     bool selfDestruct = true;
-
-    if (!IsCanceled() && wxWasmDispatchParked())
-    {
-        // TRIPWIRE (should never fire): the mailbox only delivers when the
-        // dispatch interlock is free, so Run() cannot be entered parked via
-        // the mailbox lane. If it fires anyway, re-queue rather than run the
-        // handler over the parked chain's half-mutated widget state -
-        // ScheduleNextInterval()'s deadline bookkeeping keeps periodic
-        // timers on cadence afterwards. Reported at escalating thresholds
-        // (~59 retries/second at 17ms).
-        ++m_parkRetries;
-        if (m_parkRetries == 60 || m_parkRetries == 300 || m_parkRetries == 1200 ||
-            (m_parkRetries > 1200 && m_parkRetries % 1200 == 0))
-        {
-            printf("[wx-timer] retry storm: %d retries (~%ds parked, depth=%d) "
-                   "- a dispatch chain has been parked this whole time\n",
-                   m_parkRetries, (m_parkRetries * 17) / 1000, wxWasmDispatchDepth);
-        }
-        wxWasmMailboxEnqueueAfter(TimerCallback, this, 17);
-        return;
-    }
-
-    if (m_parkRetries >= 60)
-    {
-        printf("[wx-timer] retry storm ended after %d retries (~%ds)\n",
-               m_parkRetries, (m_parkRetries * 17) / 1000);
-    }
-    m_parkRetries = 0;
+    m_executing = true;
 
     if (!IsCanceled())
     {
-        wxWasmDispatchGuard dispatchGuard;
-
         wxWasmTimerImpl *timer = GetTimerImpl();
+        wxASSERT_MSG(timer->m_callbackFunc == this,
+                     wxT("timer callback ownership mismatch"));
+        // Native transport popped the exact mailbox record before invoking
+        // this callback, so JavaScript no longer owns a cancellable identity.
+        timer->m_mailboxTimerId = 0;
+        const wx_wasm_execution::ScopeToken expectedScope =
+                GetDeliveryScope();
+        wxWindow *ownerWindow = wxDynamicCast(
+                timer->m_timer->GetOwner(), wxWindow);
+        const wx_wasm_execution::ScopeToken currentScope =
+                wxWasmExecutionScopeForWindow(ownerWindow);
+        const bool targetMatches = currentScope == expectedScope;
 
         if (timer->IsOneShot())
         {
@@ -131,17 +176,16 @@ void TimerCallbackFunc::Run()
         }
         else
         {
-            timer->ScheduleNextInterval();
-            selfDestruct = false;
+            selfDestruct = !timer->ScheduleNextInterval();
         }
 
-        timer->m_timer->Notify();
+        if (targetMatches)
+            timer->m_timer->Notify();
     }
 
-    if (selfDestruct)
-    {
+    m_executing = false;
+    if (selfDestruct || IsCanceled())
         delete this;
-    }
 }
 
 #endif // wxUSE_TIMER

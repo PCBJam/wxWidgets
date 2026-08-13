@@ -39,10 +39,14 @@ inline void wxDomDestroyControl(int domId)
     EM_ASM({ wxDomDestroyControl($0); }, domId);
 }
 
-// x/y are relative to the top-level window's container div.
-inline void wxDomSetRect(int domId, int x, int y, int w, int h)
+// x/y are relative to the top-level window's container div. screenX/screenY
+// are the same box's native wx screen origin; browser layout and scrolling can
+// give the DOM box a different viewport origin.
+inline void wxDomSetRect(int domId, int x, int y, int w, int h,
+                         int screenX, int screenY)
 {
-    EM_ASM({ wxDomSetRect($0, $1, $2, $3, $4); }, domId, x, y, w, h);
+    EM_ASM({ wxDomSetRect($0, $1, $2, $3, $4, $5, $6); },
+           domId, x, y, w, h, screenX, screenY);
 }
 
 // textContent — for <button>, <span>, <label> style elements.

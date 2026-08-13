@@ -11,6 +11,7 @@
 #define __WX_WASM_DIALOG_H__
 
 #include <functional>
+#include "wx/weakref.h"
 
 extern WXDLLIMPEXP_DATA_CORE(const char) wxDialogNameStr[];
 class WXDLLIMPEXP_FWD_CORE wxWindowDisabler;
@@ -80,7 +81,12 @@ private:
     // modal dialog runs its own event loop
     wxEventLoop *m_eventLoop;
 
-    std::function<void (int)> m_modalCallback;
+    // Native ports move keyboard focus into an activated modal and restore the
+    // previous control afterwards. The DOM port must do this explicitly so a
+    // lease-scoped key event resolves to the same top-level target as its
+    // capability. Weak ownership covers controls destroyed while the modal is
+    // open.
+    wxWeakRef<wxWindow> m_focusBeforeModal;
 
     // is modal right now?
     bool m_isShowingModal;

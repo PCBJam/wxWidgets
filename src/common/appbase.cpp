@@ -514,12 +514,13 @@ void wxAppConsoleBase::RemovePendingEventHandler(wxEvtHandler* toRemove)
 
 void wxAppConsoleBase::AppendPendingEventHandler(wxEvtHandler* toAppend)
 {
-    wxENTER_CRIT_SECT(m_handlersWithPendingEventsLocker);
+    // QueueEvent's Wasm publication path handles allocation failure. Keep the
+    // list mutex exception-safe so its rollback can run instead of leaving the
+    // global pending-handler index permanently locked.
+    wxCRIT_SECT_LOCKER(locker, m_handlersWithPendingEventsLocker);
 
     if ( m_handlersWithPendingEvents.Index(toAppend) == wxNOT_FOUND )
         m_handlersWithPendingEvents.Add(toAppend);
-
-    wxLEAVE_CRIT_SECT(m_handlersWithPendingEventsLocker);
 }
 
 bool wxAppConsoleBase::HasPendingEvents() const

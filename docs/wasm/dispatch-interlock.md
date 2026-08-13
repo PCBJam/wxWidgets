@@ -1,120 +1,132 @@
-# WASM dispatch interlock — no event dispatch while another chain is Asyncify-parked
+# Retired WASM dispatch interlock
 
-This documents the interlock added in `include/wx/wasm/private/dispatch.h` and
-the six `src/wasm/` files that use it. It is the wxWidgets-side fix for a class
-of "index out of bounds" / heap-corruption wasm traps that fire when wx event
-dispatch is re-entered while a *different* dispatch chain is suspended
-mid-handler by Asyncify.
+This document used to describe a scalar dispatch-depth interlock. That
+interlock is retired. Do not restore `wxWasmDispatchDepth`,
+`wxWasmDispatchGuard`, `wxWasmDispatchParked()`, modal save/zero/restore, timer
+retry delays, or input drops from the old design.
 
-Some paths below (`output/*.wasm.debug.wasm`, `scripts/common/apply-asyncify.sh`,
-the downstream `kicadLibs` bridge, CI run IDs) live in the KiCad-WASM build
-repo that consumes this fork; they are named so the original investigation is
-reproducible, but the fix and its contract are entirely inside this repo.
+The current implementation uses semantic execution ownership. Its public
+contract and reducer model are in
+`include/wx/wasm/private/execution_owner.h`; its wx adapter is in
+`src/wasm/evtloop.cpp`.
 
-## The bug
+## Why the old interlock existed
 
-The WASM port drives dialogs, nested event loops, popup menus, the clipboard,
-font enumeration, and any downstream JS bridge through Emscripten Asyncify:
-an `EM_ASYNC_JS` call suspends the whole C++ stack, runs a JS event loop, and
-resumes when a promise settles. Because JS is single-threaded and cannot truly
-block, a modal's own pump (`wxDialog::ShowModal` → `startModal` in
-`src/wasm/dialog.cpp`) keeps ticking `ProcessEvents` while the *opener's* stack
-is parked.
+An Asyncify suspension saves one native stack. It does not copy or isolate the
+C++ heap. A handler can therefore suspend after it has changed part of a wx or
+KiCad object graph and before it restores the object's invariants. A fresh
+browser callback can then enter the same module and observe that shared graph.
 
-The hazard: a dispatch chain can suspend **mid-handler**, with a widget tree
-left half-mutated on its saved stack. If any other dispatch runs before that
-chain resumes, it walks that half-mutated state.
+The failure first investigated here had this shape:
 
-Observed downstream (KiCad eeschema symbol chooser), the sequence was:
+1. A chooser input handler changed selection and preview state.
+2. The handler suspended during an asynchronous library operation.
+3. A timer or pending event entered the module while that handler was parked.
+4. The second handler traversed the same, temporarily inconsistent widget
+   graph and trapped.
 
-1. An ArrowDown key event dispatches synchronously from the DOM callback
-   (`wxApp::HandleKeyEvent` → `HandleWindowEvent`). Its selection handler
-   reaches a JS library bridge (`EM_ASYNC_JS` suspend) and the whole chain
-   **parks** mid-mutation of the chooser/preview widgets.
-2. The parked chain is not the modal pump's, so the pump keeps ticking. A tick
-   runs `ProcessPendingEvents`, which dispatches a queued timer event on the
-   same chooser.
-3. The timer handler walks the parked chain's half-mutated widget tree →
-   garbage child pointer → wasm trap in `wxWindow::UpdateChildrenDOMVisibility`
-   (the modal pump reports it as `modal event pump error - cancelling modal:
-   RuntimeError: index out of bounds`).
+The scalar interlock reduced this race by counting live dispatch chains and by
+suppressing selected entry points while the count was nonzero. It also made
+special exceptions for modal and nested pumps.
 
-It reproduced only under slow (software-GL) rendering, because the parked
-window is the bridge fetch's round-trip and only slow execution made the
-timer/park overlap likely — a classic timing-dependent reentrancy bug.
+## Why the scalar interlock was retired
 
-### Symbolizing a stripped release wasm (investigation aid)
+A depth counter describes stack nesting, not authority over shared mutable
+state. It cannot answer these questions:
 
-The shipped `.wasm` has no name section. To turn Firefox's
-`wasm-function[i]:0xoffset` frames into names: take the pre-asyncify linker
-output (which still has a `name` section), strip its `.debug_*` custom
-sections, and replay the host post-link pass with names kept
-(`HOIST_KEEP_NAMES=1 apply-asyncify.sh`). The result keeps the **same function
-indices** as the shipped binary (the shipped one only appends the `dynCall_*`
-and `asyncify_*` exports), so `name`-section lookup resolves the release stack.
-`emsymbolizer` against the DWARF does not work — wasm-opt rewrote every code
-offset after the DWARF was emitted.
+- Is a callback a continuation of the parked operation or unrelated work?
+- Is input allowed only for the modal window that the parked operation opened?
+- Does a tool fiber still belong to the command whose shallow Embind entry has
+  returned?
+- Is a queued callback stale because its target window was destroyed and its
+  address reused?
+- Has native execution reached its real tail, or did only a JavaScript wrapper
+  finish?
 
-## The fix
+The old modal save/zero/restore mechanism was especially unsafe. It globally
+reopened dispatch while a parent transaction remained parked. Timer retry and
+input-drop rules also encoded policy independently at several wx entry points.
+The trap-recovery path cleared the counter and reopened the application even
+though a native trap makes the saved execution and object lifetimes
+unknowable.
 
-`int wxWasmDispatchDepth` (defined in `src/wasm/evtloop.cpp`, declared in
-`include/wx/wasm/private/dispatch.h`) counts live dispatch chains. A scope
-guard, `wxWasmDispatchGuard`, brackets every fresh dispatch entry. Under
-Asyncify the guard's destructor is exactly the right primitive: an unwind does
-not run it and a rewind resumes past it, so **a parked chain keeps the count
-held until it truly completes.**
+## Current ownership model
 
-`wxWasmDispatchParked()` is true whenever a chain is live or parked. While it
-is true, a would-be fresh dispatch must not run handlers:
+The coordinator admits one root owner for ordinary mutable work. The owner
+remains live until every affiliated native body reaches its true tail. An
+Asyncify wait token and a scheduler context ID are separate mechanisms:
 
-| Entry point (file) | Behavior while another chain is parked |
-| --- | --- |
-| `ProcessEvents` pump tick (`evtloop.cpp`) | `Paint()` only — no `ProcessPendingEvents`/`ProcessIdle`; events stay queued for the first tick after resume |
-| `wxApp::HandleKeyEvent` (`app.cpp`) | state bookkeeping runs, the event is `wxPostEvent`'d to the focus window; `CHAR_HOOK` returns "not handled" so the caller still synthesizes the (also queued) `KEY_DOWN`, other types return "handled" so browser defaults stay suppressed |
-| `wxApp::HandleMouseEvent` (`app.cpp`) | `UpdateMouseState` runs; button events are posted to the resolved target; motion/hover synthesis dropped — the next real motion re-syncs |
-| `wxApp::HandleMouseWheelEvent` (`app.cpp`) | dropped |
-| `wx_dom_event` (`domevents.cpp`) | deferred via `CallAfter` (bound to the window's queue, so it dies with the window) |
-| wx timer fire (`timer.cpp`) | retried 17 ms later; `ScheduleNextInterval`'s deadline bookkeeping keeps periodic timers on cadence |
+- A wait token identifies one exact suspension and wake.
+- A scheduler context identifies one physical stack.
+- An owner token identifies permission to use shared mutable application
+  state.
 
-Deliberately **ungated**:
+Modal and popup operations do not release the root. They open a narrow child
+lease for an exact top-level target scope and generation. Only allowed work
+classes for that scope can enter as a child transaction. Closing starts by
+stopping new child admission; the lease is removed only after its current child
+has completed.
 
-- `wxGUIEventLoop::Dispatch()` / `wxYield` — same-stack *nested* dispatch is
-  legal; the interlock only forbids interleaving with a *parked* chain, not
-  recursion on one live stack.
-- The three long-lived parks whose own pump is the legitimate dispatcher while
-  the opener is parked: `wxDialog::ShowModal` (`dialog.cpp`), nested
-  `wxGUIEventLoop::DoRun` (`evtloop.cpp`), and `wxWindowWasm::DoPopupMenu`
-  (`window.cpp`). Each zeroes the count for the park's duration and restores it
-  on resume — using plain `int` save/restore, **not** RAII, because destructors
-  are not reliable across those parks.
+All fresh producers stage typed work in the central execution queue. The queue
+admits work when the owner tree makes it eligible. It does not poll and retry.
+An owner release or lease transition schedules the next eligibility check.
+DOM records hold copied event data and weak target identity so dispatch can
+revalidate the target after a delay.
 
-Net effect: during a short park (bridge fetch, clipboard) input queues for the
-park's round-trip instead of dispatching into a half-mutated UI; paints keep
-running so the UI stays live. Previously the pump either await-blocked (park
-inside a pump tick) or kept dispatching (park inside an input chain — the
-crash).
+The native queue bounds non-affiliated envelopes at 4096. Affiliated owner
+continuations are exempt because refusing the exact continuation which can
+retire an owner would turn backpressure into deadlock. At the bound, a new
+ordinary envelope is refused and the instance enters fail-stop. Queue transfer
+is explicit: `false` leaves the argument with the caller; `true` transfers it
+until the callback runs or its discard callback runs. The queue removes a
+record before invoking either path, so a re-entrant failure cannot dispose the
+same payload twice. This reclaimable ownership contract starts when the native
+queue stages the record. On terminal scheduler shutdown, records still waiting
+in the JavaScript delay mailbox are abandoned with that Wasm instance; JavaScript
+must not create a second callback lane into an integrity-unknown runtime only
+to free terminal memory.
 
-## Residual notes
+Only adjacent, loss-tolerant state may use latest-wins replacement. The two
+current classes are passive mouse movement with no button held and resize.
+Replacement requires the same producer, coalescing key, work class, and exact
+target scope. Its sequence numbers must also be consecutive, so a discrete
+record remains a barrier even if an eligibility scan already ran and removed
+that record. Replacement calls the older record's discard callback. A key,
+wheel, button, drag, different target, affiliated continuation, other producer,
+or any other discrete record is an ordering barrier. Diagnostics report queue
+high-water, coalesced, and rejected counts.
 
-- If a parked chain never resumes, the interlock freezes all dispatch rather
-  than one chain — but that was already a hung app (the parked stack holds
-  arbitrary locks).
-- A wasm trap escaping a dispatch chain leaks the held count (no destructors on
-  a trap). Where the JS entry point *catches* the failure the chain is known to
-  be dead and the interlock is released explicitly: `wx_dispatch_abandon`
-  (`wxWasmDispatchAbandon()`, evtloop.cpp), called from the `dispatch()` catch
-  in `build/wasm/wx-dom.js`. This matters because such a failure is not always
-  fatal — the wxClipboard test app raises Emscripten's "cannot start an async
-  operation when one is already in flight" abort (its `EM_ASYNC_JS` clipboard
-  park suspends inside the *synchronous* `wx_dom_event` ccall), keeps running,
-  and its later clicks work; without the release, the first abort would gate
-  every later event behind a chain that no longer exists. Entry points with no
-  catch (the Emscripten key/focus handlers) can still leak, but there the
-  runtime is already poisoned.
-- That clipboard abort is a **pre-existing** bug, unrelated to the interlock:
-  it reproduces identically on builds before it. The real fix is to stop the
-  clipboard parking inside a synchronous DOM callback (or ccall `wx_dom_event`
-  with `{async: true}`); the spec's assertions are loose enough to pass either
-  way, so CI green does not mean the clipboard round-trip works.
-- Paint still runs during a park (it always has, and is needed to keep the UI
-  alive). The crash class was pending-event *dispatch*, which is what's gated.
+Programmatic Embind commands and owned file opens use a shallow starter. The
+real native body starts on a fresh dispatch context. Queue admission is
+reported synchronously; completion is reported only after the native owner is
+retired. Network requests themselves remain concurrent because only their
+stateful completion handlers enter this ownership lane.
+
+Initial `CallOnInit()` and main-loop publication run under a startup root
+owner. Classified browser ingress does not inherit this owner through the
+shared main-stack context. Only the audited modal and nested-loop adapters may
+use it explicitly to open an exact target lease. The RAII guard releases it
+after `OnRun()` has published the detached loop.
+
+If a caught native ownership invariant fails, the coordinator enters a
+terminal fail-stop. If a native trap escapes, JavaScript must not call back
+into the integrity-unknown Wasm instance. It marks the instance failed and
+shuts down the scheduler mirror. Both paths reject later work instead of
+pretending that the interrupted transaction completed.
+
+## Adapter locations
+
+The important wx-side adapters are:
+
+- `src/wasm/evtloop.cpp`: coordinator instance, owner-to-stack provenance,
+  central job queue, startup owner, modal leases, and terminal fail-stop.
+- `src/wasm/app.cpp`, `src/wasm/domevents.cpp`, and
+  `src/wasm/toplevel.cpp`: copied, classified browser input with target
+  resolution after admission.
+- `src/wasm/timer.cpp`: timer staging and target-scope revalidation.
+- `src/wasm/dialog.cpp` and `src/wasm/window.cpp`: modal and popup leases.
+- `src/common/event.cpp`: pending-event provenance and dispatch filtering.
+- `build/wasm/wx-dom.js`: copied browser event records and weak target lookup.
+
+The scalar interlock names remain useful only when reading old commits and
+investigation notes. They are not part of the current runtime contract.

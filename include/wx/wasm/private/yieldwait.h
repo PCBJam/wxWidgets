@@ -20,15 +20,13 @@
 //                                           // scheduler-managed wake
 //   ... later, from any JS/C++ path ...
 //   wxWasmResolveWait(token, result);       // exact wait
-//   wxWasmResolveTopWait("modal", result);  // or innermost of a kind (LIFO)
 //
-// No per-wait pump exists: the top-level tick is the only dispatcher (it runs
-// at any DoRun depth on scheduler builds), and the parked chain's interlock
-// slot is zeroed by its caller exactly as before. Implemented in evtloop.cpp.
+// No per-wait pump exists: the top-level tick is the only dispatcher. The
+// parked parent owner remains represented, while an explicit modal/nested
+// lease admits only its scoped child work. Implemented in evtloop.cpp.
 
 extern "C" int  wxWasmBeginWait(const char *kind);
 extern "C" int  wxWasmYieldUntil(int token);
-extern "C" void wxWasmResolveWait(int token, int result);
-extern "C" void wxWasmResolveTopWait(const char *kind, int result);
+extern "C" bool wxWasmResolveWait(int token, int result);
 
 #endif // _WX_WASM_PRIVATE_YIELDWAIT_H_

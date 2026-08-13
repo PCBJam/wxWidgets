@@ -19,21 +19,38 @@
 #include "wx/window.h"
 
 #include "wx/private/eventloopsourcesmanager.h"
-#include "wx/wasm/private/dispatch.h"
-#include "wx/wasm/private/mailbox.h"
+#include "wx/wasm/private/execution_owner.h"
 #include "wx/wasm/private/mainloop.h"
 #include "wx/wasm/private/display.h"
-
-// Defined in evtloop.cpp: run work on a dispatch context instead of the stack
-// it arrived on (doc 22 §10 — every entry that can reach a tool coroutine must
-// go through the scheduler, or the rewind paths do not match).
-extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg);
 #include "wx/wasm/private/keyboard.h"
 #include "wx/wasm/private/mouse.h"
 #include "wx/wasm/private/timer.h"
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
+#include <cstdlib>
+#include <string>
+#include <vector>
+
+EM_JS_DEPS(wx_wasm_file_drop_string_results, "$stringToNewUTF8");
+
+EM_JS(int, wxWasmFileDropBatchCountJs, (unsigned token), {
+    return typeof globalThis.wxFileDropBatchCount === "function"
+            ? globalThis.wxFileDropBatchCount(token) : -1;
+});
+
+EM_JS(char *, wxWasmFileDropBatchMaterializeJs,
+      (unsigned token, int index), {
+    if (typeof globalThis.wxFileDropBatchMaterialize !== "function")
+        return 0;
+    var path = globalThis.wxFileDropBatchMaterialize(token, index);
+    return path === null ? 0 : stringToNewUTF8(path);
+});
+
+EM_JS(int, wxWasmFileDropBatchReleaseJs, (unsigned token), {
+    return typeof globalThis.wxFileDropBatchRelease === "function"
+            ? globalThis.wxFileDropBatchRelease(token) : 0;
+});
 
 void RegisterEmscriptenCallbacks(wxApp* app);
 
@@ -79,11 +96,14 @@ int wxApp::OnRun()
 // the synchronous mouse-button repaint path, mirroring wx_window_resize.
 extern bool wxWasmWindowHostsGLCanvas(wxWindow* win);
 
-void wxApp::Paint(bool deferGLCanvasWindows)
+void wxApp::PaintTopLevelWindows(
+        bool deferGLCanvasWindows,
+        bool currentExecutionScopeOnly)
 {
-    wxWindow *topWindow = GetTopWindow();
-    wxASSERT(topWindow != NULL);
-
+    const wx_wasm_execution::ScopeToken executionScope =
+            currentExecutionScopeOnly
+                    ? wxWasmExecutionActiveLeaseScope()
+                    : wx_wasm_execution::ScopeToken{};
     wxWindowList::iterator windowIter;
 
     for (windowIter = wxTopLevelWindows.begin();
@@ -91,6 +111,12 @@ void wxApp::Paint(bool deferGLCanvasWindows)
          ++windowIter)
     {
         wxNonOwnedWindow* window = static_cast<wxNonOwnedWindow*>(*windowIter);
+
+        if (executionScope
+                && wxWasmExecutionScopeForWindow(window) != executionScope)
+        {
+            continue;
+        }
 
         // A non-main window hosting a wxGLCanvas is the 3D viewer, whose paint runs the
         // multi-threaded CPU raytracer: it spawns pthread Workers and busy-waits the main
@@ -113,6 +139,24 @@ void wxApp::Paint(bool deferGLCanvasWindows)
             window->HandlePaintRequests();
         }
     }
+}
+
+void wxApp::Paint(bool deferGLCanvasWindows)
+{
+    wxASSERT(GetTopWindow() != NULL);
+    PaintTopLevelWindows(deferGLCanvasWindows,
+                         /*currentExecutionScopeOnly=*/false);
+}
+
+void wxApp::PaintCurrentExecutionScope(bool deferGLCanvasWindows)
+{
+    wxASSERT(GetTopWindow() != NULL);
+
+    // A root has no active lease and keeps the historical global sweep. A
+    // modal child has an exact active lease scope; filtering by its complete
+    // token also prevents a destroyed window's reused address from matching.
+    PaintTopLevelWindows(deferGLCanvasWindows,
+                         /*currentExecutionScopeOnly=*/true);
 }
 
 bool wxApp::IsKeyPressed(long keyCode)
@@ -218,20 +262,6 @@ bool wxApp::HandleKeyEvent(wxKeyEvent *event)
             SetKeyPressed(event->GetKeyCode(), false);
         }
 
-        if (wxWasmDispatchParked())
-        {
-            // Another dispatch chain is Asyncify-parked mid-handler; running
-            // key handlers now would interleave with its half-mutated widget
-            // state. Queue the event for the first pump tick after resume.
-            // CHAR_HOOK reports "not handled" so the caller still synthesizes
-            // the follow-up KEY_DOWN (queued too, order preserved); other
-            // types report "handled" so the browser default stays suppressed
-            // and no duplicate CHAR is synthesized.
-            wxPostEvent(window->GetEventHandler(), *event);
-            return event->GetEventType() != wxEVT_CHAR_HOOK;
-        }
-
-        wxWasmDispatchGuard guard;
         return window->HandleWindowEvent(*event);
     }
     else
@@ -280,35 +310,6 @@ void wxApp::UpdateMouseState(const wxMouseEvent& event)
 
 void wxApp::HandleMouseEvent(wxMouseEvent *event)
 {
-    if (wxWasmDispatchParked())
-    {
-        // Another dispatch chain is Asyncify-parked mid-handler; running
-        // mouse handlers now would interleave with its half-mutated widget
-        // state. Keep wxGetMouseState() truthful, queue button events for
-        // the first pump tick after resume (targeted like
-        // SendMouseEventToWindow would), and drop motion/hover synthesis -
-        // the next real motion after resume re-syncs it.
-        UpdateMouseState(*event);
-
-        if (event->ButtonDown() || event->ButtonUp() || event->ButtonDClick())
-        {
-            wxWindow *target = GetMouseWindow(event->GetPosition());
-
-            if (target != NULL && target->IsEnabled())
-            {
-                wxMouseEvent queued(*event);
-                queued.SetPosition(target->ScreenToClient(event->GetPosition()));
-                queued.SetEventObject(target);
-                queued.SetId(target->GetId());
-                wxPostEvent(target->GetEventHandler(), queued);
-            }
-        }
-
-        return;
-    }
-
-    wxWasmDispatchGuard dispatchGuard;
-
     if (wxDropSource::IsDragInProgress())
     {
         wxDropSource::HandleMouseEvent(event);
@@ -459,37 +460,12 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
         // via the yielding per-frame pump one frame later (a GAL preview's pixels lag ≤1
         // frame; its logic already ran above). Non-GL windows still repaint synchronously.
         ProcessPendingEvents();
-        Paint(/*deferGLCanvasWindows=*/true);
+        PaintCurrentExecutionScope(/*deferGLCanvasWindows=*/true);
     }
-}
-
-// Mailbox replay for a wheel tick that arrived while a dispatch chain was
-// parked (docs/features/async/17 S1). Owns the heap copy; re-enters through
-// the public handler so the parked re-check and the interlock guard apply.
-static void WheelReplay(void *p)
-{
-    wxMouseEvent *event = static_cast<wxMouseEvent *>(p);
-    if (wxTheApp)
-        wxTheApp->HandleMouseWheelEvent(event);
-    delete event;
 }
 
 void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
 {
-    if (wxWasmDispatchParked())
-    {
-        // Queue the tick for delivery when the interlock frees instead of
-        // dropping it — every tick the user made scrolls, just later (a long
-        // park replays them as a burst, which is the deliver-not-drop
-        // contract). The wheel resolves its target window from the CURRENT
-        // pointer position at delivery, matching what a fresh tick after
-        // resume would do.
-        wxWasmMailboxEnqueueAfter(WheelReplay, new wxMouseEvent(*event), 0);
-        return;
-    }
-
-    wxWasmDispatchGuard dispatchGuard;
-
     wxPoint mousePosition = wxGetMousePosition();
     event->SetPosition(mousePosition);
     wxWindow *window = GetMouseWindow(mousePosition);
@@ -699,7 +675,7 @@ const char *GetEventName(int eventType)
 // ("index out of bounds" in doRewind, measured on every canvas tool). So the
 // handler bodies below are packaged as jobs and handed to the scheduler.
 //
-// LIFETIME. A job usually runs to completion inside wxWasmRunOnDispatchContext
+// LIFETIME. A job usually runs to completion inside the scoped dispatch adapter
 // (the context parks again and the pump returns), but it MAY park — a click
 // that opens a modal keeps the job alive for the dialog's lifetime. The job is
 // therefore heap-owned, and ownership goes to whoever finishes last: the job
@@ -711,15 +687,49 @@ namespace
 
 struct wxWasmDomJob
 {
+    virtual ~wxWasmDomJob() = default;
+
     wxApp *app = NULL;
+    wx_wasm_execution::ScopeToken targetScope;
     bool finished = false;
     bool abandoned = false;
 };
 
-/** Run aJob via the scheduler; true if it completed before returning. */
-bool wxWasmRunDomJob(void (*aFn)(void *), wxWasmDomJob *aJob)
+/** True when the caller still owns aJob (completed or admission rejected). */
+bool wxWasmRunDomJob(
+        void (*aFn)(void *), wxWasmDomJob *aJob,
+        wx_wasm_execution::WorkClass aClass =
+                wx_wasm_execution::WorkClass::UserInput,
+        wx_wasm_execution::ScopeToken targetScope = {},
+        wx_wasm_execution::CoalesceClass coalesce =
+                wx_wasm_execution::CoalesceClass::None,
+        wx_wasm_execution::BrowserIngressReceipt receipt = {})
 {
-    wxWasmRunOnDispatchContext(aFn, aJob);
+    using SubmitDisposition =
+            wx_wasm_execution::DispatchSubmitDisposition;
+
+    aJob->targetScope = targetScope;
+    const SubmitDisposition disposition =
+            wxWasmRunOnDispatchContextScoped(
+                    aFn, aJob, aClass, targetScope,
+                    [](void *arg) {
+                        delete static_cast<wxWasmDomJob *>(arg);
+                    },
+                    coalesce, 0, receipt);
+
+    if (disposition == SubmitDisposition::RejectedCallerOwns)
+    {
+        // Admission rejected before ownership transfer. The caller still owns
+        // this allocation and will delete it through the normal true path.
+        return true;
+    }
+
+    if (disposition == SubmitDisposition::AcceptedPayloadDiscarded)
+    {
+        // Terminal cleanup (or a coalescing destructor which entered it)
+        // destroyed the accepted payload before submit returned.
+        return false;
+    }
 
     if (aJob->finished)
         return true;
@@ -727,6 +737,44 @@ bool wxWasmRunDomJob(void (*aFn)(void *), wxWasmDomJob *aJob)
     // Still parked (a modal, a lib fetch): it owns itself from here.
     aJob->abandoned = true;
     return false;
+}
+
+wx_wasm_execution::ScopeToken wxWasmInputScopeAtPoint(
+        wxApp *app, const wxPoint& point)
+{
+    return app
+            ? wxWasmExecutionScopeForWindow(app->GetMouseWindow(point))
+            : wx_wasm_execution::ScopeToken{};
+}
+
+bool wxWasmScopeMatchesCandidate(
+        wx_wasm_execution::ScopeToken candidate,
+        wx_wasm_execution::ScopeToken actual)
+{
+    // No active lease means ordinary root admission; the target is resolved
+    // wholly inside that owner. During a lease, the control-plane scope is
+    // only a candidate and must match the resolved live target exactly.
+    return !candidate || candidate == actual;
+}
+
+wxWindow *wxWasmDropTarget(wxApp *app, const wxPoint& point)
+{
+    wxWindow *target = wxFindWindowAtPoint(point);
+
+    if (!target && app)
+        target = app->GetTopWindow();
+
+    // DragAcceptFiles() installs a wxFileDropTarget on the accepting window.
+    // The pointer is usually over one of its children, and wxDropFilesEvent is
+    // not a command event which bubbles to the parent. Resolve the same target
+    // hierarchy as native ports instead of dispatching to the incidental leaf.
+    for (; target; target = target->GetParent())
+    {
+        if (dynamic_cast<wxFileDropTarget *>(target->GetDropTarget()))
+            return target;
+    }
+
+    return NULL;
 }
 
 /** Job epilogue: hand the allocation to whoever is still around. */
@@ -740,41 +788,110 @@ void wxWasmFinishDomJob(wxWasmDomJob *aJob)
 
 struct wxWasmMouseJob : wxWasmDomJob
 {
-    wxMouseEvent event;
-    bool wheel = false;
-    // Touch-down synthesises a motion event before the button (see
-    // TouchCallback); both must run on the same stack, in order.
-    bool precedingMotion = false;
+    int eventType = 0;
+    EmscriptenMouseEvent browserEvent;
 };
 
 void wxWasmRunMouseJob(void *arg)
 {
     wxWasmMouseJob *job = static_cast<wxWasmMouseJob *>(arg);
+    wxMouseEvent event;
+    const wxPoint point(job->browserEvent.targetX,
+                        job->browserEvent.targetY);
 
-    if (job->wheel)
+    if (wxTheApp == job->app
+        && wxWasmScopeMatchesCandidate(
+                job->targetScope,
+                wxWasmInputScopeAtPoint(job->app, point))
+        && EmscriptenMouseEventToWXEvent(
+            job->eventType, job->browserEvent, &event))
+        job->app->HandleMouseEvent(&event);
+
+    wxWasmFinishDomJob(job);
+}
+
+struct wxWasmTouchJob : wxWasmDomJob
+{
+    int eventType = 0;
+    EmscriptenTouchEvent browserEvent;
+    bool handled = false;
+};
+
+void wxWasmRunTouchJob(void *arg)
+{
+    wxWasmTouchJob *job = static_cast<wxWasmTouchJob *>(arg);
+    wxMouseEvent event;
+    bool targetMatches = wxTheApp == job->app;
+
+    if (targetMatches && job->browserEvent.numTouches > 0)
     {
-        job->app->HandleMouseWheelEvent(&job->event);
+        const wxPoint point(job->browserEvent.touches[0].targetX,
+                            job->browserEvent.touches[0].targetY);
+        targetMatches = wxWasmScopeMatchesCandidate(
+                job->targetScope,
+                wxWasmInputScopeAtPoint(job->app, point));
     }
-    else
+    else if (targetMatches)
     {
-        if (job->precedingMotion)
+        targetMatches = wxWasmScopeMatchesCandidate(
+                job->targetScope,
+                wxWasmInputScopeAtPoint(job->app, wxGetMousePosition()));
+    }
+
+    if (targetMatches && EmscriptenTouchEventToWXEvent(
+            job->eventType, job->browserEvent, &event))
+    {
+        job->handled = true;
+
+        // Mirroring browser behavior, move the mouse to the new location
+        // before a synthetic touch-down. Both events execute in this one
+        // admitted transaction.
+        if (event.GetEventType() == wxEVT_LEFT_DOWN)
         {
-            wxMouseEvent moveEvent(job->event);
+            wxMouseEvent moveEvent(event);
             moveEvent.SetEventType(wxEVT_MOTION);
             moveEvent.SetLeftDown(false);
             moveEvent.m_clickCount = 0;
             job->app->HandleMouseEvent(&moveEvent);
         }
 
-        job->app->HandleMouseEvent(&job->event);
+        job->app->HandleMouseEvent(&event);
     }
+
+    wxWasmFinishDomJob(job);
+}
+
+struct wxWasmWheelJob : wxWasmDomJob
+{
+    EmscriptenWheelEvent browserEvent;
+};
+
+void wxWasmRunWheelJob(void *arg)
+{
+    wxWasmWheelJob *job = static_cast<wxWasmWheelJob *>(arg);
+    wxMouseEvent event;
+    const wxPoint ingressPoint(job->browserEvent.mouse.targetX,
+                               job->browserEvent.mouse.targetY);
+    const bool targetMatches = wxTheApp == job->app
+            && wxWasmScopeMatchesCandidate(
+                    job->targetScope,
+                    wxWasmInputScopeAtPoint(job->app, ingressPoint))
+            && wxWasmScopeMatchesCandidate(
+                    job->targetScope,
+                    wxWasmInputScopeAtPoint(
+                            job->app, wxGetMousePosition()));
+
+    if (targetMatches && EmscriptenWheelEventToWXEvent(
+            job->browserEvent, wxVERTICAL, &event))
+        job->app->HandleMouseWheelEvent(&event);
 
     wxWasmFinishDomJob(job);
 }
 
 struct wxWasmKeyJob : wxWasmDomJob
 {
-    wxKeyEvent event;
+    int eventType = 0;
+    EmscriptenKeyboardEvent browserEvent;
     // The browser needs a synchronous answer; the job writes it here before it
     // can park, and a job that parks anyway leaves the caller's default.
     bool preventDefault = true;
@@ -784,7 +901,18 @@ void wxWasmRunKeyJob(void *arg)
 {
     wxWasmKeyJob *job = static_cast<wxWasmKeyJob *>(arg);
     wxApp *app = job->app;
-    wxKeyEvent &event = job->event;
+    wxKeyEvent event;
+
+    if (wxTheApp != app
+        || !wxWasmScopeMatchesCandidate(
+                job->targetScope,
+                wxWasmExecutionScopeForWindow(wxWindow::FindFocus()))
+        || !EmscriptenKeyboardEventToWXEvent(
+            job->eventType, job->browserEvent, &event))
+    {
+        wxWasmFinishDomJob(job);
+        return;
+    }
 
     if (event.GetEventType() == wxEVT_KEY_DOWN)
     {
@@ -821,6 +949,145 @@ void wxWasmRunKeyJob(void *arg)
     wxWasmFinishDomJob(job);
 }
 
+struct wxWasmSizeJob : wxWasmDomJob
+{
+    wxSize size;
+};
+
+void wxWasmRunSizeJob(void *arg)
+{
+    wxWasmSizeJob *job = static_cast<wxWasmSizeJob *>(arg);
+
+    if (wxTheApp == job->app
+        && wxWasmScopeMatchesCandidate(
+                job->targetScope,
+                wxWasmExecutionScopeForWindow(job->app->GetTopWindow())))
+    {
+        wxSizeEvent event(job->size);
+        job->app->HandleSizeEvent(event);
+    }
+
+    wxWasmFinishDomJob(job);
+}
+
+struct wxWasmFocusJob : wxWasmDomJob
+{
+    bool focused = false;
+};
+
+void wxWasmRunFocusJob(void *arg)
+{
+    wxWasmFocusJob *job = static_cast<wxWasmFocusJob *>(arg);
+
+    if (wxTheApp == job->app
+        && wxWasmScopeMatchesCandidate(
+                job->targetScope,
+                wxWasmExecutionScopeForWindow(job->app->GetTopWindow())))
+    {
+        wxActivateEvent event(wxEVT_ACTIVATE, job->focused);
+        job->app->HandleActivateEvent(&event);
+    }
+
+    wxWasmFinishDomJob(job);
+}
+
+struct wxWasmCloseJob : wxWasmDomJob
+{
+    bool veto = true;
+};
+
+void wxWasmRunCloseJob(void *arg)
+{
+    wxWasmCloseJob *job = static_cast<wxWasmCloseJob *>(arg);
+    wxCloseEvent event(wxEVT_CLOSE_WINDOW);
+    event.SetCanVeto(true);
+    job->app->HandleCloseEvent(&event);
+    job->veto = event.GetVeto();
+    wxWasmFinishDomJob(job);
+}
+
+struct wxWasmFileDropBatchJob
+{
+    wxApp *app = NULL;
+    unsigned token = 0;
+    wxPoint screenPosition;
+};
+
+bool wxWasmReleaseFileDropBatch(wxWasmFileDropBatchJob *job)
+{
+    const unsigned token = job->token;
+    job->token = 0;
+    if (token && wxWasmFileDropBatchReleaseJs(token) == 1)
+        return true;
+
+    wxWasmExecutionFailStop(
+            "file-drop transaction refused exact release");
+    return false;
+}
+
+void wxWasmDiscardFileDropBatchJob(void *arg)
+{
+    wxWasmFileDropBatchJob *job =
+            static_cast<wxWasmFileDropBatchJob *>(arg);
+    wxWasmReleaseFileDropBatch(job);
+    delete job;
+}
+
+void wxWasmRunFileDropBatchJob(void *arg)
+{
+    wxWasmFileDropBatchJob *job =
+            static_cast<wxWasmFileDropBatchJob *>(arg);
+    wxApp *app = wxTheApp == job->app ? job->app : NULL;
+    wxWindow *target = app
+            ? wxWasmDropTarget(app, job->screenPosition) : NULL;
+    wxFileDropTarget *dropTarget = target
+            ? dynamic_cast<wxFileDropTarget *>(target->GetDropTarget()) : NULL;
+
+    std::vector<wxString> paths;
+    bool complete = dropTarget != NULL;
+    const int count = complete
+            ? wxWasmFileDropBatchCountJs(job->token) : 0;
+
+    if (count <= 0)
+        complete = false;
+    else
+    {
+        paths.reserve(static_cast<size_t>(count));
+        for (int i = 0; i < count; ++i)
+        {
+            char *path = wxWasmFileDropBatchMaterializeJs(job->token, i);
+            if (!path)
+            {
+                complete = false;
+                break;
+            }
+
+            paths.push_back(wxString::FromUTF8(path));
+            std::free(path);
+        }
+    }
+
+    if (!wxWasmReleaseFileDropBatch(job))
+        complete = false;
+
+    if (complete)
+    {
+        // A browser drop is one native file-target call, matching the native
+        // ports and retaining the exact grouping of overlapping reads. The
+        // generic DragAcceptFiles target creates wxDropFilesEvent itself;
+        // custom wxFileDropTarget implementations receive their normal API.
+        wxArrayString files;
+        files.reserve(paths.size());
+        for (const wxString& path : paths)
+            files.push_back(path);
+
+        const wxPoint client = target->ScreenToClient(job->screenPosition);
+        dropTarget->OnDropFiles(client.x, client.y, files);
+    }
+
+    delete job;
+}
+
 }  // namespace
 
 EM_BOOL KeyCallback(int eventType,
@@ -851,32 +1118,32 @@ EM_BOOL KeyCallback(int eventType,
     }
 
     wxApp* app = static_cast<wxApp*>(userData);
-    wxKeyEvent event;
     bool preventDefault = true;
+    // Reading the owner tree is control-plane only. Focus and all wx target
+    // state are resolved after admission in wxWasmRunKeyJob().
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionCaptureBrowserIngressReceipt();
+    const wx_wasm_execution::ScopeToken targetScope =
+            receipt.lease ? receipt.lease.targetScope
+                          : wx_wasm_execution::ScopeToken{};
 
-    if (EmscriptenKeyboardEventToWXEvent(eventType, *emscriptenEvent, &event))
+    // Conversion is inside the admitted job too. The converter lazily creates
+    // shared translation state, so it is not merely a raw-data copy.
+    wxWasmKeyJob* job = new wxWasmKeyJob();
+    job->app = app;
+    job->eventType = eventType;
+    job->browserEvent = *emscriptenEvent;
+
+    if (wxWasmRunDomJob(
+            &wxWasmRunKeyJob, job,
+            wx_wasm_execution::WorkClass::UserInput, targetScope,
+            wx_wasm_execution::CoalesceClass::None, receipt))
     {
-        /*
-                wxString key_char(event.GetUnicodeKey());
-                printf("type: %d, key_code: %d, char: %s\n",
-                       event.GetEventType(),
-                       event.GetKeyCode(),
-                       static_cast<const char*>(key_char.utf8_str()));
-        */
-
-        wxWasmKeyJob* job = new wxWasmKeyJob();
-        job->app = app;
-        job->event = event;
-
-        if (wxWasmRunDomJob(&wxWasmRunKeyJob, job))
-        {
-            preventDefault = job->preventDefault;
-            delete job;
-        }
-        // else: the handler parked (a modal opened from a key). It owns
-        // itself now, and preventDefault keeps its default — the browser
-        // cannot be kept waiting for a dialog.
+        preventDefault = job->preventDefault;
+        delete job;
     }
+    // Else the handler parked, or waited behind another owner. It owns itself
+    // now, and preventDefault keeps its conservative synchronous default.
 
     return preventDefault;
 }
@@ -888,18 +1155,26 @@ EM_BOOL MouseCallback(int eventType,
     //const char *eventName = GetEventName(eventType);
     //printf("MouseCallback: %s %d %ld %ld\n", eventName, emscriptenEvent->button, emscriptenEvent->targetX, emscriptenEvent->targetY);
 
-    wxApp* app = static_cast<wxApp*>(userData);
-    wxMouseEvent event;
+    wxWasmMouseJob* job = new wxWasmMouseJob();
+    job->app = static_cast<wxApp*>(userData);
+    job->eventType = eventType;
+    job->browserEvent = *emscriptenEvent;
 
-    if (EmscriptenMouseEventToWXEvent(eventType, *emscriptenEvent, &event))
-    {
-        wxWasmMouseJob* job = new wxWasmMouseJob();
-        job->app = app;
-        job->event = event;
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionCaptureBrowserIngressReceipt();
+    const wx_wasm_execution::ScopeToken targetScope =
+            receipt.lease ? receipt.lease.targetScope
+                          : wx_wasm_execution::ScopeToken{};
 
-        if (wxWasmRunDomJob(&wxWasmRunMouseJob, job))
-            delete job;
-    }
+    if (wxWasmRunDomJob(
+            &wxWasmRunMouseJob, job,
+            wx_wasm_execution::WorkClass::UserInput, targetScope,
+            eventType == EMSCRIPTEN_EVENT_MOUSEMOVE
+                    && emscriptenEvent->buttons == 0
+                ? wx_wasm_execution::CoalesceClass::PassiveMouseMove
+                : wx_wasm_execution::CoalesceClass::None,
+            receipt))
+        delete job;
 
     return true;
 }
@@ -911,26 +1186,31 @@ EM_BOOL TouchCallback(int eventType,
     //const char *eventName = GetEventName(eventType);
     //printf("TouchCallback: %s %d %ld %ld\n", eventName, emscriptenEvent->numTouches, emscriptenEvent->touches[0].targetX, emscriptenEvent->touches[0].targetY);
 
-    wxApp* app = static_cast<wxApp*>(userData);
-    wxMouseEvent event;
+    wxWasmTouchJob* job = new wxWasmTouchJob();
+    job->app = static_cast<wxApp*>(userData);
+    job->eventType = eventType;
+    job->browserEvent = *emscriptenEvent;
 
-    if (EmscriptenTouchEventToWXEvent(eventType, *emscriptenEvent, &event))
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionCaptureBrowserIngressReceipt();
+    const wx_wasm_execution::ScopeToken targetScope =
+            receipt.lease ? receipt.lease.targetScope
+                          : wx_wasm_execution::ScopeToken{};
+
+    if (wxWasmRunDomJob(
+            &wxWasmRunTouchJob, job,
+            wx_wasm_execution::WorkClass::UserInput, targetScope,
+            wx_wasm_execution::CoalesceClass::None, receipt))
     {
-        wxWasmMouseJob* job = new wxWasmMouseJob();
-        job->app = app;
-        job->event = event;
-        // Mirroring browser behavior, move the mouse to the new location
-        // before sending the mouse down event (synthesised inside the job so
-        // both events reach wx on the same stack, in order).
-        job->precedingMotion = (event.GetEventType() == wxEVT_LEFT_DOWN);
-
-        if (wxWasmRunDomJob(&wxWasmRunMouseJob, job))
-            delete job;
-
-        return true;
-    } else {
-        return false;
+        const bool handled = job->handled;
+        delete job;
+        return handled;
     }
+
+    // A queued/parked touch cannot provide its eventual conversion result to
+    // the browser synchronously. Consume it conservatively so the browser
+    // does not start a competing gesture while wx still owns this sequence.
+    return true;
 }
 
 EM_BOOL WheelCallback(int WXUNUSED(eventType),
@@ -939,23 +1219,21 @@ EM_BOOL WheelCallback(int WXUNUSED(eventType),
 {
     //printf("WheelCallback: %f %f %ld %ld\n", event->deltaX, event->deltaY, event->mouse.targetX, event->mouse.targetY);
 
-    wxApp* app = static_cast<wxApp*>(userData);
-    wxMouseEvent event;
+    wxWasmWheelJob* job = new wxWasmWheelJob();
+    job->app = static_cast<wxApp*>(userData);
+    job->browserEvent = *emscriptenEvent;
 
-    if (EmscriptenWheelEventToWXEvent(*emscriptenEvent, wxHORIZONTAL, &event))
-    {
-    }
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionCaptureBrowserIngressReceipt();
+    const wx_wasm_execution::ScopeToken targetScope =
+            receipt.lease ? receipt.lease.targetScope
+                          : wx_wasm_execution::ScopeToken{};
 
-    if (EmscriptenWheelEventToWXEvent(*emscriptenEvent, wxVERTICAL, &event))
-    {
-        wxWasmMouseJob* job = new wxWasmMouseJob();
-        job->app = app;
-        job->event = event;
-        job->wheel = true;
-
-        if (wxWasmRunDomJob(&wxWasmRunMouseJob, job))
-            delete job;
-    }
+    if (wxWasmRunDomJob(
+            &wxWasmRunWheelJob, job,
+            wx_wasm_execution::WorkClass::UserInput, targetScope,
+            wx_wasm_execution::CoalesceClass::None, receipt))
+        delete job;
 
     return true;
 }
@@ -969,10 +1247,20 @@ EM_BOOL ResizeCallback(int WXUNUSED(eventType),
     int offset = EM_ASM_INT({
         return mainWindow.offsetTop;
     });
-    wxSize size(emscriptenEvent->windowInnerWidth, emscriptenEvent->windowInnerHeight - offset);
-    wxSizeEvent event(size);
+    wxWasmSizeJob *job = new wxWasmSizeJob();
+    job->app = app;
+    job->size = wxSize(emscriptenEvent->windowInnerWidth,
+                       emscriptenEvent->windowInnerHeight - offset);
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionCaptureBrowserIngressReceipt();
 
-    app->HandleSizeEvent(event);
+    // Browser geometry targets the application's top window. Do not stamp the
+    // currently active lease onto this global operation: under a dialog lease
+    // the main-window scope differs and this job correctly remains deferred.
+    if (wxWasmRunDomJob(&wxWasmRunSizeJob, job,
+            wx_wasm_execution::WorkClass::ModalLifecycle, {},
+            wx_wasm_execution::CoalesceClass::LatestGeometry, receipt))
+        delete job;
 
     return true;
 }
@@ -984,8 +1272,19 @@ EM_BOOL FocusCallback(int eventType,
     //printf("FocusCallback\n");
     wxApp* app = static_cast<wxApp*>(userData);
 
-    wxActivateEvent event(wxEVT_ACTIVATE, eventType == EMSCRIPTEN_EVENT_FOCUS);
-    app->HandleActivateEvent(&event);
+    wxWasmFocusJob *job = new wxWasmFocusJob();
+    job->app = app;
+    job->focused = eventType == EMSCRIPTEN_EVENT_FOCUS;
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionCaptureBrowserIngressReceipt();
+
+    // Window activation is application/top-window lifecycle work, unlike
+    // focus on a DOM control. Derive its capability from that actual target,
+    // never from whichever modal lease happens to be open.
+    if (wxWasmRunDomJob(&wxWasmRunFocusJob, job,
+            wx_wasm_execution::WorkClass::ModalLifecycle, {},
+            wx_wasm_execution::CoalesceClass::None, receipt))
+        delete job;
 
     return true;
 }
@@ -994,14 +1293,39 @@ const char *UnloadCallback(int WXUNUSED(eventType),
                            const void *WXUNUSED(emscriptenEvent),
                            void *userData)
 {
-    //printf("UnloadCallback\n");
-    wxApp* app = static_cast<wxApp*>(userData);
+    wxApp *app = static_cast<wxApp *>(userData);
 
-    wxCloseEvent event(wxEVT_CLOSE_WINDOW);
-    event.SetCanVeto(true);
-    app->HandleCloseEvent(&event);
+    if (!wxTheApp || wxTheApp != app)
+        return "";
 
-    return event.GetVeto() ? "veto" : "";
+    // beforeunload is the one browser callback whose answer cannot be
+    // deferred: the return string must be available before this JS callback
+    // returns. If another owner or scheduler transition is active, do not
+    // queue a close that could run after the user cancelled the navigation.
+    // Veto conservatively.
+    if (!wxWasmExecutionCanStartFreshEntry())
+        return "veto";
+
+    wxWasmCloseJob *job = new wxWasmCloseJob();
+    job->app = app;
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionCaptureBrowserIngressReceipt();
+
+    const bool finished = wxWasmRunDomJob(
+            &wxWasmRunCloseJob, job,
+            wx_wasm_execution::WorkClass::ModalLifecycle, {},
+            wx_wasm_execution::CoalesceClass::None, receipt);
+
+    if (!finished)
+    {
+        // The close handler parked. It owns the heap job now, while the
+        // browser receives the only safe synchronous answer.
+        return "veto";
+    }
+
+    const bool veto = job->veto;
+    delete job;
+    return veto ? "veto" : "";
 }
 
 }
@@ -1082,53 +1406,34 @@ void RegisterEmscriptenCallbacks(wxApp* app)
 extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
-void OnDragEnter(int x, int y)
+int wx_file_drop_stage(
+        unsigned token, int x, int y, unsigned ingressReceiptToken)
 {
-    // Optional: could send a custom event for visual feedback
-    // printf("[DND] OnDragEnter: %d, %d\n", x, y);
-}
+    if (!token)
+        return 0;
 
-EMSCRIPTEN_KEEPALIVE
-void OnDragLeave()
-{
-    // Optional: could send a custom event to clear visual feedback
-    // printf("[DND] OnDragLeave\n");
-}
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionTakeBrowserIngressReceipt(
+                    ingressReceiptToken);
+    wxWasmFileDropBatchJob *job = new wxWasmFileDropBatchJob();
+    job->app = wxTheApp;
+    job->token = token;
+    job->screenPosition = wxPoint(x, y);
 
-EMSCRIPTEN_KEEPALIVE
-void OnFileDropped(const char* path, int x, int y)
-{
-    // printf("[DND] OnFileDropped: %s at (%d, %d)\n", path, x, y);
-
-    // Find the window that should receive the drop event
-    wxPoint dropPoint(x, y);
-    wxWindow* target = wxFindWindowAtPoint(dropPoint);
-
-    // Fall back to top window if no window found at point
-    if (target == nullptr && wxTheApp != nullptr)
+    // File reads can outlive the modal in which the browser drop began. Treat
+    // their completed immutable transaction as ordinary root work: it cannot
+    // borrow a later modal lease and resolves its live target only when the
+    // root owner admits it.
+    if (!wxWasmExecutionStageBrowserIngress(
+            &wxWasmRunFileDropBatchJob, job,
+            wx_wasm_execution::WorkClass::Ordinary, {},
+            receipt, &wxWasmDiscardFileDropBatchJob))
     {
-        target = wxTheApp->GetTopWindow();
+        delete job;
+        return 0;
     }
 
-    if (target == nullptr)
-    {
-        // printf("[DND] No target window found\n");
-        return;
-    }
-
-    // Create file path array (wxDropFilesEvent takes ownership)
-    wxString* files = new wxString[1];
-    files[0] = wxString::FromUTF8(path);
-
-    // Create and dispatch the drop files event
-    wxDropFilesEvent event(wxEVT_DROP_FILES, 1, files);
-    event.SetEventObject(target);
-
-    // Set drop position relative to target window
-    wxPoint clientPos = target->ScreenToClient(dropPoint);
-    event.m_pos = clientPos;
-
-    target->HandleWindowEvent(event);
+    return 1;
 }
 
 } // extern "C"

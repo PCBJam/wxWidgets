@@ -40,7 +40,12 @@ EM_JS(bool, js_isFontAccessAPIAvailable, (), {
 // Font names are stored in the provided array (caller allocates pointers, we
 // allocate strings).
 EM_JS(void, js_enumerateFontsStart, (int token, char** fontNames, int maxFonts, bool fixedWidthOnly), {
-    const finish = (v) => globalThis.__wxScheduler.resolveWait(token, v);
+    const scheduler = globalThis.__wxScheduler;
+    const finish = (v) => {
+        if (scheduler && typeof scheduler.runWaitCompletion === 'function')
+            scheduler.runWaitCompletion(
+                'font enumeration failure completion', token, () => v);
+    };
 
     if (typeof window === 'undefined' ||
         typeof window.queryLocalFonts !== 'function') {
@@ -59,36 +64,39 @@ EM_JS(void, js_enumerateFontsStart, (int token, char** fontNames, int maxFonts, 
         window.queryLocalFonts(),
         timeoutPromise
     ]).then((fonts) => {
-        // Get unique family names
-        const familySet = new Set();
-        for (const font of fonts) {
-            familySet.add(font.family);
-        }
-
-        // TODO: Filter by fixedWidthOnly if needed
-        // This would require checking font metrics which is complex
-
-        const families = Array.from(familySet).sort();
-        const count = Math.min(families.length, maxFonts);
-
-        // Allocate and copy font names
-        for (let i = 0; i < count; i++) {
-            const name = families[i];
-            const len = lengthBytesUTF8(name) + 1;
-            const ptr = _malloc(len);
-            if (ptr === 0) {
-                console.error('[wxFontEnumerator] Failed to allocate memory for font name');
-                // Clean up already allocated names
-                for (let j = 0; j < i; j++) {
-                    _free(HEAPU32[fontNames/4 + j]);
-                }
-                return finish(-1);
+        if (!scheduler || typeof scheduler.runWaitCompletion !== 'function') return;
+        scheduler.runWaitCompletion('font enumeration completion', token, () => {
+            // Get unique family names.
+            const familySet = new Set();
+            for (const font of fonts) {
+                familySet.add(font.family);
             }
-            stringToUTF8(name, ptr, len);
-            HEAPU32[fontNames/4 + i] = ptr;
-        }
 
-        finish(count);
+            // TODO: Filter by fixedWidthOnly if needed.
+            // This would require checking font metrics which is complex.
+
+            const families = Array.from(familySet).sort();
+            const count = Math.min(families.length, maxFonts);
+
+            // Allocate and copy font names.
+            for (let i = 0; i < count; i++) {
+                const name = families[i];
+                const len = lengthBytesUTF8(name) + 1;
+                const ptr = _malloc(len);
+                if (ptr === 0) {
+                    console.error('[wxFontEnumerator] Failed to allocate memory for font name');
+                    // Clean up already allocated names.
+                    for (let j = 0; j < i; j++) {
+                        _free(HEAPU32[fontNames/4 + j]);
+                    }
+                    return -1;
+                }
+                stringToUTF8(name, ptr, len);
+                HEAPU32[fontNames/4 + i] = ptr;
+            }
+
+            return count;
+        });
     }).catch((err) => {
         if (err.name === 'NotAllowedError') {
             console.warn('[wxFontEnumerator] Font access permission denied');
@@ -127,6 +135,13 @@ bool wxFontEnumerator::EnumerateFacenames(wxFontEncoding WXUNUSED(encoding),
 
     // Call JavaScript to enumerate fonts
     const int token = wxWasmBeginWait("font");
+
+    if (token <= 0)
+    {
+        delete[] fontNames;
+        return false;
+    }
+
     js_enumerateFontsStart(token, fontNames, MAX_FONTS, fixedWidthOnly);
     int count = wxWasmYieldUntil(token);
 
@@ -172,4 +187,3 @@ bool wxFontEnumerator::EnumerateEncodings(const wxString& WXUNUSED(family))
     OnFontEncoding(wxEmptyString, wxT("UTF-8"));
     return true;
 }
-

@@ -16,6 +16,7 @@
 
 #include "wx/wasm/private.h"
 #include "wx/wasm/private/display.h"
+#include "wx/wasm/private/execution_owner.h"
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -418,42 +419,154 @@ static bool wxWindowTreeHasClass(wxWindow* win, const wxClassInfo* cls)
 
 // True if `win` is, or contains, a wxGLCanvas. The 3D viewer's EDA_3D_CANVAS is a
 // wxGLCanvas whose paint runs the (slow, multi-threaded) CPU raytracer — see
-// wx_window_resize for why a synchronous repaint of such a window must be avoided.
+// wx_window_resize_stage for why a synchronous repaint of such a window must be avoided.
 // wxGLCanvas is looked up by NAME (wxClassInfo::FindClass) rather than referenced as a
 // type, so this core translation unit does NOT create a link-time dependency on
 // wxGLCanvas::ms_classInfo — the wxWidgets test apps link libwx_core but not the GL
 // library. In an app that doesn't link a GL canvas, FindClass returns null → no match.
 // Defined here (C++ linkage, NOT inside the extern "C" block below) and shared with
 // wxApp::Paint() (app.cpp) to defer the raytracer on the synchronous mouse-button repaint
-// path, the same reason wx_window_resize avoids a synchronous Paint() of such a window.
+// path, the same reason wx_window_resize_stage avoids a synchronous Paint() of such a window.
 bool wxWasmWindowHostsGLCanvas(wxWindow* win)
 {
     return wxWindowTreeHasClass(win, wxClassInfo::FindClass(wxT("wxGLCanvas")));
 }
+
+namespace
+{
+
+enum class wxWasmTopLevelOperation
+{
+    Move,
+    Close,
+    Resize
+};
+
+struct wxWasmTopLevelJob
+{
+    wxWasmTopLevelOperation operation = wxWasmTopLevelOperation::Move;
+    wx_wasm_execution::ScopeToken targetScope;
+    int cssId = 0;
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+};
+
+void wxWasmDiscardTopLevelJob(void *arg)
+{
+    delete static_cast<wxWasmTopLevelJob *>(arg);
+}
+
+void wxWasmRunTopLevelJob(void *arg)
+{
+    wxWasmTopLevelJob *job = static_cast<wxWasmTopLevelJob *>(arg);
+    wxTopLevelWindow *win = wxFindTopLevelByCSSId(job->cssId);
+
+    if (win && !win->IsMainFrame() && win->IsEnabled()
+        && (!job->targetScope
+            || wxWasmExecutionScopeForWindow(win) == job->targetScope))
+    {
+        switch (job->operation)
+        {
+            case wxWasmTopLevelOperation::Move:
+                win->Move(job->x, job->y);
+                break;
+
+            case wxWasmTopLevelOperation::Close:
+                win->Close(false);
+                break;
+
+            case wxWasmTopLevelOperation::Resize:
+                win->SetSize(job->x, job->y, job->width, job->height);
+
+                // The JS resize reassigned (and thus cleared) the 2D canvas.
+                // Repaint ordinary frames now. A GL frame can start worker
+                // threads while painting, so leave that repaint to the normal
+                // frame pump where the browser can start those workers.
+                win->Refresh();
+                if (wxTheApp && !wxWasmWindowHostsGLCanvas(win))
+                    wxTheApp->PaintCurrentExecutionScope();
+                break;
+        }
+    }
+
+    delete job;
+}
+
+bool wxWasmStageTopLevelJob(
+        wxWasmTopLevelJob *job,
+        wx_wasm_execution::BrowserIngressReceipt receipt)
+{
+    job->targetScope = receipt.lease
+            ? receipt.lease.targetScope
+            : wx_wasm_execution::ScopeToken{};
+    const bool coalesceGeometry =
+            job->operation == wxWasmTopLevelOperation::Move
+            || job->operation == wxWasmTopLevelOperation::Resize;
+    const wx_wasm_execution::CoalesceClass coalesce =
+            coalesceGeometry
+                ? wx_wasm_execution::CoalesceClass::LatestGeometry
+                : wx_wasm_execution::CoalesceClass::None;
+    // Move and resize share the latest-geometry coalescer class, but their
+    // keys remain distinct so neither replaces the other for one window.
+    const std::uintptr_t coalesceKey =
+            static_cast<std::uintptr_t>(
+                    static_cast<unsigned>(job->cssId)) * 4u
+            + static_cast<std::uintptr_t>(job->operation);
+
+    if (!wxWasmExecutionStageBrowserIngress(
+            &wxWasmRunTopLevelJob, job,
+            wx_wasm_execution::WorkClass::UserInput,
+            job->targetScope, receipt, &wxWasmDiscardTopLevelJob,
+            coalesce, coalesceKey))
+    {
+        delete job;
+        return false;
+    }
+
+    return true;
+}
+
+} // namespace
 
 extern "C"
 {
 
 // Move a non-main top-level window to wx screen coords (x, y). Reuses Move() so
 // the frame's children (GL canvas, tool/status bars) reposition through the
-// normal size-event -> Layout path. Safe as a synchronous ccall (Move does not
-// suspend the stack).
-void EMSCRIPTEN_KEEPALIVE wx_window_move(int cssId, int x, int y)
+// normal size-event -> Layout path. The browser callback only submits a typed
+// user-input job; it never mutates wx state on the shared main stack.
+int EMSCRIPTEN_KEEPALIVE wx_window_move_stage(
+        int cssId, int x, int y, unsigned ingressReceiptToken)
 {
-    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
-    if (win && !win->IsMainFrame())
-        win->Move(x, y);
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionTakeBrowserIngressReceipt(
+                    ingressReceiptToken);
+    wxWasmTopLevelJob *job = new wxWasmTopLevelJob();
+    job->operation = wxWasmTopLevelOperation::Move;
+    job->cssId = cssId;
+    job->x = x;
+    job->y = y;
+    // CSS ids are monotonic stable ingress identities. Resolve the wx target
+    // only inside the admitted job; while a lease is active, this candidate
+    // scope prevents a different top-level from borrowing its capability.
+    return wxWasmStageTopLevelJob(job, receipt) ? 1 : 0;
 }
 
 // Close a non-main top-level window via wxEVT_CLOSE (-> the frame's
-// OnCloseWindow). MUST be invoked as an ASYNC ccall: Close() runs the handler
-// synchronously and may pump the event loop / show a modal, which aborts
-// Asyncify if dispatched from a synchronous DOM-event ccall.
-void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
+// OnCloseWindow). Close() can show a modal, so the heap job outlives this
+// browser callback when its admitted dispatch context parks.
+int EMSCRIPTEN_KEEPALIVE wx_window_close_stage(
+        int cssId, unsigned ingressReceiptToken)
 {
-    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
-    if (win && !win->IsMainFrame())
-        win->Close(false);
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionTakeBrowserIngressReceipt(
+                    ingressReceiptToken);
+    wxWasmTopLevelJob *job = new wxWasmTopLevelJob();
+    job->operation = wxWasmTopLevelOperation::Close;
+    job->cssId = cssId;
+    return wxWasmStageTopLevelJob(job, receipt) ? 1 : 0;
 }
 
 // Resize a non-main top-level window to wx screen rect (x, y, width, height).
@@ -461,39 +574,23 @@ void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
 // (incl. a frame's wxGLCanvas -> setGLCanvasRect) and the DOM syncs via
 // wxNonOwnedWindow::DoSetSize -> setWindowRect. The DOM resize handles drag the
 // left/bottom edges + corners, so this takes a full rect (origin + size), unlike
-// the move-only wx_window_move. Safe as a synchronous ccall (SetSize does not
-// suspend the stack).
-void EMSCRIPTEN_KEEPALIVE wx_window_resize(int cssId, int x, int y, int width, int height)
+// the move-only wx_window_move_stage. Admission preserves discrete barriers and
+// replaces only adjacent resize records for this exact CSS id.
+int EMSCRIPTEN_KEEPALIVE wx_window_resize_stage(
+        int cssId, int x, int y, int width, int height,
+        unsigned ingressReceiptToken)
 {
-    wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
-    if (win && !win->IsMainFrame())
-    {
-        win->SetSize(x, y, width, height);
-
-        // The JS resize reassigned (and thus CLEARED) the window's 2D canvas, so the
-        // whole window must repaint — not just the strip SetSize invalidated. And
-        // inside a modal dialog's Asyncify event pump the repaint is otherwise
-        // deferred until the next input event (the dialog shows its black background
-        // until the user clicks). Force a full, synchronous repaint now — the same
-        // remedy wxApp uses after a button event (HandleMouseButtonEvent -> Paint).
-        // wxApp::Paint() only repaints windows whose NeedsPaint() is set, so this
-        // refreshes just the resized window.
-        //
-        // EXCEPTION — a window hosting a wxGLCanvas (the 3D viewer, whose paint runs the
-        // multi-threaded CPU raytracer). Painting it synchronously here runs the raytrace
-        // NESTED inside this resize ccall (itself driven from a JS requestAnimationFrame
-        // callback in wx.js). If that raytrace then has to spawn an on-demand pthread
-        // Worker — the pre-warmed pool drained by earlier renders, e.g. camera moves —
-        // booting the Worker needs the main thread back in the event loop, which it can't
-        // reach while blocked in this synchronous Paint(): the join busy-waits for a Worker
-        // that can never start → deadlock/freeze. The frame and its GL canvas have already
-        // been resized (SetSize -> setGLCanvasRect); only the RE-RENDER is at stake, so let
-        // Refresh() above repaint it through the normal per-frame event-loop pump instead —
-        // exactly the path a camera move takes, where the Worker CAN boot.
-        win->Refresh();
-        if (wxTheApp && !wxWasmWindowHostsGLCanvas(win))
-            wxTheApp->Paint();
-    }
+    const wx_wasm_execution::BrowserIngressReceipt receipt =
+            wxWasmExecutionTakeBrowserIngressReceipt(
+                    ingressReceiptToken);
+    wxWasmTopLevelJob *job = new wxWasmTopLevelJob();
+    job->operation = wxWasmTopLevelOperation::Resize;
+    job->cssId = cssId;
+    job->x = x;
+    job->y = y;
+    job->width = width;
+    job->height = height;
+    return wxWasmStageTopLevelJob(job, receipt) ? 1 : 0;
 }
 
 } // extern "C"

@@ -1,32 +1,30 @@
 /*
- * Scheduler contexts — Design B core (pcbjam docs/features/async/20 §5, D1/D2).
+ * Scheduler contexts — physical context registry and transfer core.
  *
  * HEADER-ONLY, and living in wx's wasm port rather than pcbjam's wasm/ layer,
- * because D2 puts the wx event dispatch itself on a context: evtloop.cpp must
+ * because wx event dispatch itself runs on a context: evtloop.cpp must
  * see this, and adding a .cpp to wx's build means bakefile regeneration.
- * One implementation, included by wx, by KiCad's bridges (D4), and by the
+ * One implementation, included by wx, by KiCad's bridges, and by the
  * harness (tests/apps/standalone/sched-context).
  *
- * THE RULE THIS EXISTS TO ENFORCE: no activity may park "in place". A
- * suspendable activity runs on a scheduler-owned context (its own stack + its
- * own asyncify buffer) and suspends by YIELDING THAT CONTEXT back to the
- * scheduler. The registry below is then authoritative about what is parked and
- * why — never a fiber struct saying one thing while its body sits in a
- * handleSleep the fiber layer cannot see (docs/features/async/19).
+ * THE RULE THIS EXISTS TO ENFORCE: every stateful activity has one recorded
+ * physical context and one semantic owner. Waits on an owned context yield
+ * that context to the scheduler. A wait on a foreign or unregistered stack
+ * may still use an in-place handleSleep, but the registry records that park
+ * and makes the affected fiber unenterable until its own wake consumes it.
  *
- * HOW THIS DIFFERS FROM libcontext (kicad/thirdparty/libcontext), which stays
- * exactly as it is:
+ * HOW THIS DIFFERS FROM libcontext (kicad/thirdparty/libcontext), whose Wasm
+ * backend is now a thin protocol adapter over this registry:
  *
- *   - libcontext is SYMMETRIC: any stack may jump_fcontext to any other, so
- *     "is the target safe to enter?" has no recorded answer and is guessed
- *     (swap_suspended, the parked/hot-main refusals). This layer is a STAR:
+ *   - libcontext is SYMMETRIC: any stack may jump_fcontext to any other. Its
+ *     protocol flag is only a cross-check; this registry is authoritative for
+ *     whether a physical target may be entered. This layer is a STAR:
  *     contexts only ever swap OUT to the scheduler, and only the scheduler
  *     swaps IN. A resume is therefore never a guess — the registry says the
  *     context is Parked/Ready and holds its buffer.
  *   - At most ONE transition is in flight, enforced here rather than hoped for.
  *
- * SCOPE: primitives + registry + memory accounting. The wx tick's dispatch
- * runs on a context as of D2; waits move at D3, bridges at D4.
+ * SCOPE: primitives, registry, transfer policy, and memory accounting.
  *
  * THREADING: main thread only, by construction (doc 21 §2 — every Asyncify
  * park in the tree is main-thread; the lib bridge's worker path is a blocking
@@ -54,6 +52,66 @@ namespace pcbjam_sched
 {
 
 using ContextId = uint32_t;
+using WakeToken = uint32_t;
+using ParkCancel = bool ( * )( ContextId, WakeToken );
+
+/** Who still owns a callback capable of waking a Parked context. */
+enum class ParkWakeKind
+{
+    None,           ///< no delayed callback retains the context
+    External,       ///< an ordinary callback retains it; no exact identity
+    RetainedExact,  ///< an exact callback retains it but cannot be revoked
+    Cancellable     ///< the exact token can be revoked through cancel
+};
+
+/** Explicit lifetime lease installed by yield_park(). */
+struct ParkWake
+{
+    ParkWakeKind kind = ParkWakeKind::External;
+    WakeToken token = 0;
+    ParkCancel cancel = nullptr;
+
+    static ParkWake None()
+    {
+        ParkWake wake;
+        wake.kind = ParkWakeKind::None;
+        return wake;
+    }
+
+    static ParkWake External()
+    {
+        return ParkWake();
+    }
+
+    static ParkWake RetainedExact( WakeToken aToken )
+    {
+        ParkWake wake;
+        wake.kind = ParkWakeKind::RetainedExact;
+        wake.token = aToken;
+        return wake;
+    }
+
+    static ParkWake Cancellable( WakeToken aToken, ParkCancel aCancel )
+    {
+        ParkWake wake;
+        wake.kind = ParkWakeKind::Cancellable;
+        wake.token = aToken;
+        wake.cancel = aCancel;
+        return wake;
+    }
+};
+
+/** Admission is separate from the full-width wasm32 result value. */
+struct ParkResult
+{
+    bool accepted;
+    int value;
+
+    ParkResult( bool aAccepted, int aValue )
+        : accepted( aAccepted ), value( aValue )
+    {
+    }
+};
 
 /** Registry truth for one context. Only the scheduler mutates it. */
 enum class Status
@@ -63,8 +121,8 @@ enum class Status
     Parked,     ///< yielded, waiting for mark_ready()
     Ready,      ///< mark_ready() called, waiting for drain() to swap it in
     Finished,   ///< entry returned; stack/buffer reclaimable
-    Suspended   ///< fiber lane only: suspended by a symmetric swap; its saved
-                ///< rewind data is valid, so it is safe to enter (Phase A)
+    Suspended   ///< direct fiber lane only: suspended by a symmetric swap;
+                ///< its saved rewind data is valid, so it is safe to enter
 };
 
 const char* status_name( Status aStatus );
@@ -87,14 +145,16 @@ struct Sizes
 ContextId create( void ( *aEntry )( void* ), void* aArg, const char* aLabel );
 
 /**
- * Park the CURRENTLY RUNNING context and yield to the scheduler. Returns the
- * result passed to mark_ready(). Must be called on a context (never on the
- * scheduler stack) — returns -1 immediately otherwise.
+ * Park the CURRENTLY RUNNING context and yield to the scheduler. On success,
+ * accepted is true and value is the full-width result passed by the matching
+ * wake. Must be called on a context, never on the scheduler stack. A refused
+ * park returns {false, 0}; no integer result value is reserved as a sentinel.
  *
  * aReason is recorded in the registry: "why is this parked" is exactly the
  * question the doc-19 guessing layer could not answer.
  */
-int yield_park( const char* aReason );
+ParkResult yield_park( const char* aReason,
+                       ParkWake aWake = ParkWake::External() );
 
 /**
  * Mark a Parked context Ready with aResult. Callable from any stack (a JS
@@ -107,10 +167,22 @@ int yield_park( const char* aReason );
 bool mark_ready( ContextId aId, int aResult );
 
 /**
+ * Consume the exact cancellable wake installed by yield_park(). The token
+ * must match; an unrelated or stale callback cannot make the context Ready.
+ */
+bool mark_ready_owned( ContextId aId, int aResult, WakeToken aToken );
+
+/** Consume an exact but deliberately uncancellable retained wake. */
+bool mark_ready_retained( ContextId aId, int aResult, WakeToken aToken );
+
+/** Reserve a non-zero, process-lifetime wake identity. Never wraps or reuses. */
+WakeToken reserve_wake_token();
+
+/**
  * Scheduler entry: resume at most ONE Ready context, running it until it
  * parks or finishes. Returns the id it ran, or 0 if there was nothing to run
  * (or a transition was already in flight). Call from a clean stack — a fresh
- * JS task, never from inside an awaited export (#13302, doc 17 S3).
+ * JS task, never from inside an awaited export (Emscripten #13302).
  */
 ContextId drain();
 
@@ -122,21 +194,24 @@ ContextId drain();
  */
 bool can_yield_here();
 
+/** True when an ordinary wake arrived before its External park. */
+bool has_pending_wake( ContextId aId );
+
 /** True while a swap is in flight; drain() refuses to start another. */
 bool transition_in_flight();
 
 /**
- * Containment for a context that died abnormally (Phase B): an exception —
+ * Containment for a context that died abnormally: an exception —
  * including a JS one thrown inside a handler — propagates out THROUGH the
  * scheduler's fiber swap, so drain()'s post-swap bookkeeping never runs and
  * the registry stays "transition in flight" forever, refusing every later
  * drain and wedging the whole pump.
  *
- * Call from the error path of whatever JS entry drove the pump (the mirror of
- * wx_dispatch_abandon for the interlock). Releases the transition and
- * POISONS the context that was running — its C++ stack is half-unwound, so it
- * is marked Finished and must never be entered again. Returns true if a
- * transition was actually abandoned.
+ * Call from the error path of whatever JS entry drove the pump. The same path
+ * also fail-stops semantic execution ownership. This releases the low-level
+ * transition and POISONS the context that was running — its C++ stack is
+ * half-unwound, so it is marked Finished and must never be entered again.
+ * Returns true if a transition was actually abandoned.
  */
 bool abandon_transition();
 
@@ -152,17 +227,16 @@ const char* park_reason_of( ContextId aId );
 bool destroy( ContextId aId );
 
 // ---------------------------------------------------------------------------
-// The FIBER LANE (doc 22 Phase A) — libcontext's clients, absorbed.
+// The DIRECT FIBER LANE — libcontext's symmetric clients.
 //
 // These carry libcontext's SYMMETRIC semantics — any registered fiber may swap
 // to any other, the caller decides — so that libcontext's wasm backend can
 // become a thin adapter over this registry with identical observable
 // behaviour. The registry then knows every tool fiber (stack range, buffer,
 // status) and performs every emscripten_fiber_swap in one place; the star
-// invariants above are untouched. Phase B collapses the two lanes into the
-// star; until then a symmetric context never enters the ready FIFO, is never
-// picked by drain(), and never counts against the star's memory gate (it has
-// its own counters).
+// invariants above are untouched. A symmetric context uses the direct lane
+// until a star transfer explicitly moves it through the ready FIFO. Direct-
+// lane counters stay separate from scheduler-context memory counters.
 // ---------------------------------------------------------------------------
 
 /**
@@ -184,10 +258,12 @@ ContextId fiber_create( void ( *aEntry )( void* ), void* aArg,
                         size_t aAsyncifyBytes, const char* aLabel );
 
 /**
- * Is aId safe to enter? A registry lookup — Fresh (first entry) or Suspended
- * (valid saved rewind data). Running/unknown means entering would rewind
- * stale or foreign state. This is the answer libcontext's swap_suspended
- * flag guessed at; the adapter keeps that flag only as a cross-check.
+ * Is aId safe to enter? A registry lookup: Fresh is a first entry, Suspended
+ * has valid saved rewind data, and Parked with no wake owner is a transfer
+ * continuation. Ready already has a scheduler/FIFO claim and is not available
+ * to a second caller. Running, wait-owned Parked, Finished, and unknown are
+ * not enterable. This is the answer libcontext's swap_suspended flag guessed
+ * at; the adapter keeps that flag only as a cross-check.
  */
 bool fiber_enterable( ContextId aId );
 
@@ -195,18 +271,16 @@ bool fiber_enterable( ContextId aId );
  * THE symmetric swap: suspend aFrom and enter aTo. Every libcontext swap
  * funnels through here, so the registry always knows who is on the CPU.
  *
- * aFrom is EXPLICIT, never inferred from fiber_current(): after a handleSleep
- * park the lane's "current" is stale in exactly the way libcontext's
- * g_current_context is (a wasm-only state neither layer can see), and an
- * inferred from would mark the WRONG context Suspended — measured 2026-08-06,
- * eeschema-collab: the real swapper stayed "Running" forever and every later
- * jump into it was wrongly refused. The caller knows who is swapping out;
- * mirroring its answer keeps the two layers in lockstep by construction.
+ * aFrom is EXPLICIT, but it is only a candidate identity. The registry accepts
+ * it as the physical source only when its Running status, fiber_running value,
+ * exact C-stack range, and in-place-park count all agree. This proof prevents a
+ * stale libcontext g_current_context from attributing a new browser-stack swap
+ * to a fiber whose own Asyncify wake is still live.
  *
- * Deliberately does NOT refuse a non-enterable target (Phase A is
- * behaviour-preserving; the policy refusal stays in jump_fcontext, reading
- * fiber_enterable()) — it beacons and counts such a swap as a tripwire
- * instead. Returns false (no swap) only for an unknown / non-fiber endpoint.
+ * A non-enterable target is refused before any state change or physical swap.
+ * This is the final authority even when libcontext's duplicate protocol bit
+ * incorrectly says that a saved suspension is valid. Returns false without
+ * swapping for every invalid source or target.
  */
 bool fiber_swap( ContextId aFrom, ContextId aTo );
 
@@ -215,20 +289,23 @@ ContextId fiber_current();
 
 /**
  * Unregister a fiber and free its asyncify buffer (its C stack belongs to the
- * caller). ALWAYS releases — libcontext's refcount drop deleted the struct
- * unconditionally, and a registry that refuses while the caller frees anyway
- * holds a permanent ghost (measured 2026-08-06: the ghost then poisoned
- * every later enterability answer). A release in the Suspended or Running
- * state is counted; Running additionally beacons as a tripwire.
+ * caller). Fresh, Suspended, Parked, Ready, and Finished contexts can be
+ * cancelled or retired. A Parked context with no external wake is safe; one
+ * with a cancellable exact wake is first revoked; one with an uncancellable
+ * external wake is refused. Running and in-place-parked contexts cannot be
+ * released: a JS handleSleep wake still owns rewind data and may later restore onto both the
+ * Context and caller-owned C stack. Such a release is refused without changing
+ * the Context. libcontext treats that refusal as a terminal ownership failure,
+ * so its caller cannot continue and free the C stack underneath the wake.
  */
 bool fiber_release( ContextId aId );
 
 /**
- * A symmetric swap expressed as a STAR transition (Phase B): park aFrom, make
+ * A symmetric swap expressed as a star transition: park aFrom, make
  * aTo runnable carrying aValue, and let the scheduler perform the entry.
  * Returns the value handed back when somebody later transfers to aFrom.
  *
- * This is what lets libcontext's synchronous contract survive the flip. To the
+ * This preserves libcontext's synchronous contract. To the
  * code running on aFrom the call still "returns when the other side yields
  * back" — but in between, aFrom is parked and the scheduler owns the CPU, so
  * nothing enters a context by inference and a wait can park anywhere without
@@ -240,26 +317,66 @@ bool fiber_release( ContextId aId );
 intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue );
 
 /**
- * A coroutine's TERMINAL transfer (Phase B): hand aValue to aTo, mark aFrom
+ * A coroutine's terminal star transfer: hand aValue to aTo, mark aFrom
  * Finished (never re-queued, never re-entered — a later transfer into it is
  * refused into the caller's ghost contract), and yield forever. Replaces the
- * legacy trampoline's ghost re-entry loop on the transfer lane.
+ * former trampoline's ghost re-entry loop on the transfer lane.
  */
-void fiber_finish_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue );
+[[noreturn]] void fiber_finish_transfer( ContextId aFrom, ContextId aTo,
+                                         intptr_t aValue );
 
 /**
- * Make a fiber-lane context runnable FROM THE SCHEDULER STACK, carrying
- * aValue (Phase B). This is the lane's entry point: a transfer needs a
+ * A coroutine's terminal direct swap. This is the fallback
+ * for a symmetric chain that is not running as a star transfer: mark aFrom
+ * Finished, enter aTo, and never make aFrom resumable again. Both the protocol
+ * layer and this authoritative registry validate aTo before the physical swap.
+ *
+ * Unlike fiber_finish_transfer(), this does not touch the star scheduler's
+ * running/transition fields. A direct libcontext chain can temporarily run
+ * above a star-owned context, so those fields describe the stack below it.
+ */
+[[noreturn]] void fiber_finish_swap( ContextId aFrom, ContextId aTo,
+                                     intptr_t aValue );
+
+/**
+ * Make a fiber-lane context runnable from the scheduler stack, carrying
+ * aValue. This is the star lane's entry point: a transfer needs a
  * running context to park, so the first one — and every kick from a JS task,
  * e.g. the tick handing work to the dispatch context — has to come from here.
  */
 bool fiber_start( ContextId aId, intptr_t aValue );
 
-/** Pump ready contexts until quiescent. Scheduler stack only. */
-size_t drain_all();
+/**
+ * One bounded scheduler-pump result.
+ *
+ * A browser task must not run an unbounded transfer chain.  Reaching the
+ * per-task budget is therefore not quiescence: the caller must arrange one
+ * coalesced continuation from a fresh JavaScript task.  Repeatedly exhausting
+ * that budget without ever becoming quiescent is a scheduler livelock and is
+ * terminal for the instance.
+ */
+enum class DrainDisposition
+{
+    Quiescent,
+    ContinueOnFreshTask,
+    Livelock
+};
+
+struct DrainResult
+{
+    size_t transitions = 0;
+    DrainDisposition disposition = DrainDisposition::Quiescent;
+};
+
+// Public so deterministic reducers can cross the exact production boundary.
+constexpr size_t DrainTransitionsPerPump = 4096;
+constexpr size_t DrainMaxConsecutiveBudgetExhaustions = 64;
+
+/** Pump one bounded batch of ready contexts. Scheduler stack only. */
+DrainResult drain_all();
 
 /**
- * Registry + memory snapshot as JSON, for tests and the D1 memory gate:
+ * Registry + memory snapshot as JSON, for tests and the context memory gate:
  *   live/peakLive/created/finished, transitions, bytes/peakBytes,
  *   perContextBytes, and asyncify high-water usage (asyncifyHighWater) —
  *   the measurement doc 20 risk 1 asks for so buffer sizes get re-derived
@@ -272,6 +389,13 @@ std::string registry_json();
 
 /** Test hook: reset all counters (does not touch live contexts). */
 void reset_stats();
+
+/**
+ * Test hook: make the next ready-FIFO publication fail at the same boundary as
+ * a vector allocation failure. The hook is consume-once and does not mutate
+ * the context or its wake lease.
+ */
+void fail_next_ready_fifo_allocation_for_test();
 
 namespace detail
 {
@@ -288,8 +412,8 @@ constexpr size_t DEFAULT_C_STACK_BYTES = 128 * 1024;
 constexpr size_t DEFAULT_ASYNCIFY_BYTES = 128 * 1024;
 
 // A hard ceiling turns "contexts leaked until the tab died" into a loud,
-// early failure with a registry dump. Deliberately low for D1: nothing in
-// production runs on contexts yet, and the test app's worst battery uses ~8.
+// early failure with a registry dump. Deliberately low: measured application
+// and reducer runs use far fewer than 64 simultaneous contexts.
 constexpr size_t MAX_LIVE_CONTEXTS = 64;
 
 /**
@@ -301,8 +425,9 @@ constexpr size_t MAX_LIVE_CONTEXTS = 64;
  * stack-aligned"). Emscripten's malloc is 8-byte aligned, so a std::vector<char>
  * stack lands on an 8-mod-16 address about half the time and EVERY EM_ASM on
  * that context traps with an unreachable inside readEmAsmArgs — which is
- * exactly how this was found (D2b, 107 wx failures). libcontext has always
- * carried `alignas(16)` on its buffers for the same reason.
+ * exactly how this was found: 107 wx tests failed before this alignment was
+ * restored. libcontext has always carried `alignas(16)` on its buffers for
+ * the same reason.
  */
 struct AlignedBuffer
 {
@@ -379,38 +504,71 @@ struct Context
     size_t asyncify_high_water = 0;
     // Capture size of the most recent LIVE sample (a park's in-flight
     // asyncify use). Unlike the high-water it is per-park, so a waiter that
-    // resumes can attribute the depth to its own wait kind — Phase E's
-    // buffer-sizing input (doc 21 §2b).
+    // resumes can attribute the depth to its own wait kind. This is the
+    // buffer-sizing input for real bridge waits.
     size_t last_park_use = 0;
-    // Phase F: in-flight IN-PLACE asyncify parks on this context's stack
+    // In-flight in-place Asyncify parks on this context's stack
     // (handleSleep parks the registry cannot see through its own swaps). Fed
     // by the shim at park start/end; a context with one in flight holds a
     // STALE fiber capture and must not be entered by swap or transfer — its
-    // own wake is the only legitimate resume. This is the fact the shim's
-    // quarantine used to hold privately; owning it here is what made that
-    // guard deletable (doc 22 §10 F2/F3).
+    // own wake is the only legitimate resume. The physical registry owns this
+    // cross-check, and the generated consume-once guard verifies it again at
+    // the rewind boundary.
     int inplace_parks = 0;
 
-    // Phase F (doc 22 §10 gap 1, the S2 deferred-wake law applied to the
-    // registry): a resolve that arrives while THIS context is Running (a
+    // A Parked context records exactly who may wake it. None is safe to
+    // reclaim; External and RetainedExact must remain alive; Cancellable
+    // carries the token and revoker which fiber_release() must consume before
+    // reclaiming the registry object and caller-owned stack.
+    ParkWake park_wake = ParkWake::None();
+
+    // Deferred-wake law applied to the registry: a resolve that arrives while
+    // this context is Running (a
     // re-entrant close — the footprint chooser resumes its own opener before
     // the modal's resolve lands) must NOT be dropped. Record it here; the
     // next yield_park delivers it, so the wait resumes instead of hanging.
     bool has_pending_wake = false;
     int  pending_wake_result = 0;
 
-    // Fiber lane (Phase A): a libcontext client under symmetric-swap
+    // Direct fiber lane: a libcontext client under symmetric-swap
     // semantics. Never enters the ready FIFO, never picked by drain(),
     // counted separately from the star's memory gate.
     bool symmetric = false;
+
+    // True only for the one browser/main-stack context adopted by libcontext.
+    // Its exact bounds still live in c_stack; this tag permits the direct lane
+    // to reclaim that same stack after a quiescent star drain published no
+    // current direct occupant.
+    bool adopted_root = false;
 };
+
+inline void release_generated_fiber_guard( const Context& aCtx )
+{
+    // The generated Emscripten compatibility guard keys live suspensions by
+    // this raw emscripten_fiber_t address. Revoke that identity before the
+    // Context is freed so allocator address reuse cannot alias an old fiber,
+    // and so cancelled suspensions do not accumulate in JavaScript sets.
+    EM_ASM( {
+        var scheduler = globalThis.__wxScheduler;
+        if( scheduler && typeof scheduler.releaseFiberGuard === "function" )
+            scheduler.releaseFiberGuard( $0 >>> 0 );
+    }, reinterpret_cast<std::uintptr_t>( &aCtx.fiber ) );
+}
 
 struct Registry
 {
+    // Emscripten rewrites its live stack-limit globals on every fiber switch.
+    // Capture the browser main stack before this registry can perform one: the
+    // first registry call is necessarily the main-thread creation/adoption
+    // edge.  A zero lower limit is valid for STACK_FIRST standalone modules.
+    const uintptr_t main_stack_base = emscripten_stack_get_base();
+    const uintptr_t main_stack_end = emscripten_stack_get_end();
+
     std::map<ContextId, Context*> contexts;
     std::vector<ContextId> ready_fifo;   // FIFO: no starvation (doc 13 §1.5 inv. 8)
 
     ContextId next_id = 1;
+    WakeToken next_wake_token = 1;
     ContextId running = 0;               // 0 = the scheduler stack is running
     bool transition = false;             // at most one swap in flight
     bool scheduler_initialized = false;
@@ -423,15 +581,20 @@ struct Registry
     uint32_t transitions = 0;
     uint32_t refusals = 0;
     uint32_t foreign_stack_refusals = 0;   // yield_park from a fiber above a context
-    uint32_t deferred_wakes = 0;           // Phase F gap 1: resolve-while-running, queued not dropped
+    uint32_t deferred_wakes = 0;           // resolve-while-running: queued, not dropped
+    uint32_t ready_publication_failures = 0;
+    bool fail_next_ready_fifo_allocation = false;
+    size_t drain_budget_exhaustion_streak = 0;
+    uint32_t drain_budget_yields = 0;
+    uint32_t drain_livelocks = 0;
     size_t live = 0;
     size_t peak_live = 0;
     size_t bytes = 0;
     size_t peak_bytes = 0;
     size_t asyncify_high_water = 0;
 
-    // Fiber lane (Phase A) — deliberately separate from the star's counters so
-    // the D1 memory gate (finished == created, live == 0 after the battery)
+    // Direct fiber lane — deliberately separate from the star's counters so
+    // the context memory gate (finished == created, live == 0 after the battery)
     // keeps meaning what it meant.
     ContextId fiber_running = 0;           // 0 = no fiber lane yet (root unadopted)
     uint32_t fiber_created = 0;
@@ -439,7 +602,8 @@ struct Registry
     uint32_t fiber_swaps = 0;
     uint32_t fiber_refusals = 0;
     uint32_t fiber_released_suspended = 0;   // legal (refcount drop mid-suspend), counted
-    uint32_t fiber_released_running = 0;     // TRIPWIRE: refcount drop of a "running" fiber
+    uint32_t fiber_released_running = 0;     // must remain zero: Running release is refused
+    uint32_t fiber_release_refusals = 0;     // live/in-place-parked cancellation attempts
     uint32_t fiber_nonenterable_swaps = 0;   // TRIPWIRE: a swap into stale state
     size_t fiber_live = 0;
     size_t fiber_peak_live = 0;
@@ -458,6 +622,40 @@ inline void beacon( const char* aWhat, const char* aDetail, unsigned aId )
 {
     std::printf( "[sched-ctx] %s id=%u %s\n", aWhat, aId, aDetail ? aDetail : "" );
     std::fflush( stdout );
+}
+
+/**
+ * Publish one runnable claim without allowing an allocation exception to
+ * escape through a fiber swap. Callers must invoke this BEFORE changing the
+ * Context's status, result, transfer value, or wake ownership. std::vector's
+ * strong exception guarantee for the scalar ContextId makes a failed push
+ * indistinguishable from the deterministic reducer hook: the FIFO and every
+ * caller-owned field remain unchanged.
+ */
+inline bool publish_ready_id( ContextId aId, const char* aSite )
+{
+    Registry& r = reg();
+
+    if( r.fail_next_ready_fifo_allocation )
+    {
+        r.fail_next_ready_fifo_allocation = false;
+        ++r.ready_publication_failures;
+        beacon( "READY-PUBLICATION-FAILED", aSite, aId );
+        return false;
+    }
+
+    try
+    {
+        r.ready_fifo.push_back( aId );
+    }
+    catch( ... )
+    {
+        ++r.ready_publication_failures;
+        beacon( "READY-PUBLICATION-FAILED", aSite, aId );
+        return false;
+    }
+
+    return true;
 }
 
 inline bool on_main_thread()
@@ -499,8 +697,8 @@ inline void note_asyncify_use( Context& aCtx )
     if( used > aCtx.asyncify_high_water )
         aCtx.asyncify_high_water = used;
 
-    // Per-lane high-water: the star's number feeds the D1 sizing gate, the
-    // fiber lane's feeds the Phase E "size from real bridges" decision.
+    // Per-lane high-water: the star's number feeds the context sizing gate;
+    // the fiber lane's number measures real bridge captures.
     size_t& lane_high_water =
             aCtx.symmetric ? reg().fiber_asyncify_high_water : reg().asyncify_high_water;
 
@@ -531,10 +729,10 @@ inline void note_asyncify_use( Context& aCtx )
 inline bool on_context_stack( const Context& aCtx )
 {
     char probe = 0;
-    const char* here = &probe;
-    const char* low = aCtx.c_stack.base;
+    const uintptr_t here = reinterpret_cast<uintptr_t>( &probe );
+    const uintptr_t low = reinterpret_cast<uintptr_t>( aCtx.c_stack.base );
 
-    if( !low )
+    if( aCtx.c_stack.size == 0 )
         return false;
 
     return here >= low && here < low + aCtx.c_stack.size;
@@ -545,26 +743,110 @@ inline bool on_context_stack( const Context& aCtx )
  * Which registered context owns the CALLER'S stack frame? 0 when the frame is
  * on the main/scheduler stack (or an unregistered stack). Leaf-safe: a plain
  * range scan, no state changes — the shim calls this through an export at
- * in-place park start to attribute the park to its context (Phase F).
+ * in-place park start to attribute the park to its context.
  */
 inline ContextId context_owning_current_stack()
 {
     char probe = 0;
-    const char* here = &probe;
+    const uintptr_t here = reinterpret_cast<uintptr_t>( &probe );
 
-    for( auto& [id, ctx] : reg().contexts )
+    // Registered stack ranges can overlap in Wasm's linear memory. Prefer a
+    // context which the scheduler says is Running, but only when this frame
+    // is actually inside its allocation and it has no in-place Asyncify park.
+    // A logical identity alone is not provenance: it can remain set while a
+    // parked fiber is unwound and a fresh browser callback runs.
+    Registry& r = reg();
+    const auto exactRunningContext = [&]( ContextId aId ) -> ContextId {
+        const auto it = r.contexts.find( aId );
+
+        if( it == r.contexts.end() )
+            return 0;
+
+        const Context* ctx = it->second;
+        const uintptr_t low = reinterpret_cast<uintptr_t>( ctx->c_stack.base );
+
+        if( ctx->status == Status::Running && ctx->inplace_parks == 0
+            && ctx->c_stack.size != 0
+            && here >= low && here < low + ctx->c_stack.size )
+        {
+            return it->first;
+        }
+
+        return 0;
+    };
+
+    if( const ContextId owner = exactRunningContext( r.fiber_running ) )
+        return owner;
+
+    if( const ContextId owner = exactRunningContext( r.running ) )
+        return owner;
+
+    // With no proved running fiber, select the tightest enclosing allocation.
+    // unordered_map iteration order is not physical identity. Choosing its
+    // first match made an overlapping older fiber impersonate the current
+    // dispatch or tool stack.
+    ContextId owner = 0;
+    size_t ownerSize = static_cast<size_t>( -1 );
+
+    for( auto& [id, ctx] : r.contexts )
     {
-        const char* low = ctx->c_stack.base;
+        const uintptr_t low = reinterpret_cast<uintptr_t>( ctx->c_stack.base );
 
-        if( low && here >= low && here < low + ctx->c_stack.size )
-            return id;
+        if( ctx->status == Status::Running && ctx->inplace_parks == 0
+            && ctx->c_stack.size != 0
+            && here >= low && here < low + ctx->c_stack.size
+            && ctx->c_stack.size < ownerSize )
+        {
+            owner = id;
+            ownerSize = ctx->c_stack.size;
+        }
     }
 
-    return 0;
+    return owner;
 }
 
 
-/** Phase F: the shim reports in-place park start (+1) / end (-1) here. */
+/**
+ * Does an exact registered context still own an in-place Asyncify wake?
+ *
+ * Stack-range membership alone is not execution provenance while such a wake
+ * is live. A fresh browser entry can allocate frames in the same linear-memory
+ * range after the parked stack unwinds to JavaScript. Callers which use
+ * context_owning_current_stack() to attribute a native entry must therefore
+ * reject this state until the matching handleSleep cleanup clears the park.
+ */
+inline bool context_has_inplace_park( ContextId aId )
+{
+    auto it = reg().contexts.find( aId );
+    return it != reg().contexts.end() && it->second->inplace_parks > 0;
+}
+
+
+/**
+ * Does any registered context still own an in-place Asyncify capture?
+ *
+ * A fresh browser callback runs on the scheduler/main stack after the parked
+ * C stack has unwound to JavaScript.  At that point current() can correctly
+ * be zero even though entering another context would make two branches share
+ * the one browser-root continuation.  Native-entry admission must therefore
+ * test the live capture itself, not infer it from the stack which happens to
+ * be executing the readiness probe.
+ */
+inline bool any_context_has_inplace_park()
+{
+    for( const auto& entry : reg().contexts )
+    {
+        const Context* ctx = entry.second;
+
+        if( ctx && ctx->inplace_parks > 0 )
+            return true;
+    }
+
+    return false;
+}
+
+
+/** The shim reports in-place park start (+1) and end (-1) here. */
 inline void note_inplace_park( ContextId aId, int aDelta )
 {
     auto it = reg().contexts.find( aId );
@@ -577,7 +859,10 @@ inline void note_inplace_park( ContextId aId, int aDelta )
     if( it->second->inplace_parks < 0 )
     {
         beacon( "INPLACE-PARK-UNDERFLOW", "more park ends than starts", aId );
-        it->second->inplace_parks = 0;
+        // This counter is physical ownership of an Asyncify capture.  Repairing
+        // it to zero would assert that a stack is enterable when we no longer
+        // know whether a wake still owns it.  The instance cannot continue.
+        std::abort();
     }
 }
 
@@ -586,6 +871,20 @@ inline Context* find( ContextId aId )
 {
     auto it = reg().contexts.find( aId );
     return it == reg().contexts.end() ? nullptr : it->second;
+}
+
+inline ContextId reserve_context_id()
+{
+    Registry& r = reg();
+
+    if( r.next_id == 0 )
+    {
+        beacon( "REFUSED", "context-id space exhausted", 0 );
+        r.refusals++;
+        return 0;
+    }
+
+    return r.next_id++;
 }
 
 inline void ensure_scheduler_context()
@@ -696,7 +995,13 @@ inline ContextId create( void ( *aEntry )( void* ), void* aArg, const char* aLab
         return 0;
     }
 
-    ctx->id = r.next_id++;
+    ctx->id = reserve_context_id();
+
+    if( !ctx->id )
+    {
+        delete ctx;
+        return 0;
+    }
     ctx->label = aLabel ? aLabel : "";
     ctx->entry = aEntry;
     ctx->arg = aArg;
@@ -718,8 +1023,46 @@ inline ContextId create( void ( *aEntry )( void* ), void* aArg, const char* aLab
     ctx->status = Status::Ready;   // enters at aEntry on the first drain()
     ctx->park_reason = "created";
 
-    r.contexts[ctx->id] = ctx;
-    r.ready_fifo.push_back( ctx->id );
+    // Publish both discoverability and runnable ownership atomically.  A map
+    // allocation followed by a failing FIFO allocation used to leave a live
+    // Context in the registry which no scheduler edge could ever consume.
+    std::map<ContextId, Context*>::iterator inserted = r.contexts.end();
+
+    try
+    {
+        const auto result = r.contexts.emplace( ctx->id, ctx );
+
+        if( !result.second )
+        {
+            beacon( "REFUSED", "duplicate context id during publication", ctx->id );
+            r.refusals++;
+            delete ctx;
+            return 0;
+        }
+
+        inserted = result.first;
+
+        if( !publish_ready_id( ctx->id, "create() ready FIFO allocation failed" ) )
+        {
+            r.contexts.erase( inserted );
+            inserted = r.contexts.end();
+            beacon( "REFUSED", "context publication allocation failed", ctx->id );
+            r.refusals++;
+            delete ctx;
+            return 0;
+        }
+    }
+    catch( ... )
+    {
+        if( inserted != r.contexts.end() )
+            r.contexts.erase( inserted );
+
+        beacon( "REFUSED", "context publication allocation failed", ctx->id );
+        r.refusals++;
+        delete ctx;
+        return 0;
+    }
+
     r.created++;
     r.live++;
 
@@ -735,7 +1078,22 @@ inline ContextId create( void ( *aEntry )( void* ), void* aArg, const char* aLab
 }
 
 
-inline int yield_park( const char* aReason )
+inline WakeToken reserve_wake_token()
+{
+    Registry& r = reg();
+
+    if( r.next_wake_token == 0 )
+    {
+        beacon( "REFUSED", "wake-token space exhausted", 0 );
+        r.refusals++;
+        return 0;
+    }
+
+    return r.next_wake_token++;
+}
+
+
+inline ParkResult yield_park( const char* aReason, ParkWake aWake )
 {
     Registry& r = reg();
     Context* ctx = find( r.running );
@@ -747,7 +1105,7 @@ inline int yield_park( const char* aReason )
         // loud refusal rather than a silent no-op.
         beacon( "REFUSED", "yield_park() with no running context", 0 );
         r.refusals++;
-        return -1;
+        return ParkResult( false, 0 );
     }
 
     // STACK OWNERSHIP. The registry says which context is running, but a
@@ -759,9 +1117,9 @@ inline int yield_park( const char* aReason )
     // corruption, and by construction undetectable afterwards.
     //
     // So verify the frame we are standing on actually lies inside this
-    // context's C stack, and refuse if not. D3 must route such a wait
-    // differently (the tool coroutine has to become a context of its own);
-    // until it does, this refusal is what keeps the failure loud and local.
+    // context's C stack, and refuse if not. Owner-aware suspension routes this
+    // case through the active tool context. If that attribution is absent,
+    // this refusal keeps the failure loud and local.
     if( !on_context_stack( *ctx ) )
     {
         beacon( "REFUSED",
@@ -770,16 +1128,71 @@ inline int yield_park( const char* aReason )
                 ctx->id );
         r.refusals++;
         ++r.foreign_stack_refusals;
-        return -1;
+        return ParkResult( false, 0 );
+    }
+
+    const bool exact = aWake.kind == ParkWakeKind::RetainedExact
+                       || aWake.kind == ParkWakeKind::Cancellable;
+
+    if( exact && aWake.token == 0 )
+    {
+        beacon( "REFUSED", "exact park has no wake token", ctx->id );
+        r.refusals++;
+        return ParkResult( false, 0 );
+    }
+
+    if( aWake.kind == ParkWakeKind::Cancellable && !aWake.cancel )
+    {
+        beacon( "REFUSED", "cancellable park has no revoker", ctx->id );
+        r.refusals++;
+        return ParkResult( false, 0 );
+    }
+
+    if( aWake.kind != ParkWakeKind::Cancellable && aWake.cancel )
+    {
+        beacon( "REFUSED", "non-cancellable park carries a revoker", ctx->id );
+        r.refusals++;
+        return ParkResult( false, 0 );
+    }
+
+    if( !exact && aWake.token != 0 )
+    {
+        beacon( "REFUSED", "ordinary/no-wake park carries an exact token", ctx->id );
+        r.refusals++;
+        return ParkResult( false, 0 );
+    }
+
+    // A deferred ordinary wake belongs to the next External park. It cannot
+    // satisfy a newly-created exact lease: doing so would leave that timer or
+    // wait callback pointing at a context which already resumed. Refuse before
+    // changing registry state so the caller can revoke its new lease.
+    if( ctx->has_pending_wake && aWake.kind != ParkWakeKind::External )
+    {
+        beacon( "REFUSED", "exact/no-wake park conflicts with a deferred wake", ctx->id );
+        r.refusals++;
+        return ParkResult( false, 0 );
+    }
+
+    // A deferred wake needs a FIFO claim. Publish that claim before consuming
+    // the wake or changing the running context. If allocation fails, the
+    // caller is still executing the exact same Running context and may
+    // terminalize or retry without a lost wake.
+    if( ctx->has_pending_wake
+        && !publish_ready_id( ctx->id,
+                              "yield_park() deferred-wake FIFO allocation failed" ) )
+    {
+        r.refusals++;
+        return ParkResult( false, 0 );
     }
 
     ctx->status = Status::Parked;
     ctx->park_reason = aReason ? aReason : "";
+    ctx->park_wake = aWake;
     ctx->parks++;
     r.running = 0;
     r.transition = false;   // the swap below completes this transition
 
-    // Phase F gap 1: a wake that arrived while this context was still Running
+    // A wake that arrived while this context was still Running
     // (a re-entrant resolve that raced ahead of this very park) was queued
     // rather than dropped. Deliver it now — the context is Parked, so it is
     // immediately eligible: mark it Ready and let the scheduler's drain swap
@@ -789,8 +1202,8 @@ inline int yield_park( const char* aReason )
     {
         ctx->has_pending_wake = false;
         ctx->result = ctx->pending_wake_result;
+        ctx->park_wake = ParkWake::None();
         ctx->status = Status::Ready;
-        r.ready_fifo.push_back( ctx->id );
     }
 
     // Yield to the scheduler. Control returns here when drain() swaps us back
@@ -800,7 +1213,7 @@ inline int yield_park( const char* aReason )
 
     // Resumed. The registry set status/result before swapping in.
     note_asyncify_use( *ctx );
-    return ctx->result;
+    return ParkResult( true, ctx->result );
 }
 
 
@@ -818,12 +1231,12 @@ inline bool mark_ready( ContextId aId, int aResult )
 
     if( ctx->status == Status::Running )
     {
-        // Phase F gap 1: the resolve raced ahead of the park — this context is
+        // The resolve raced ahead of the park — this context is
         // running a re-entrant chain that has not yet reached the yield it
         // will resume from (the footprint chooser resuming its own modal
         // opener). Dropping the wake hangs the wait; QUEUE it and let the
-        // next yield_park deliver it. The S2 deferred-wake law, applied to the
-        // registry. A second pending wake for the same context keeps the LAST
+        // next yield_park deliver it. This is the deferred-wake law applied to
+        // the registry. A second pending wake for the same context keeps the LAST
         // result (the innermost resolve), which is what a LIFO wait stack
         // wants.
         ctx->has_pending_wake = true;
@@ -842,9 +1255,90 @@ inline bool mark_ready( ContextId aId, int aResult )
         return false;
     }
 
+    if( ctx->park_wake.kind != ParkWakeKind::External )
+    {
+        beacon( "REFUSED", "ordinary wake does not own this park lease", aId );
+        r.refusals++;
+        return false;
+    }
+
+    if( !publish_ready_id( aId, "mark_ready() FIFO allocation failed" ) )
+    {
+        r.refusals++;
+        return false;
+    }
+
     ctx->result = aResult;
+    ctx->park_wake = ParkWake::None();
     ctx->status = Status::Ready;
-    r.ready_fifo.push_back( aId );
+    return true;
+}
+
+
+inline bool mark_ready_owned( ContextId aId, int aResult, WakeToken aToken )
+{
+    Registry& r = reg();
+    Context* ctx = find( aId );
+
+    if( !ctx )
+    {
+        beacon( "REFUSED", "owned wake for an unknown context", aId );
+        r.refusals++;
+        return false;
+    }
+
+    if( ctx->status != Status::Parked
+        || ctx->park_wake.kind != ParkWakeKind::Cancellable
+        || aToken == 0 || ctx->park_wake.token != aToken )
+    {
+        beacon( "REFUSED", "owned wake does not match the parked lease", aId );
+        r.refusals++;
+        return false;
+    }
+
+    if( !publish_ready_id( aId, "mark_ready_owned() FIFO allocation failed" ) )
+    {
+        r.refusals++;
+        return false;
+    }
+
+    ctx->result = aResult;
+    ctx->park_wake = ParkWake::None();
+    ctx->status = Status::Ready;
+    return true;
+}
+
+
+inline bool mark_ready_retained( ContextId aId, int aResult, WakeToken aToken )
+{
+    Registry& r = reg();
+    Context* ctx = find( aId );
+
+    if( !ctx )
+    {
+        beacon( "REFUSED", "retained wake for an unknown context", aId );
+        r.refusals++;
+        return false;
+    }
+
+    if( ctx->status != Status::Parked
+        || ctx->park_wake.kind != ParkWakeKind::RetainedExact
+        || aToken == 0 || ctx->park_wake.token != aToken )
+    {
+        beacon( "REFUSED", "retained wake does not match the parked lease", aId );
+        r.refusals++;
+        return false;
+    }
+
+    if( !publish_ready_id( aId, "mark_ready_retained() FIFO allocation failed" ) )
+    {
+        r.refusals++;
+        return false;
+    }
+
+    ctx->result = aResult;
+    ctx->park_wake = ParkWake::None();
+    ctx->status = Status::Ready;
     return true;
 }
 
@@ -894,7 +1388,7 @@ inline ContextId drain()
 
     // A fiber-lane context entered by the scheduler is also the lane's
     // current occupant, so libcontext's view of "who is on the CPU" stays
-    // exact across a star transition (Phase B).
+    // exact across a star transition.
     if( ctx->symmetric )
         r.fiber_running = id;
 
@@ -916,31 +1410,68 @@ inline ContextId drain()
 
 
 /**
- * Run ready contexts until the scheduler is quiescent (Phase B).
+ * Run ready contexts until the scheduler is quiescent.
  *
  * A star transition is not a swap-and-return: when A transfers to B, A parks
  * and B merely becomes RUNNABLE, so somebody has to keep draining or the work
  * stalls. That somebody must be the scheduler stack — this is the top-level
  * pump, called from a fresh JS task, never from a context.
  *
- * The cap is a livelock backstop, not a policy: a pair of contexts
- * transferring to each other forever would otherwise hang the tab with no
- * evidence. Hitting it beacons and leaves the rest queued for the next tick.
+ * One task receives a fixed transition budget.  If ready work remains, report
+ * that fact to the caller: only the caller owns the JavaScript arbiter which
+ * can schedule a non-recursive continuation on a fresh task.  A finite chain
+ * therefore cannot be stranded at an arbitrary batching boundary.
+ *
+ * Quiescence resets the cross-task streak.  Exhausting too many consecutive
+ * batches without quiescing is a deterministic livelock, not ordinary
+ * backpressure; report it as terminal instead of scheduling forever.
  */
-inline size_t drain_all()
+inline DrainResult drain_all()
 {
-    size_t ran = 0;
+    Registry& r = reg();
+    DrainResult result;
 
-    while( drain() )
+    while( result.transitions < DrainTransitionsPerPump && drain() )
+        ++result.transitions;
+
+    bool readyRemains = false;
+
+    for( ContextId id : r.ready_fifo )
     {
-        if( ++ran >= 4096 )
+        Context* ctx = find( id );
+
+        if( ctx && ctx->status == Status::Ready )
         {
-            beacon( "DRAIN-CAP", "4096 transitions in one pump - suspected livelock", 0 );
+            readyRemains = true;
             break;
         }
     }
 
-    return ran;
+    if( !readyRemains )
+    {
+        r.drain_budget_exhaustion_streak = 0;
+        return result;
+    }
+
+    ++r.drain_budget_exhaustion_streak;
+
+    if( r.drain_budget_exhaustion_streak
+            >= DrainMaxConsecutiveBudgetExhaustions )
+    {
+        ++r.drain_livelocks;
+        result.disposition = DrainDisposition::Livelock;
+        beacon( "DRAIN-CAP",
+                "ready work survived 64 bounded pumps - transfer livelock",
+                0 );
+        return result;
+    }
+
+    ++r.drain_budget_yields;
+    result.disposition = DrainDisposition::ContinueOnFreshTask;
+    beacon( "DRAIN-CONTINUE",
+            "ready work remains after 4096 transitions - fresh task required",
+            0 );
+    return result;
 }
 
 
@@ -948,6 +1479,13 @@ inline bool can_yield_here()
 {
     Context* ctx = find( reg().running );
     return ctx && on_context_stack( *ctx );
+}
+
+
+inline bool has_pending_wake( ContextId aId )
+{
+    Context* ctx = find( aId );
+    return ctx && ctx->has_pending_wake;
 }
 
 
@@ -1043,6 +1581,7 @@ inline bool destroy( ContextId aId )
 
     r.bytes -= ctx->c_stack.size + ctx->asyncify_stack.size;
     r.live--;
+    release_generated_fiber_guard( *ctx );
     r.contexts.erase( aId );
     delete ctx;
     return true;
@@ -1050,7 +1589,7 @@ inline bool destroy( ContextId aId )
 
 
 // ---------------------------------------------------------------------------
-// Fiber lane (doc 22 Phase A) — implementation
+// Direct fiber lane — implementation
 // ---------------------------------------------------------------------------
 
 namespace detail
@@ -1061,11 +1600,28 @@ namespace detail
 // loud line long before the tab dies.
 constexpr size_t FIBER_POPULATION_BEACON = 256;
 
-inline Context* register_fiber_context( Context* aCtx )
+inline bool register_fiber_context( Context* aCtx )
 {
     Registry& r = reg();
 
-    r.contexts[aCtx->id] = aCtx;
+    try
+    {
+        const auto inserted = r.contexts.emplace( aCtx->id, aCtx );
+
+        if( !inserted.second )
+        {
+            beacon( "REFUSED", "duplicate fiber id during publication", aCtx->id );
+            r.fiber_refusals++;
+            return false;
+        }
+    }
+    catch( ... )
+    {
+        beacon( "REFUSED", "fiber registry allocation failed", aCtx->id );
+        r.fiber_refusals++;
+        return false;
+    }
+
     r.fiber_created++;
     r.fiber_live++;
 
@@ -1081,7 +1637,7 @@ inline Context* register_fiber_context( Context* aCtx )
     if( r.fiber_bytes > r.fiber_peak_bytes )
         r.fiber_peak_bytes = r.fiber_bytes;
 
-    return aCtx;
+    return true;
 }
 
 } // namespace detail
@@ -1107,7 +1663,13 @@ inline ContextId fiber_adopt_current( size_t aAsyncifyBytes, const char* aLabel 
         return 0;
     }
 
-    ctx->id = r.next_id++;
+    ctx->id = reserve_context_id();
+
+    if( !ctx->id )
+    {
+        delete ctx;
+        return 0;
+    }
     ctx->label = aLabel ? aLabel : "";
     ctx->symmetric = true;
     ctx->asyncify_stack.allocate( aAsyncifyBytes );
@@ -1120,21 +1682,52 @@ inline ContextId fiber_adopt_current( size_t aAsyncifyBytes, const char* aLabel 
         return 0;
     }
 
-    // Adoption runs ON the stack being adopted, so the live limits describe it
-    // (the one situation where a live query is trustworthy — doc 22 §7 trap 2).
-    // Range is informational: the root's swaps are driven by its own frames.
-    ctx->c_stack.adopt( reinterpret_cast<void*>( emscripten_stack_get_end() ),
-                        static_cast<size_t>( emscripten_stack_get_base()
-                                             - emscripten_stack_get_end() ) );
+    ctx->adopted_root = true;
 
+    // Emscripten changes its live stack limits on every fiber switch. The
+    // registry captured the browser main range before its first switch. Adopt
+    // only when both the live limits and this physical frame prove that exact
+    // range. Do not call emscripten_stack_init() here: doing so would overwrite
+    // evidence if a caller accidentally arrived on a foreign stack.
     emscripten_fiber_init_from_current_context( &ctx->fiber,
                                                 ctx->asyncify_stack.base,
                                                 ctx->asyncify_stack.size );
 
+    const uintptr_t stackBase = reinterpret_cast<uintptr_t>( ctx->fiber.stack_base );
+    const uintptr_t stackEnd = reinterpret_cast<uintptr_t>( ctx->fiber.stack_limit );
+    char stackProbe = 0;
+    const uintptr_t here = reinterpret_cast<uintptr_t>( &stackProbe );
+
+    if( stackBase <= stackEnd || stackBase != r.main_stack_base
+        || stackEnd != r.main_stack_end || here < stackEnd || here >= stackBase )
+    {
+        char detail[192];
+        std::snprintf( detail, sizeof( detail ),
+                       "fiber_adopt_current() main-stack authority failed "
+                       "captured=[%zu,%zu] live=[%zu,%zu] here=%zu",
+                       static_cast<size_t>( r.main_stack_end ),
+                       static_cast<size_t>( r.main_stack_base ),
+                       static_cast<size_t>( stackEnd ),
+                       static_cast<size_t>( stackBase ),
+                       static_cast<size_t>( here ) );
+        beacon( "REFUSED", detail, 0 );
+        r.fiber_refusals++;
+        delete ctx;
+        return 0;
+    }
+
+    ctx->c_stack.adopt( reinterpret_cast<void*>( stackEnd ),
+                        static_cast<size_t>( stackBase - stackEnd ) );
+
     ctx->status = Status::Running;
     ctx->park_reason = "adopted";
 
-    register_fiber_context( ctx );
+    if( !register_fiber_context( ctx ) )
+    {
+        delete ctx;
+        return 0;
+    }
+
     r.fiber_running = ctx->id;
     return ctx->id;
 }
@@ -1171,7 +1764,13 @@ inline ContextId fiber_create( void ( *aEntry )( void* ), void* aArg,
         return 0;
     }
 
-    ctx->id = r.next_id++;
+    ctx->id = reserve_context_id();
+
+    if( !ctx->id )
+    {
+        delete ctx;
+        return 0;
+    }
     ctx->label = aLabel ? aLabel : "";
     ctx->symmetric = true;
     ctx->entry = aEntry;
@@ -1239,7 +1838,12 @@ inline ContextId fiber_create( void ( *aEntry )( void* ), void* aArg,
     ctx->status = Status::Fresh;   // enterable: first swap-in takes the entry path
     ctx->park_reason = "created";
 
-    register_fiber_context( ctx );
+    if( !register_fiber_context( ctx ) )
+    {
+        delete ctx;
+        return 0;
+    }
+
     return ctx->id;
 }
 
@@ -1251,22 +1855,22 @@ inline bool fiber_enterable( ContextId aId )
     if( !ctx || !ctx->symmetric )
         return false;
 
-    // Phase F: a context whose body holds an in-flight IN-PLACE asyncify park
+    // A context whose body holds an in-flight in-place Asyncify park
     // is unenterable regardless of status — its fiber capture is stale (the
     // park suspended the body without a fiber swap) and only its own wake may
-    // resume it. This is the registry-owned version of the fact the shim's
-    // quarantine used to track privately; the laundering bypass (a stale
+    // resume it. This registry fact cannot be changed by the attribution
+    // laundering path (a stale
     // g_current_context re-marking swap_suspended on the parked fiber) cannot
     // deceive it, because it never consults the protocol's own flags.
     if( ctx->inplace_parks > 0 )
         return false;
 
-    // Phase B: a star-parked context (fiber_transfer parked it, or a wake
-    // already marked it Ready) holds a valid capture exactly like a
-    // symmetric Suspended one — only Running (stale) and Finished (terminal)
-    // states are unenterable.
+    // A transfer-parked context has no external wake and holds a valid capture
+    // exactly like a symmetric Suspended one. A wait-parked context is owned
+    // by its recorded wake and must not be entered through libcontext.
     return ctx->status == Status::Fresh || ctx->status == Status::Suspended
-        || ctx->status == Status::Parked || ctx->status == Status::Ready;
+        || ( ctx->status == Status::Parked
+             && ctx->park_wake.kind == ParkWakeKind::None );
 }
 
 
@@ -1300,20 +1904,51 @@ inline bool fiber_swap( ContextId aFrom, ContextId aTo )
         return false;
     }
 
-    // Phase A is behaviour-preserving, so a swap into stale state is COUNTED,
-    // not vetoed: the policy refusal lives in jump_fcontext (which reads
-    // fiber_enterable() before calling here). Any firing is a tripwire —
-    // a caller bypassed the policy. The valid-state set is fiber_enterable's
-    // (Phase B added the star statuses: a transfer-parked context holds a
-    // capture as valid as a symmetric Suspended one).
+    // The explicit source is an identity, not authority. Prove all three
+    // representations of physical occupancy before letting Emscripten save
+    // the current rewind into `from->fiber`: registry status, direct-lane
+    // occupant, and the address range of this exact C stack must agree.
+    const bool sourceOnStack = on_context_stack( *from );
+
+    // The scheduler and the adopted libcontext root use the same physical
+    // browser/main stack. drain() deliberately publishes fiber_running=0 while
+    // quiescent. A later direct call from that exact stack may re-establish the
+    // adopted root as occupant, but only when no star transition or context is
+    // active. Allocated/suspended fibers can never take this recovery path.
+    if( r.fiber_running == 0 && r.running == 0 && !r.transition
+        && from->status == Status::Running && from->adopted_root
+        && sourceOnStack && from->inplace_parks == 0 )
+    {
+        r.fiber_running = aFrom;
+    }
+
+    if( from->status != Status::Running || r.fiber_running != aFrom
+        || !sourceOnStack || from->inplace_parks > 0 )
+    {
+        char detail[160];
+        std::snprintf( detail, sizeof( detail ),
+                       "fiber_swap() source authority failed status=%s occupant=%u "
+                       "onStack=%s inplaceParks=%d",
+                       status_name( from->status ), r.fiber_running,
+                       sourceOnStack ? "true" : "false", from->inplace_parks );
+        beacon( "REFUSED", detail, aFrom );
+        r.fiber_refusals++;
+        return false;
+    }
+
+    // This is the authoritative stale-rewind gate. The protocol adapter keeps
+    // a duplicate suspension bit, but disagreement must never reach
+    // emscripten_fiber_swap: only the registry records in-place parks, ready
+    // claims, terminal contexts, and exact wake ownership together.
     if( !fiber_enterable( aTo ) )
     {
         char detail[96];
         std::snprintf( detail, sizeof( detail ),
-                       "swap into a %s context - stale rewind state",
+                       "fiber_swap() target is %s - stale rewind refused",
                        status_name( to->status ) );
-        beacon( "FIBER-SWAP-NONENTERABLE", detail, aTo );
-        r.fiber_nonenterable_swaps++;
+        beacon( "REFUSED", detail, aTo );
+        r.fiber_refusals++;
+        return false;
     }
 
     from->status = Status::Suspended;
@@ -1326,7 +1961,7 @@ inline bool fiber_swap( ContextId aFrom, ContextId aTo )
 
     // Measure the TARGET's buffer now, while it still holds its suspended
     // capture — after the swap consumes it the pointer is back at base and
-    // the high-water would always read 0 (the Phase E sizing input).
+    // the high-water would always read 0 (the real-capture sizing input).
     note_asyncify_use( *to );
 
     emscripten_fiber_swap( &from->fiber, &to->fiber );
@@ -1365,12 +2000,18 @@ inline bool fiber_start( ContextId aId, intptr_t aValue )
         return false;
     }
 
-    if( ctx->status == Status::Running || ctx->status == Status::Ready )
-        return false;   // already runnable; not an error
+    if( ( ctx->status != Status::Fresh && ctx->status != Status::Suspended )
+        || !fiber_enterable( aId ) )
+        return false;
+
+    if( !publish_ready_id( aId, "fiber_start() FIFO allocation failed" ) )
+    {
+        r.fiber_refusals++;
+        return false;
+    }
 
     ctx->transfer = aValue;
     ctx->status = Status::Ready;
-    r.ready_fifo.push_back( aId );
     return true;
 }
 
@@ -1395,43 +2036,41 @@ inline intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue 
         return 0;
     }
 
-    // Phase B: a Finished context is TERMINAL — its trampoline took the
-    // finish-transfer and will never run again. Transferring into it is a
-    // ghost jump (a stale handle); refuse WITHOUT parking the source, so the
-    // caller's jump_fcontext sees an unchanged epoch and takes its
-    // established ghost contract (null INVOCATION_ARGS).
-    if( to->status == Status::Finished )
+    if( r.running != aFrom || from->status != Status::Running
+        || !can_yield_here() )
     {
-        beacon( "FIBER-TRANSFER-INTO-FINISHED", "ghost transfer refused", aTo );
+        beacon( "REFUSED", "fiber_transfer() source does not own the running stack", aFrom );
         r.fiber_refusals++;
         return 0;
     }
 
-    // Phase F: same contract for a target whose body holds an in-flight
-    // in-place park — entering it would rewind a stale fiber capture. Refuse
-    // WITHOUT parking the source, so the caller takes the ghost contract; the
-    // parked body completes via its own wake.
-    if( to->inplace_parks > 0 )
+    // A Finished context is terminal — its trampoline took the
+    // finish-transfer and will never run again. Transferring into it is a
+    // ghost jump (a stale handle); refuse WITHOUT parking the source, so the
+    // caller's jump_fcontext sees an unchanged epoch and takes its
+    // established ghost contract (null INVOCATION_ARGS).
+    if( !fiber_enterable( aTo ) )
     {
-        beacon( "FIBER-TRANSFER-INTO-INPLACE-PARKED",
-                "target's body holds an in-flight asyncify park", aTo );
+        beacon( "FIBER-TRANSFER-INTO-NONENTERABLE", "ghost transfer refused", aTo );
         r.fiber_refusals++;
         return 0;
     }
 
     // Hand the protocol value over and make the target RUNNABLE — not running.
-    // The scheduler performs every entry, which is the whole difference from
-    // Phase A's direct swap: nobody enters a context by deciding to.
-    to->transfer = aValue;
-
-    if( to->status != Status::Ready )
+    // The scheduler performs every star-lane entry. Unlike the direct lane,
+    // no caller enters a star context by itself.
+    if( !publish_ready_id( aTo, "fiber_transfer() FIFO allocation failed" ) )
     {
-        to->status = Status::Ready;
-        r.ready_fifo.push_back( aTo );
+        r.fiber_refusals++;
+        return 0;
     }
+
+    to->transfer = aValue;
+    to->status = Status::Ready;
 
     from->status = Status::Parked;
     from->park_reason = "fiber-transfer";
+    from->park_wake = ParkWake::None();
     from->parks++;
     r.fiber_swaps++;
     r.running = 0;
@@ -1448,14 +2087,15 @@ inline intptr_t fiber_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue 
 
 
 /**
- * A coroutine's TERMINAL transfer (Phase B): its entry has returned, so hand
+ * A coroutine's terminal star transfer: its entry has returned, so hand
  * aValue to aTo, mark aFrom Finished — never re-queueable, never re-entered —
- * and yield to the scheduler forever. The legacy trampoline's "if someone
+ * and yield to the scheduler forever. The former trampoline's "if someone
  * swaps back to us, loop" ghost re-entry is replaced by the registry refusing
  * transfers into Finished contexts (the caller's ghost contract handles it).
  * Must be called ON aFrom's stack; never returns control to the caller.
  */
-inline void fiber_finish_transfer( ContextId aFrom, ContextId aTo, intptr_t aValue )
+[[noreturn]] inline void fiber_finish_transfer( ContextId aFrom, ContextId aTo,
+                                                intptr_t aValue )
 {
     Registry& r = reg();
     Context* from = find( aFrom );
@@ -1465,23 +2105,33 @@ inline void fiber_finish_transfer( ContextId aFrom, ContextId aTo, intptr_t aVal
     {
         beacon( "REFUSED", "fiber_finish_transfer() unknown source", aFrom );
         r.fiber_refusals++;
-        return;
+        std::abort();
     }
 
-    if( to && to->symmetric && to->status != Status::Finished )
+    if( r.running != aFrom || !can_yield_here() )
     {
-        to->transfer = aValue;
+        beacon( "REFUSED", "fiber_finish_transfer() source does not own the running stack",
+                aFrom );
+        r.fiber_refusals++;
+        std::abort();
+    }
 
-        if( to->status != Status::Ready )
-        {
-            to->status = Status::Ready;
-            r.ready_fifo.push_back( aTo );
-        }
-    }
-    else
+    if( !to || !to->symmetric || to == from || !fiber_enterable( aTo ) )
     {
-        beacon( "FIBER-FINISH-ORPHAN", "finish-transfer target unavailable", aTo );
+        beacon( "REFUSED", "fiber_finish_transfer() target is not enterable", aTo );
+        r.fiber_refusals++;
+        std::abort();
     }
+
+    if( !publish_ready_id( aTo,
+                           "fiber_finish_transfer() FIFO allocation failed" ) )
+    {
+        r.fiber_refusals++;
+        std::abort();
+    }
+
+    to->transfer = aValue;
+    to->status = Status::Ready;
 
     from->status = Status::Finished;
     from->park_reason = "finished";
@@ -1506,6 +2156,83 @@ inline void fiber_finish_transfer( ContextId aFrom, ContextId aTo, intptr_t aVal
 }
 
 
+/**
+ * A coroutine's terminal handoff on the symmetric/direct lane. Unlike an
+ * ordinary jump, completion cannot ghost-return to its finished caller. A
+ * stale target is therefore terminal: abort before changing either context or
+ * writing a rewind capture.
+ */
+[[noreturn]] inline void fiber_finish_swap( ContextId aFrom, ContextId aTo,
+                                            intptr_t aValue )
+{
+    Registry& r = reg();
+    Context* from = find( aFrom );
+    Context* to = find( aTo );
+
+    if( !from || !to || !from->symmetric || !to->symmetric )
+    {
+        beacon( "REFUSED", "fiber_finish_swap() with an unknown or non-fiber party", aTo );
+        r.fiber_refusals++;
+        std::abort();
+    }
+
+    if( from == to )
+    {
+        beacon( "REFUSED", "fiber_finish_swap() self-swap", aTo );
+        r.fiber_refusals++;
+        std::abort();
+    }
+
+    const bool sourceOnStack = on_context_stack( *from );
+
+    if( r.fiber_running == 0 && r.running == 0 && !r.transition
+        && from->status == Status::Running && from->adopted_root
+        && sourceOnStack && from->inplace_parks == 0 )
+    {
+        r.fiber_running = aFrom;
+    }
+
+    if( from->status != Status::Running || r.fiber_running != aFrom
+        || !sourceOnStack || from->inplace_parks > 0 )
+    {
+        beacon( "REFUSED",
+                "fiber_finish_swap() source does not own the running direct-lane stack",
+                aFrom );
+        r.fiber_refusals++;
+        std::abort();
+    }
+
+    if( !fiber_enterable( aTo ) )
+    {
+        char detail[96];
+        std::snprintf( detail, sizeof( detail ),
+                       "terminal swap target is %s - stale rewind refused",
+                       status_name( to->status ) );
+        beacon( "REFUSED", detail, aTo );
+        r.fiber_refusals++;
+        std::abort();
+    }
+
+    to->transfer = aValue;
+    from->status = Status::Finished;
+    from->park_reason = "finished";
+    from->parks++;
+    to->status = Status::Running;
+    to->resumes++;
+    r.fiber_running = aTo;
+    r.fiber_swaps++;
+
+    note_asyncify_use( *to );
+    emscripten_fiber_swap( &from->fiber, &to->fiber );
+
+    // A Finished source is terminal. Reaching this point means somebody
+    // illegally re-entered it, so stop before its caller-owned stack can be
+    // mistaken for live state again.
+    beacon( "REFUSED", "a Finished fiber resumed after terminal swap", aFrom );
+    std::abort();
+}
+
+
 inline bool fiber_release( ContextId aId )
 {
     Registry& r = reg();
@@ -1514,24 +2241,60 @@ inline bool fiber_release( ContextId aId )
     if( !ctx || !ctx->symmetric )
         return false;
 
-    if( ctx->status == Status::Running )
+    if( ctx->status == Status::Running || ctx->inplace_parks > 0 )
     {
-        // "Running" here usually means the registry's view is stale (the
-        // fiber is asyncify-parked below a JS turn, or an aborted tool is
-        // being torn down). libcontext's refcount drop always deleted the
-        // struct in this state, so the registry must let go too — refusing
-        // while the caller frees anyway leaves a permanent ghost that
-        // poisons every later enterability answer (measured 2026-08-06,
-        // eeschema-collab). Beacon as a tripwire, then release.
-        beacon( "FIBER-RELEASE-RUNNING", "released while the registry says running", aId );
-        r.fiber_released_running++;
-
-        if( r.fiber_running == aId )
-            r.fiber_running = 0;
+        // An in-place handleSleep wake owns a malloc'd Asyncify capture whose
+        // frames point into this fiber's caller-owned C stack. The delayed JS
+        // callback will restore that capture. Freeing either allocation here
+        // is therefore a deterministic use-after-free. Do not mutate any
+        // registry state: the wake must still be able to end its park. The
+        // libcontext adapter fail-stops when it sees this refusal, preventing
+        // its COROUTINE destructor from freeing the C stack.
+        beacon( "FIBER-RELEASE-LIVE",
+                ctx->inplace_parks > 0
+                        ? "release refused: in-place Asyncify wake still owns the stack"
+                        : "release refused: context is still running",
+                aId );
+        r.fiber_refusals++;
+        r.fiber_release_refusals++;
+        return false;
     }
 
     if( ctx->status == Status::Suspended )
         r.fiber_released_suspended++;
+
+    if( ctx->status == Status::Parked
+        && ( ctx->park_wake.kind == ParkWakeKind::External
+             || ctx->park_wake.kind == ParkWakeKind::RetainedExact ) )
+    {
+        beacon( "FIBER-RELEASE-WAKE-LIVE",
+                "release refused: external wake cannot be cancelled",
+                aId );
+        r.fiber_refusals++;
+        r.fiber_release_refusals++;
+        return false;
+    }
+
+    if( ctx->status == Status::Parked
+        && ctx->park_wake.kind == ParkWakeKind::Cancellable )
+    {
+        // The timer/Promise source still retains this monotonic ContextId.
+        // Reclaim the Context only after that source confirms its callback is
+        // no longer delayed or queued. A refusal leaves all native state
+        // intact so the legitimate wake can still complete safely.
+        if( !ctx->park_wake.cancel( aId, ctx->park_wake.token ) )
+        {
+            beacon( "FIBER-RELEASE-WAKE-LIVE",
+                    "release refused: external wake could not be cancelled",
+                    aId );
+            r.fiber_refusals++;
+            r.fiber_release_refusals++;
+            return false;
+        }
+        ctx->park_wake = ParkWake::None();
+    }
+
+    release_generated_fiber_guard( *ctx );
 
     r.fiber_bytes -= ctx->c_stack.size + ctx->asyncify_stack.size;
     r.fiber_live--;
@@ -1548,20 +2311,27 @@ inline std::string stats_json()
     char buf[1024];
     std::snprintf( buf, sizeof( buf ),
                    "{\"live\":%zu,\"peakLive\":%zu,\"created\":%u,\"finished\":%u,"
-                   "\"transitions\":%u,\"refusals\":%u,\"foreignStackRefusals\":%u,\"running\":%u,"
+                   "\"transitions\":%u,\"refusals\":%u,\"foreignStackRefusals\":%u,"
+                   "\"readyPublicationFailures\":%u,\"running\":%u,"
                    "\"transitionInFlight\":%s,\"readyQueued\":%zu,"
+                   "\"drainBudgetExhaustionStreak\":%zu,"
+                   "\"drainBudgetYields\":%u,\"drainLivelocks\":%u,"
                    "\"bytes\":%zu,\"peakBytes\":%zu,"
                    "\"perContextBytes\":%zu,\"cStackBytes\":%zu,\"asyncifyBytes\":%zu,"
                    "\"asyncifyHighWater\":%zu,"
                    "\"fiberLive\":%zu,\"fiberPeakLive\":%zu,\"fiberCreated\":%u,"
                    "\"fiberReleased\":%u,\"fiberSwaps\":%u,\"fiberRefusals\":%u,"
                    "\"fiberReleasedSuspended\":%u,\"fiberReleasedRunning\":%u,"
+                   "\"fiberReleaseRefusals\":%u,"
                    "\"fiberNonEnterableSwaps\":%u,"
                    "\"fiberRunning\":%u,\"fiberBytes\":%zu,\"fiberPeakBytes\":%zu,"
                    "\"fiberAsyncifyHighWater\":%zu}",
                    r.live, r.peak_live, r.created, r.finished,
-                   r.transitions, r.refusals, r.foreign_stack_refusals, r.running,
+                   r.transitions, r.refusals, r.foreign_stack_refusals,
+                   r.ready_publication_failures, r.running,
                    r.transition ? "true" : "false", r.ready_fifo.size(),
+                   r.drain_budget_exhaustion_streak,
+                   r.drain_budget_yields, r.drain_livelocks,
                    r.bytes, r.peak_bytes,
                    DEFAULT_C_STACK_BYTES + DEFAULT_ASYNCIFY_BYTES,
                    DEFAULT_C_STACK_BYTES, DEFAULT_ASYNCIFY_BYTES,
@@ -1569,6 +2339,7 @@ inline std::string stats_json()
                    r.fiber_live, r.fiber_peak_live, r.fiber_created,
                    r.fiber_released, r.fiber_swaps, r.fiber_refusals,
                    r.fiber_released_suspended, r.fiber_released_running,
+                   r.fiber_release_refusals,
                    r.fiber_nonenterable_swaps,
                    r.fiber_running, r.fiber_bytes, r.fiber_peak_bytes,
                    r.fiber_asyncify_high_water );
@@ -1609,6 +2380,11 @@ inline void reset_stats()
     r.transitions = 0;
     r.refusals = 0;
     r.foreign_stack_refusals = 0;
+    r.ready_publication_failures = 0;
+    r.fail_next_ready_fifo_allocation = false;
+    r.drain_budget_exhaustion_streak = 0;
+    r.drain_budget_yields = 0;
+    r.drain_livelocks = 0;
     r.peak_live = r.live;
     r.peak_bytes = r.bytes;
     r.asyncify_high_water = 0;
@@ -1618,10 +2394,17 @@ inline void reset_stats()
     r.fiber_refusals = 0;
     r.fiber_released_suspended = 0;
     r.fiber_released_running = 0;
+    r.fiber_release_refusals = 0;
     r.fiber_nonenterable_swaps = 0;
     r.fiber_peak_live = r.fiber_live;
     r.fiber_peak_bytes = r.fiber_bytes;
     r.fiber_asyncify_high_water = 0;
+}
+
+
+inline void fail_next_ready_fifo_allocation_for_test()
+{
+    reg().fail_next_ready_fifo_allocation = true;
 }
 
 } // namespace pcbjam_sched

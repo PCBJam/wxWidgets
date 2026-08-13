@@ -244,7 +244,7 @@
 })();
 
 // Helper functions called from C++ via EM_ASM
-function wxElementRegister(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled) {
+function wxElementRegister(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled, domId) {
   if (window.wxElementRegistry) {
     window.wxElementRegistry.register(id, {
       id: id,
@@ -260,12 +260,13 @@ function wxElementRegister(id, label, name, typeName, screenX, screenY, width, h
       parentId: parentId,
       visible: visible,
       enabled: enabled,
+      domId: domId,
       lastUpdated: Date.now()
     });
   }
 }
 
-function wxElementUpdate(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled) {
+function wxElementUpdate(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled, domId) {
   if (window.wxElementRegistry) {
     var elem = window.wxElementRegistry.elements.get(id);
     if (elem) {
@@ -281,6 +282,7 @@ function wxElementUpdate(id, label, name, typeName, screenX, screenY, width, hei
       elem.parentId = parentId;
       elem.visible = visible;
       elem.enabled = enabled;
+      elem.domId = domId;
       elem.lastUpdated = Date.now();
       window.wxElementRegistry.version++;
     }
@@ -341,6 +343,113 @@ function wxRenderedElementUnregisterByParent(parentId) {
     window.wxElementRegistry.unregisterRenderedByParent(parentId);
   }
 }
+
+// Delayed browser callbacks can outlive the Wasm instance they were armed by.
+// Once native integrity is unknown, never enter that instance again—not even
+// for cleanup. The fallback keeps upstream wx builds without our scheduler
+// working; both configurations honor the shared terminal integrity marker.
+var wxWasmCanTouchNative = function () {
+  if (globalThis.__wxNativeIntegrityUnknown) {
+    return false;
+  }
+  var scheduler = globalThis.__wxScheduler;
+  if (!scheduler) {
+    return true;
+  }
+  return typeof scheduler.canTouchNative === 'function'
+    ? scheduler.canTouchNative()
+    : !scheduler.dead;
+};
+
+var wxWasmTouchNative = function (site, fn) {
+  if (!wxWasmCanTouchNative()) {
+    return undefined;
+  }
+  var scheduler = globalThis.__wxScheduler;
+  if (scheduler && typeof scheduler.runNativeCompletion === 'function') {
+    return scheduler.runNativeCompletion(site, fn);
+  }
+  return fn();
+};
+
+// Stateful browser ingress can swap to a managed dispatch context and unwind
+// its JavaScript-to-Wasm export. Give that entry to the physical arbiter and
+// call a plain numeric export there; ccall's synchronous wrapper treats the
+// intentional unwind as an error.
+var wxWasmEnqueueNativeEntry = function (site, fn) {
+  if (!wxWasmCanTouchNative()) {
+    return false;
+  }
+
+  var scheduler = globalThis.__wxScheduler;
+  if (scheduler && typeof scheduler.enqueueNativeEntry === 'function') {
+    return scheduler.enqueueNativeEntry(null, site, function () {
+      wxWasmTouchNative(site, fn);
+    });
+  }
+
+  wxWasmTouchNative(site, fn);
+  return true;
+};
+
+// Receipt-time stateful ingress. fn may only call a native staging export:
+// that strict leaf copies an owned scalar payload, captures exact modal-lease
+// provenance, appends one typed record, and returns without admission or
+// suspension. Refusal would lose a discrete browser event, so it is fatal.
+var wxWasmStageNativeIngress = function (site, fn) {
+  if (!wxWasmCanTouchNative()) {
+    return false;
+  }
+
+  var scheduler = globalThis.__wxScheduler;
+  if (!scheduler ||
+      typeof scheduler.runNativeIngressReceipt !== 'function') {
+    // The owner runtime is mandatory for scheduler builds. Calling the stage
+    // with token 0 would silently restore ambient modal discovery and defeat
+    // immutable receipt provenance.
+    globalThis.__wxWasmFailed = true;
+    globalThis.__wxNativeIntegrityUnknown = true;
+    console.error('[wx-owner] ' + site + ' has no ingress receipt runtime');
+    // Keep the same asynchronous throw shape as scheduler fail-stop. This
+    // callback is already browser-owned; throwing now only reaches the page's
+    // error boundary and cannot rewind a native frame.
+    setTimeout(function () {
+      throw new Error('[wx-owner] ' + site + ' has no ingress receipt runtime');
+    }, 0);
+    return false;
+  }
+
+  var accepted;
+  try {
+    accepted = scheduler.runNativeIngressReceipt(site, fn);
+  } catch (error) {
+    // A thrown staging call has already consumed this discrete receipt.  Even
+    // a non-trap C++/allocation exception cannot be retried without changing
+    // its modal-lease provenance, so make the scheduler terminal first and
+    // then preserve the original exception for the browser error boundary.
+    if (scheduler && !scheduler.dead &&
+        typeof scheduler._failScheduler === 'function') {
+      try {
+        scheduler._failScheduler(site + ' staging threw: ' + String(error), false);
+      } catch (failStopError) {
+        console.error('[wx-owner] staging fail-stop failed:', failStopError);
+      }
+    } else {
+      globalThis.__wxWasmFailed = true;
+      globalThis.__wxNativeIntegrityUnknown = true;
+    }
+    throw error;
+  }
+  if ((accepted | 0) === 1) {
+    return true;
+  }
+
+  if (scheduler && !scheduler.dead &&
+      typeof scheduler._failScheduler === 'function') {
+    scheduler._failScheduler(site + ' was refused', false);
+  }
+  return false;
+};
 
 if (typeof navigator !== 'undefined') {
   var browserInfo = (function () {
@@ -492,7 +601,7 @@ if (typeof navigator !== 'undefined') {
         // through to #canvas, where the C++ hit-test routes it to the true
         // topmost window. Native wx leans on the OS to block input to shadowed
         // windows; the browser has no such barrier, so we add one here.
-        '.window.wx-inert, .window.wx-inert * {',
+        '.wx-inert, .wx-inert * {',
         '  pointer-events: none !important;',
         '}',
         '.window-canvas {',
@@ -620,7 +729,8 @@ if (typeof navigator !== 'undefined') {
       width: 0,
       height: 0,
       imageData: null,
-      context: null
+      context: null,
+      nativeEnabled: true
     });
 
     return id;
@@ -655,6 +765,16 @@ if (typeof navigator !== 'undefined') {
 
     var windowData = windowMap.get(id);
     windowData.window.style.display = isVisible ? 'block' : 'none';
+    recomputeModalBarrier();
+  };
+
+  // Mirror wxWindow::Enable() for a top-level window. The C++ enabled flag is
+  // authoritative; this browser state supplies the physical pointer, focus,
+  // and keyboard barrier that an operating-system window gets natively.
+  var setWindowEnabled = function (id, isEnabled) {
+    var windowData = windowMap.get(id);
+    if (!windowData) return;
+    windowData.nativeEnabled = !!isEnabled;
     recomputeModalBarrier();
   };
 
@@ -731,10 +851,10 @@ if (typeof navigator !== 'undefined') {
   // EM_ASM). Replaces the canvas-painted title bar so the bar wins DOM
   // hit-testing instead of relying on #canvas event routing — which an
   // overlapping pointer-events:auto control from another frame would steal (the
-  // confirmed 3D-viewer bug). Drag funnels through wx_window_move ->
+  // confirmed 3D-viewer bug). Drag funnels through wx_window_move_stage ->
   // wxWindow::Move (one reposition source of truth: children follow via the
-  // size-event -> Layout path). Close funnels through wx_window_close -> wx
-  // Close() as an ASYNC ccall (Close may pump the loop / show a modal).
+  // size-event -> Layout path). Close funnels through a non-suspending
+  // wx_window_close_stage ingress envelope; later modal work runs under its owner.
   // barHeight comes from the C++ TITLE_BAR_HEIGHT so the strip height is single-
   // sourced and never under/over-laps the client area reserved for it.
   var createWindowTitlebar = function (id, title, barHeight) {
@@ -765,21 +885,10 @@ if (typeof navigator !== 'undefined') {
     windowData.titlebar = bar;
     windowData.titlebarText = text;
 
-    // --- Drag: titlebar pointer -> wx screen coords -> wx_window_move. --------
+    // --- Drag: titlebar pointer -> wx screen coords -> staged native move. ----
     var dragging = false;
     var grabDX = 0;
     var grabDY = 0;
-    var pendingX = 0;
-    var pendingY = 0;
-    var rafPending = false;
-
-    var flushMove = function () {
-      rafPending = false;
-      if (typeof Module !== 'undefined' && Module.ccall) {
-        Module.ccall('wx_window_move', null,
-                     ['number', 'number', 'number'], [id, pendingX, pendingY]);
-      }
-    };
 
     bar.addEventListener('pointerdown', function (ev) {
       if (ev.button !== 0) {
@@ -805,12 +914,16 @@ if (typeof navigator !== 'undefined') {
       var crect = container ? container.getBoundingClientRect() : { left: 0, top: 0 };
       var header = document.getElementsByClassName('header')[0];
       var headerHeight = header ? header.offsetHeight : 0;
-      pendingX = Math.round(ev.clientX - grabDX - crect.left);
-      pendingY = Math.round(ev.clientY - grabDY - crect.top - headerHeight);
+      var x = Math.round(ev.clientX - grabDX - crect.left);
+      var y = Math.round(ev.clientY - grabDY - crect.top - headerHeight);
       ev.stopPropagation();
-      if (!rafPending) {
-        rafPending = true;
-        requestAnimationFrame(flushMove);
+      if (typeof Module !== 'undefined') {
+        wxWasmStageNativeIngress('titlebar move receipt', function (ingressReceiptToken) {
+          var stage = Module['_wx_window_move_stage'];
+          if (typeof stage !== 'function')
+            throw new Error('wx_window_move_stage export is missing');
+          return stage(id, x, y, ingressReceiptToken);
+        });
       }
     });
 
@@ -825,20 +938,25 @@ if (typeof navigator !== 'undefined') {
     bar.addEventListener('pointerup', endDrag);
     bar.addEventListener('pointercancel', endDrag);
 
-    // --- Close: X -> wx_window_close (ASYNC: Close may open a modal). ---------
+    // --- Close: X -> a typed native ingress envelope. --------------------------
     closeBtn.addEventListener('pointerdown', function (ev) {
       ev.stopPropagation(); // a press on the X must not start a window drag
     });
     closeBtn.addEventListener('click', function (ev) {
       ev.stopPropagation();
-      if (typeof Module !== 'undefined' && Module.ccall) {
-        Module.ccall('wx_window_close', null, ['number'], [id], { async: true });
+      if (typeof Module !== 'undefined') {
+        wxWasmStageNativeIngress('titlebar close receipt', function (ingressReceiptToken) {
+          var stage = Module['_wx_window_close_stage'];
+          if (typeof stage !== 'function')
+            throw new Error('wx_window_close_stage export is missing');
+          return stage(id, ingressReceiptToken);
+        });
       }
     });
   };
 
   // Edge-resize handles for a resizable (wxRESIZE_BORDER) non-main window. Mirrors
-  // createWindowTitlebar's pointer/rAF plumbing but drives wx_window_resize
+  // createWindowTitlebar's pointer plumbing but drives wx_window_resize_stage
   // (-> wxWindow::SetSize) with a FULL rect: the left/bottom edges and corners move
   // the window origin as well as its size. Five handles — right (e), left (w),
   // bottom (s) and the two bottom corners (se, sw). The top strip is the title bar
@@ -876,17 +994,6 @@ if (typeof navigator !== 'undefined') {
     var activeEdges = null;
     var startRect = null;       // window rect (viewport coords) captured at grab
     var startX = 0, startY = 0; // pointerdown coords
-    var pending = null;         // {x, y, w, h} in wx screen coords
-    var rafPending = false;
-
-    var flushResize = function () {
-      rafPending = false;
-      if (pending && typeof Module !== 'undefined' && Module.ccall) {
-        Module.ccall('wx_window_resize', null,
-                     ['number', 'number', 'number', 'number', 'number'],
-                     [id, pending.x, pending.y, pending.w, pending.h]);
-      }
-    };
 
     defs.forEach(function (def) {
       var handle = document.createElement('div');
@@ -947,16 +1054,22 @@ if (typeof navigator !== 'undefined') {
         var crect = container ? container.getBoundingClientRect() : { left: 0, top: 0 };
         var header = document.getElementsByClassName('header')[0];
         var headerHeight = header ? header.offsetHeight : 0;
-        pending = {
+        var pending = {
           x: Math.round(left - crect.left),
           y: Math.round(top - crect.top - headerHeight),
           w: Math.round(w),
           h: Math.round(h)
         };
         ev.stopPropagation();
-        if (!rafPending) {
-          rafPending = true;
-          requestAnimationFrame(flushResize);
+        if (typeof Module !== 'undefined') {
+          wxWasmStageNativeIngress('window resize receipt', function (ingressReceiptToken) {
+            var stage = Module['_wx_window_resize_stage'];
+            if (typeof stage !== 'function')
+              throw new Error('wx_window_resize_stage export is missing');
+            return stage(
+              id, pending.x, pending.y, pending.w, pending.h,
+              ingressReceiptToken);
+          });
         }
       });
 
@@ -1080,14 +1193,27 @@ if (typeof navigator !== 'undefined') {
       wins.push({ el: el, z: z, rect: el.getBoundingClientRect() });
     });
 
+    var shadowedWindows = new Set();
     wins.forEach(function (w) {
       var shadowed = wins.some(function (o) {
         return o !== w && o.z > w.z && rectsOverlap(o.rect, w.rect);
       });
-      w.el.classList.toggle('wx-inert', shadowed);
-      // Also block focus/keyboard on the shadowed window where supported; the
-      // pointer-events CSS above is what actually re-routes the clicks.
-      try { w.el.inert = shadowed; } catch (e) { /* older engine: CSS suffices */ }
+      if (shadowed) shadowedWindows.add(w.el);
+    });
+
+    // Apply one derived barrier to every registered top-level container,
+    // including id 0. Overlap intentionally excludes the main window so its
+    // canvas can route hits to the upper dialog, but native wx modality must
+    // disable that main window completely.
+    windowMap.forEach(function (windowData) {
+      if (!windowData || !windowData.window) return;
+      var blocked = windowData.nativeEnabled === false ||
+                    shadowedWindows.has(windowData.window);
+      windowData.window.classList.toggle('wx-inert', blocked);
+      // Also block focus/keyboard where supported; CSS is the fallback for
+      // engines without HTMLElement.inert.
+      try { windowData.window.inert = blocked; }
+      catch (e) { /* older engine: CSS suffices */ }
     });
   };
 
@@ -1115,18 +1241,38 @@ if (typeof navigator !== 'undefined') {
   var nextBitmapId = 0;
   var bitmapMap = new Map();
 
-  var createBitmap = function (x, y, width, height, data, scaleFactor) {
+  var createBitmap = function (width, height, data, scaleFactor) {
     //console.log('setWindowImageData: ' + id + ': ' + '(' + x + ', ' + y + ') ' + width + 'x' + height);
 
-    var id = nextBitmapId++;    
-    setBitmapData(id, x, y, width, height, data, scaleFactor);
+    var id = nextBitmapId++;
+    setBitmapData(id, width, height, data, scaleFactor);
 
     return id;
   };
 
+  var closeImageBitmap = function (imageBitmap) {
+    if (imageBitmap && typeof imageBitmap.close === 'function') {
+      imageBitmap.close();
+    }
+  };
+
   var destroyBitmap = function (id) {
+    var bitmap = bitmapMap.get(id);
+    if (bitmap) closeImageBitmap(bitmap.imageBitmap);
     bitmapMap.delete(id);
   };
+
+  // Capture this script evaluation's map. A later Wasm instance can evaluate
+  // wx.js again in the same realm and reassign the global `bitmapMap` binding;
+  // terminal cleanup for the old Module must never clear the new map.
+  (function (module, ownedBitmapMap) {
+    module['wxDiscardBitmapResources'] = function () {
+      ownedBitmapMap.forEach(function (bitmap) {
+        closeImageBitmap(bitmap.imageBitmap);
+      });
+      ownedBitmapMap.clear();
+    };
+  })(Module, bitmapMap);
 
   var getBitmapData = function (id, data) {
     var bitmap = bitmapMap.get(id);
@@ -1151,6 +1297,7 @@ if (typeof navigator !== 'undefined') {
     // Cache the recovered pixels so a later SyncToCpp on this bitmap (after its
     // memory-DC context has been consumed) can't dereference a null imageData.
     bitmap.imageData = imageData;
+    closeImageBitmap(bitmap.imageBitmap);
     bitmap.imageBitmap = null;
 
     Module.HEAPU8.set(imageData.data, data);
@@ -1162,6 +1309,12 @@ if (typeof navigator !== 'undefined') {
     var imageData = new ImageData(width, height);  
     imageData.data.set(array);
 
+    var previous = bitmapMap.get(id);
+    if (previous) closeImageBitmap(previous.imageBitmap);
+
+    // The record object is the generation token for this exact pixel update.
+    // createImageBitmap() completions can arrive out of order. A completion
+    // may publish only while this same record is still current for the id.
     var bitmap = {
       data: data,
       size: size,
@@ -1175,13 +1328,24 @@ if (typeof navigator !== 'undefined') {
 
     bitmapMap.set(id, bitmap);
 
+    // Retain the exact map as well as the record. Re-evaluating this global
+    // pre-js file for a replacement module rebinds `bitmapMap`.
+    var ownedBitmapMap = bitmapMap;
     createImageBitmap(imageData, 0, 0, width, height).then(function (imageBitmap) {
-      // TODO: fix race condition
-      var bitmap = bitmapMap.get(id);
-      if (bitmap && !bitmap.context) {
-        bitmap.imageBitmap = imageBitmap;
+      if (ownedBitmapMap.get(id) !== bitmap || bitmap.context) {
+        closeImageBitmap(imageBitmap);
+        return;
       }
-    })
+
+      closeImageBitmap(bitmap.imageBitmap);
+      bitmap.imageBitmap = imageBitmap;
+    }, function (error) {
+      // imageData remains the synchronous rendering fallback. Observe every
+      // rejection, but report it only if this generation still owns the id.
+      if (ownedBitmapMap.get(id) === bitmap) {
+        console.warn('[wxBitmap] createImageBitmap failed: ' + String(error));
+      }
+    });
   };
 
   /* wxDC */
@@ -1281,23 +1445,20 @@ if (typeof navigator !== 'undefined') {
   var glCanvasMap = new Map();
   var nextGLCanvasId = 1;
 
-  var createGLCanvas = function (isVisible) {
+  var createGLCanvas = function (isMainFrame) {
     var id = nextGLCanvasId++;
     var canvas = document.createElement('canvas');
     canvas.id = 'glcanvas-' + id;
     canvas.className = 'gl-canvas';
     canvas.style.position = 'absolute';
     canvas.style.display = 'none';  // Always start hidden until properly positioned
-    // A GL canvas created while another is already on screen belongs to a SECONDARY
-    // top-level window (e.g. the 3D viewer). The shared 2D #canvas is painted above
-    // the GL canvases and is only kept transparent over the MAIN window's canvas
-    // region, so a secondary GL canvas is otherwise hidden behind #canvas's window
-    // fill. Lift it above #canvas. (Pop-up menus are DOM and stack above regardless;
-    // only a modal dialog drawn on #canvas over this canvas would be occluded — rare
-    // for the 3D viewer.)
-    var hasVisibleGL = false;
-    glCanvasMap.forEach(function (c) { if (c.style.display !== 'none') hasVisibleGL = true; });
-    canvas.style.zIndex = hasVisibleGL ? '2147483647' : '100';
+    // The C++ window that owns this canvas supplies its semantic role.  Do not
+    // infer the role from canvas creation or visibility order: GAL recovery
+    // creates the replacement main-frame canvas before it destroys the failed
+    // one, so both can exist briefly.  Main-frame GL stays below the shared 2D
+    // chrome at z=100.  A secondary-frame GL surface (for example, the 3D
+    // viewer) must be above that frame's opaque chrome.
+    canvas.style.zIndex = isMainFrame ? '100' : '2147483647';
     canvas.style.pointerEvents = 'none';  // Don't intercept clicks - let main canvas handle events
     document.getElementById('window-container').appendChild(canvas);
     glCanvasMap.set(id, canvas);
@@ -1357,48 +1518,71 @@ if (typeof navigator !== 'undefined') {
     glCanvasMap.delete(id);
   };
 
-  // Patch Emscripten's GL.newRenderingFrameStarted to handle contexts without temp buffers
-  // This is needed because wxGLCanvas creates additional WebGL contexts that don't have
-  // the temp buffers initialized (those are only set up during GLImmediate.init for the main context)
-  var patchGLNewRenderingFrameStarted = function () {
-    if (typeof GL === 'undefined' || !GL.newRenderingFrameStarted) {
-      return; // GL not initialized yet
-    }
-    if (GL._wxPatched) {
-      return; // Already patched
-    }
-    var originalNewRenderingFrameStarted = GL.newRenderingFrameStarted;
-    GL.newRenderingFrameStarted = function () {
-      if (!GL.currentContext) {
-        return;
-      }
-      // Skip temp buffer operations if they haven't been initialized for this context
-      if (!GL.currentContext.tempVertexBuffers1 || !GL.currentContext.tempVertexBufferCounters1) {
-        return;
-      }
-      return originalNewRenderingFrameStarted.call(this);
+  // One polling lifetime per wx.js evaluation. Keep every helper and record
+  // inside this closure: global `var` bindings are replaced when a new Wasm
+  // module evaluates this pre-js file in the same realm.
+  (function (module, initialGL) {
+    var lifetime = {
+      active: true,
+      module: module,
+      gl: initialGL,
+      interval: null,
+      deadline: null
     };
-    GL._wxPatched = true;
-  };
 
-  // Try to patch GL immediately and also set up a delayed check
-  // (GL object is created after wx.js runs)
-  if (typeof GL !== 'undefined') {
-    patchGLNewRenderingFrameStarted();
-  }
-  // Check periodically until patched (GL is created during Module initialization)
-  var glPatchInterval = setInterval(function () {
-    if (typeof GL !== 'undefined') {
-      patchGLNewRenderingFrameStarted();
-      if (GL._wxPatched) {
-        clearInterval(glPatchInterval);
+    var stop = function () {
+      if (!lifetime.active) return;
+      lifetime.active = false;
+      if (lifetime.interval !== null) {
+        clearInterval(lifetime.interval);
+        lifetime.interval = null;
       }
+      if (lifetime.deadline !== null) {
+        clearTimeout(lifetime.deadline);
+        lifetime.deadline = null;
+      }
+    };
+
+    var patch = function () {
+      if (!lifetime.active || Module !== lifetime.module) {
+        stop();
+        return;
+      }
+
+      // GL can appear after pre-js evaluation. Capture it once for this
+      // module; a later changed global GL belongs to a replacement runtime.
+      if (lifetime.gl === null) {
+        if (typeof GL === 'undefined') return;
+        lifetime.gl = GL;
+      } else if (typeof GL === 'undefined' || GL !== lifetime.gl) {
+        stop();
+        return;
+      }
+
+      var ownedGL = lifetime.gl;
+      if (!ownedGL.newRenderingFrameStarted || ownedGL._wxPatched) {
+        if (ownedGL._wxPatched) stop();
+        return;
+      }
+
+      var originalNewRenderingFrameStarted = ownedGL.newRenderingFrameStarted;
+      ownedGL.newRenderingFrameStarted = function () {
+        if (!ownedGL.currentContext) return;
+        if (!ownedGL.currentContext.tempVertexBuffers1 ||
+            !ownedGL.currentContext.tempVertexBufferCounters1) return;
+        return originalNewRenderingFrameStarted.call(ownedGL);
+      };
+      ownedGL._wxPatched = true;
+      stop();
+    };
+
+    module['wxDiscardGLPatchTimer'] = stop;
+    patch();
+    if (lifetime.active) {
+      lifetime.interval = setInterval(patch, 10);
+      lifetime.deadline = setTimeout(stop, 5000);
     }
-  }, 10);
-  // Clear interval after 5 seconds to avoid memory leak if GL never gets created
-  setTimeout(function () {
-    clearInterval(glPatchInterval);
-  }, 5000);
+  })(Module, typeof GL !== 'undefined' ? GL : null);
 
   var createWindowContext = function (windowId, x, y, width, height, scaleFactor) {
     var id = nextContextId++;
@@ -1464,6 +1648,7 @@ if (typeof navigator !== 'undefined') {
     drawImage(ctx, bitmap, 0, 0);
 
     bitmap.imageData = null;
+    closeImageBitmap(bitmap.imageBitmap);
     bitmap.imageBitmap = null;
     bitmap.context = ctx;
 
@@ -1998,37 +2183,6 @@ if (typeof navigator !== 'undefined') {
     }
   };
 
-  var showFileDialog = function (multiple) {
-    var input = document.createElement('input');
-    if (multiple) {
-      input.setAttribute('multiple', '');
-    }
-    input.type = 'file';
-    input.onchange = function () {
-      for (var i = 0; i < input.files.length; i++) {
-        var file = input.files[i];
-        console.log('file selected: ' + file.name);
-        file.arrayBuffer().then(function (arrayBuffer) {
-          var array = new Uint8Array(arrayBuffer);
-          var path = '/tmp/' + file.name;
-
-          var stream = FS.open(path, 'w+');
-          var retCode = 0;
-
-          if (stream) {
-            FS.write(stream, array, 0, file.size);
-            FS.close(stream);
-          } else {
-            retCode = 1;
-          }
-
-          ccall('OpenFileCallback', 'void', ['string', 'number'], [path, retCode]);
-        });
-      }
-    };
-    input.click();
-  };
-
   var downloadFile = function (filename, size, data) {
     var link = document.createElement('a');
 
@@ -2287,9 +2441,172 @@ if (typeof navigator !== 'undefined') {
 
   /* HTML5 Drag and Drop Support */
 
-  var pendingDropFiles = [];
-  var pendingDropX = 0;
-  var pendingDropY = 0;
+  // Each browser drop owns one immutable transaction. File reads finish
+  // asynchronously and different drops can overlap, so a process-wide
+  // pending-files array would mix their paths and coordinates. Native owns a
+  // token after wx_file_drop_stage accepts it and releases that exact token at
+  // dispatch or discard.
+  // One exact lifetime for one evaluation of this global pre-js file. A slow
+  // File.arrayBuffer() reaction can outlive its Wasm module. Never let it use
+  // a replacement evaluation's map or its restarted token sequence.
+  var dropLifetime = {
+    active: true,
+    batches: new Map(),
+    pendingBytes: 0,
+    nextToken: 1
+  };
+  var MAX_PENDING_DROP_BATCHES = 64;
+  var MAX_FILES_PER_DROP = 4096;
+  var MAX_PENDING_DROP_BYTES = 256 * 1024 * 1024;
+
+  // Capacity is checked before native accepts a drop. Refusing at this point
+  // loses no native wake, owner tail, or model mutation, so it is an ordinary
+  // user-input rejection rather than a scheduler failure.
+  var rejectDropBatch = function (reason) {
+    console.warn('[DND] Rejected: ' + reason);
+  };
+
+  var safeDropFileName = function (name, index) {
+    var safe = String(name || '').replace(/[\\/\0]/g, '_');
+    if (!safe || safe === '.' || safe === '..')
+      safe = 'file-' + index;
+    return safe;
+  };
+
+  // Reserve an immutable browser transaction before starting any File reads.
+  // Reads from different accepted drops remain concurrent, but their retained
+  // File objects and eventual ArrayBuffers share one count and byte budget.
+  var reserveDropBatch = function (lifetime, files) {
+    if (!lifetime.active ||
+        lifetime.batches.size >= MAX_PENDING_DROP_BATCHES ||
+        lifetime.nextToken > 0xffffffff) {
+      rejectDropBatch('Too many pending drop transactions');
+      return 0;
+    }
+
+    var totalBytes = 0;
+    for (var i = 0; i < files.length; i++) {
+      var fileBytes = Number(files[i].size);
+      if (!Number.isSafeInteger(fileBytes) || fileBytes < 0 ||
+          fileBytes > MAX_PENDING_DROP_BYTES - totalBytes) {
+        rejectDropBatch('Drop transaction exceeds 256 MiB');
+        return 0;
+      }
+      totalBytes += fileBytes;
+    }
+    if (totalBytes > MAX_PENDING_DROP_BYTES - lifetime.pendingBytes) {
+      rejectDropBatch('Pending drop payloads exceed 256 MiB');
+      return 0;
+    }
+
+    var token = lifetime.nextToken++;
+    // JavaScript tasks cannot interleave this check-and-reserve sequence.
+    // Publish the reservation before any asynchronous read starts.
+    try {
+      lifetime.pendingBytes += totalBytes;
+      lifetime.batches.set(token, {
+        byteLength: totalBytes,
+        files: null
+      });
+    } catch (error) {
+      lifetime.batches.delete(token);
+      lifetime.pendingBytes -= totalBytes;
+      rejectDropBatch('Failed to reserve a drop transaction');
+      throw error;
+    }
+    return token;
+  };
+
+  var publishDropBatch = function (lifetime, token, files) {
+    if (!lifetime.active) return false;
+    var batch = lifetime.batches.get(token >>> 0);
+    if (!batch || batch.files !== null) return false;
+
+    var totalBytes = 0;
+    for (var i = 0; i < files.length; i++) {
+      totalBytes += files[i].bytes.byteLength;
+      if (!Number.isSafeInteger(totalBytes) || totalBytes > batch.byteLength) {
+        rejectDropBatch('Drop file size changed while it was being read');
+        return false;
+      }
+    }
+    if (totalBytes !== batch.byteLength) {
+      rejectDropBatch('Drop file size changed while it was being read');
+      return false;
+    }
+
+    var directory = '/tmp/wx-drop-' + token;
+    batch.files = files.map(function (file, index) {
+      return {
+        bytes: file.bytes,
+        path: directory + '/' + index + '-' +
+              safeDropFileName(file.name, index),
+        materialized: false
+      };
+    });
+    return true;
+  };
+
+  globalThis.wxFileDropBatchCount = function (token) {
+    var batch = dropLifetime.batches.get(token >>> 0);
+    return batch && batch.files !== null ? batch.files.length : -1;
+  };
+
+  globalThis.wxFileDropBatchMaterialize = function (token, index) {
+    var batch = dropLifetime.batches.get(token >>> 0);
+    if (!batch || batch.files === null ||
+        index < 0 || index >= batch.files.length) return null;
+
+    var file = batch.files[index];
+    if (file.materialized) return file.path;
+
+    var stream = null;
+    try {
+      var slash = file.path.lastIndexOf('/');
+      FS.mkdirTree(file.path.substring(0, slash));
+      stream = FS.open(file.path, 'w+');
+      FS.write(stream, file.bytes, 0, file.bytes.byteLength);
+      file.materialized = true;
+      console.log('[DND] Wrote file: ' + file.path +
+                  ' (' + file.bytes.byteLength + ' bytes)');
+      return file.path;
+    } catch (error) {
+      console.error('[DND] Failed to write file: ' + file.path + ': ' + error);
+      return null;
+    } finally {
+      if (stream) FS.close(stream);
+    }
+  };
+
+  var releaseDropBatch = function (lifetime, token) {
+    token = token >>> 0;
+    var batch = lifetime.batches.get(token);
+    if (!batch) return 0;
+
+    // Delete first: re-entrant or duplicate release observes no ownership and
+    // cannot subtract this batch twice.
+    lifetime.batches.delete(token);
+    lifetime.pendingBytes -= batch.byteLength;
+    return 1;
+  };
+
+  globalThis.wxFileDropBatchRelease = function (token) {
+    return releaseDropBatch(dropLifetime, token);
+  };
+
+  // Bind Module cleanup and diagnostics to this lifetime. An old Module's
+  // shutdown callback must not clear a replacement Module's batch map.
+  (function (module, lifetime) {
+    module['wxDiscardFileDropBatches'] = function () {
+      lifetime.active = false;
+      lifetime.batches.clear();
+      lifetime.pendingBytes = 0;
+    };
+
+    module['wxFileDropPendingBytes'] = function () {
+      return lifetime.pendingBytes;
+    };
+  })(Module, dropLifetime);
 
   var registerDragDropHandlers = function () {
     var canvas = Module.canvas;
@@ -2308,16 +2625,16 @@ if (typeof navigator !== 'undefined') {
 
     canvas.addEventListener('dragenter', function (e) {
       console.log('[DND] dragenter');
-      ccall('OnDragEnter', 'void', ['number', 'number'], [e.clientX, e.clientY]);
     });
 
     canvas.addEventListener('dragleave', function (e) {
       console.log('[DND] dragleave');
-      ccall('OnDragLeave', 'void', [], []);
     });
 
     canvas.addEventListener('drop', function (e) {
-      var files = e.dataTransfer.files;
+      var receiptLifetime = dropLifetime;
+      var receiptModule = Module;
+      var files = Array.prototype.slice.call(e.dataTransfer.files || []);
       console.log('[DND] drop: ' + files.length + ' files');
 
       // Get canvas-relative coordinates
@@ -2325,66 +2642,73 @@ if (typeof navigator !== 'undefined') {
       var x = e.clientX - rect.left;
       var y = e.clientY - rect.top;
 
-      pendingDropFiles = [];
-      pendingDropX = x;
-      pendingDropY = y;
-
       if (files.length === 0) {
         return;
       }
-
-      // Process all files, then notify C++ when all are ready
-      var processedCount = 0;
-
-      for (var i = 0; i < files.length; i++) {
-        (function (file) {
-          file.arrayBuffer().then(function (arrayBuffer) {
-            var array = new Uint8Array(arrayBuffer);
-            var path = '/tmp/' + file.name;
-
-            // Write to WASM filesystem
-            var stream = FS.open(path, 'w+');
-            if (stream) {
-              FS.write(stream, array, 0, file.size);
-              FS.close(stream);
-              pendingDropFiles.push(path);
-              console.log('[DND] Wrote file: ' + path + ' (' + file.size + ' bytes)');
-            } else {
-              console.error('[DND] Failed to write file: ' + path);
-            }
-
-            processedCount++;
-            if (processedCount === files.length) {
-              // All files processed, notify C++
-              notifyDropComplete();
-            }
-          }).catch(function (error) {
-            console.error('[DND] Error reading file: ' + error);
-            processedCount++;
-            if (processedCount === files.length) {
-              notifyDropComplete();
-            }
-          });
-        })(files[i]);
+      if (files.length > MAX_FILES_PER_DROP) {
+        console.error('[DND] Drop transaction exceeds 4096 files');
+        return;
       }
+
+      // Reserve before reading. Independent accepted transactions still read
+      // concurrently; the reservation only bounds retained browser payloads.
+      var token = reserveDropBatch(receiptLifetime, files);
+      if (!token) return;
+
+      // Read the complete browser transaction without touching native state.
+      // File reads cannot be cancelled. Keep the batch reservation until all
+      // of them settle, even if an earlier read fails, so a fast rejection
+      // cannot let a still-running sibling bypass the retained-byte cap.
+      var reads = files.map(function (file) {
+        // Start from an already-resolved Promise so a synchronous exception
+        // from a non-conforming File-like object becomes a normal rejection.
+        return Promise.resolve().then(function () {
+          return file.arrayBuffer();
+        }).then(function (arrayBuffer) {
+          return { name: String(file.name), bytes: new Uint8Array(arrayBuffer) };
+        });
+      });
+      Promise.allSettled(reads).then(function (results) {
+        var records = [];
+        var readFailed = false;
+        var firstFailure;
+        for (var i = 0; i < results.length; i++) {
+          if (results[i].status === 'rejected') {
+            if (!readFailed) firstFailure = results[i].reason;
+            readFailed = true;
+          } else {
+            records.push(results[i].value);
+          }
+        }
+        if (readFailed) throw firstFailure;
+
+        if (!receiptLifetime.active || dropLifetime !== receiptLifetime ||
+            Module !== receiptModule || !wxWasmCanTouchNative() ||
+            !publishDropBatch(receiptLifetime, token, records)) {
+          releaseDropBatch(receiptLifetime, token);
+          return;
+        }
+
+        try {
+          if (wxWasmStageNativeIngress(
+            'file-drop transaction receipt', function (ingressReceiptToken) {
+              var stage = receiptModule['_wx_file_drop_stage'];
+              if (typeof stage !== 'function')
+                throw new Error('wx_file_drop_stage export is missing');
+              return stage(token, x, y, ingressReceiptToken) | 0;
+            })) return;
+
+          releaseDropBatch(receiptLifetime, token);
+        } catch (error) {
+          releaseDropBatch(receiptLifetime, token);
+          console.error('[DND] Native drop staging failed: ' + error);
+          throw error;
+        }
+      }).catch(function (error) {
+        releaseDropBatch(receiptLifetime, token);
+        console.error('[DND] Error processing drop transaction: ' + error);
+      });
     });
 
     console.log('[DND] Drag and drop handlers registered');
   };
-
-  var notifyDropComplete = function () {
-    if (pendingDropFiles.length === 0) {
-      return;
-    }
-
-    // Notify C++ for each file
-    for (var i = 0; i < pendingDropFiles.length; i++) {
-      ccall('OnFileDropped', 'void',
-            ['string', 'number', 'number'],
-            [pendingDropFiles[i], pendingDropX, pendingDropY]);
-    }
-
-    // Clear pending files
-    pendingDropFiles = [];
-  };
-

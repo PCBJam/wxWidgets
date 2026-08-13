@@ -44,6 +44,12 @@ public:
     // window keeps NeedsPaint() and is repainted by the yielding per-frame pump instead.
     void Paint(bool deferGLCanvasWindows = false);
 
+    // Paint the same set as Paint() while root execution is active. During a
+    // modal child execution, paint only the exact active lease's top-level
+    // window. This keeps synchronous input and browser-chrome paint tails
+    // from traversing a parked parent's model.
+    void PaintCurrentExecutionScope(bool deferGLCanvasWindows = false);
+
     bool IsKeyPressed(long keyCode);
 
     void GetMousePosition(int *x, int *y);
@@ -73,6 +79,9 @@ protected:
     void UpdateMouseState(const wxKeyEvent& event);
 
 private:
+    void PaintTopLevelWindows(bool deferGLCanvasWindows,
+                              bool currentExecutionScopeOnly);
+
     wxDECLARE_DYNAMIC_CLASS(wxApp);
 
     // Display

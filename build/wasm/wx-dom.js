@@ -16,10 +16,82 @@
     return;
   }
 
-  var nextControlId = 1;
+  // A host/test can re-evaluate this browser adapter without replacing its
+  // Window. Keep browser identities and the currently-owned DOM lifetime in
+  // that longer-lived realm. A new adapter retires its predecessor before it
+  // installs listeners or controls. This does not make a second full
+  // Emscripten process supported in one page; the web shell navigates for that.
+  var ownerModule = Module;
+  var browserRealm = window.__wxDomBrowserRealm;
+  if (!browserRealm || browserRealm.version !== 1) {
+    browserRealm = {
+      version: 1,
+      nextLifetimeId: 1,
+      nextControlId: 1,
+      nextMenuDomIdentity: 1,
+      nextDomEventSnapshotToken: 1,
+      popupLeaseResolvers: new Map(),
+      lifetime: null
+    };
+    window.__wxDomBrowserRealm = browserRealm;
+  }
+  if (!browserRealm.popupLeaseResolvers)
+    browserRealm.popupLeaseResolvers = new Map();
+  if (browserRealm.lifetime &&
+      typeof browserRealm.lifetime.discard === 'function') {
+    browserRealm.lifetime.discard('same-realm module replacement');
+  }
+
+  var lifetime = {
+    id: browserRealm.nextLifetimeId++,
+    active: true,
+    scheduler: null,
+    listeners: [],
+    discard: null
+  };
+  browserRealm.lifetime = lifetime;
+  window.__wxDomBrowserLifetime = lifetime;
+
+  var nextControlId = browserRealm.nextControlId;
   var controls = new Map(); // domId -> root HTMLElement
   var inputs = new Map();   // domId -> value-bearing element (if != root)
   var labels = new Map();   // domId -> label text target (if != root)
+
+  function isLifetimeActive() {
+    return lifetime.active && browserRealm.lifetime === lifetime;
+  }
+
+  function lifetimeScheduler() {
+    if (lifetime.scheduler) return lifetime.scheduler;
+    var scheduler = ownerModule['__wxScheduler'];
+    if (!scheduler) {
+      var published = globalThis.__wxScheduler;
+      if (published && published.ownerModule === ownerModule)
+        scheduler = published;
+    }
+    if (scheduler && scheduler.ownerModule === ownerModule)
+      lifetime.scheduler = scheduler;
+    else
+      scheduler = null;
+    return scheduler;
+  }
+
+  function addLifetimeListener(target, type, handler, options) {
+    target.addEventListener(type, handler, options);
+    lifetime.listeners.push({
+      target: target,
+      type: type,
+      handler: handler,
+      options: options
+    });
+  }
+
+  function scheduleLifetimeFrame(callback) {
+    if (!isLifetimeActive()) return 0;
+    return window.requestAnimationFrame(function (timestamp) {
+      if (isLifetimeActive()) callback(timestamp);
+    });
+  }
 
   // Dark-theme overrides for the DOM widgets (pcbjam comments-ux 0002): the
   // factory below sets "classic light" INLINE styles; these html.dark-scoped
@@ -28,6 +100,7 @@
   // Keep the palette aligned with the wx wasm system-colour table
   // (src/wasm/settings.cpp): face #2d2d3e, window #1e1e2c, text #e4e4ee.
   (function injectDarkThemeStyles() {
+    if (document.getElementById('wx-dom-dark-theme')) return;
     var css =
       'html.dark [data-wx-menu-bar="1"],' +
       'html.dark [data-wx-tool-bar="1"]{background:#2d2d3e !important;}' +
@@ -87,22 +160,258 @@
   window.wxDomPort = true;
   window.wxDomControls = controls;
 
-  function dispatch(domId, kind) {
+  function failStopAfterNativeTrap(reason, error) {
+    globalThis.__wxWasmFailed = true;
+    globalThis.__wxNativeIntegrityUnknown = true;
+
     try {
-      Module['ccall']('wx_dom_event', null, ['number', 'number'], [domId, kind]);
-    } catch (e) {
-      // Surfaces in test logs; must never throw back into DOM event handlers.
-      console.error('wx_dom_event(' + domId + ',' + kind + ') failed:', e);
-      // That chain died mid-flight (trap, or the "async operation already in
-      // flight" abort a park inside this synchronous ccall raises), so its
-      // dispatch-interlock guard never unwound. Release the interlock or every
-      // later event defers forever behind a chain that is gone. Guarded: the
-      // export is absent in wx builds predating the interlock.
-      try {
-        Module['ccall']('wx_dispatch_abandon', null, [], []);
-      } catch (e2) {
-        /* nothing else to do - the runtime is already in trouble */
+      var scheduler = lifetimeScheduler();
+      if (scheduler && typeof scheduler.shutdown === 'function')
+        scheduler.shutdown(reason + ': ' + String(error));
+    } catch (shutdownError) {
+      console.error('WASM fail-stop notification failed:', shutdownError);
+    }
+  }
+
+  function canTouchNative() {
+    var scheduler = lifetimeScheduler();
+    return isLifetimeActive() && !globalThis.__wxNativeIntegrityUnknown &&
+      !!scheduler &&
+      typeof scheduler.canTouchNative === 'function' &&
+      scheduler.canTouchNative();
+  }
+
+  // Immutable browser-receipt snapshots. Native queue records retain only the
+  // token; the admitted callback pushes it while existing wxDomGet* bridges
+  // run, then releases it exactly once at the callback tail or on discard.
+  var domEventSnapshots = new Map();
+  var domEventSnapshotStack = [];
+  var nextDomEventSnapshotToken = browserRealm.nextDomEventSnapshotToken;
+  var MAX_DOM_EVENT_SNAPSHOTS = 4096;
+  // Snapshot strings are retained in the browser until native either consumes
+  // or discards their exact token. Account them as UTF-16 code units (two
+  // bytes each), which is deterministic across engines even when an engine
+  // chooses a more compact internal string representation.
+  var MAX_DOM_EVENT_SNAPSHOT_BYTES = 16 * 1024 * 1024;
+  var domEventSnapshotPendingBytes = 0;
+
+  function rawDomValue(domId) {
+    var el = inputs.get(domId) || controls.get(domId);
+    return el ? String(el.value) : '';
+  }
+
+  function rawDomBoolValue(domId) {
+    var el = inputs.get(domId) || controls.get(domId);
+    if (!el) return 0;
+    if (el.tagName === 'INPUT') return el.checked ? 1 : 0;
+    return el.getAttribute('aria-pressed') === 'true' ? 1 : 0;
+  }
+
+  function rawDomIntValue(domId) {
+    var el = inputs.get(domId) || controls.get(domId);
+    if (!el) return 0;
+    if (el.dataset && el.dataset.wxScrollbar)
+      return el._wxSb ? el._wxSb.pos : 0;
+    if (el.tagName === 'SELECT') return el.selectedIndex;
+    if (el.dataset && el.dataset.wxRadioBox) {
+      var radios = el.querySelectorAll('input[type=radio]');
+      for (var i = 0; i < radios.length; i++) {
+        if (radios[i].checked) return i;
       }
+      return -1;
+    }
+    if (el.dataset && el.dataset.wxCheckList) {
+      var toggled = parseInt(el.dataset.wxLastToggled, 10);
+      return isNaN(toggled) ? -1 : toggled;
+    }
+    if (el.dataset && el.dataset.wxDatalist) {
+      var dl = document.getElementById(el.dataset.wxDatalist);
+      if (dl) {
+        for (var j = 0; j < dl.options.length; j++) {
+          if (dl.options[j].value === el.value) return j;
+        }
+      }
+      return -1;
+    }
+    var value = parseInt(el.value, 10);
+    return isNaN(value) ? 0 : value;
+  }
+
+  function rawDomSelectedIndices(domId) {
+    var el = controls.get(domId);
+    if (!el) return '';
+    var out = [];
+    var nodes;
+    if (el.dataset.wxCheckList)
+      nodes = el.querySelectorAll('input[type=checkbox]');
+    else if (el.tagName === 'SELECT')
+      nodes = el.options;
+    else
+      return '';
+    for (var i = 0; i < nodes.length; i++) {
+      if (el.dataset.wxCheckList ? nodes[i].checked : nodes[i].selected)
+        out.push(i);
+    }
+    return out.join(',');
+  }
+
+  function rawDomLastCommandId(domId) {
+    var el = controls.get(domId);
+    var value = el ? parseInt(el.dataset.wxLastCommand, 10) : NaN;
+    return isNaN(value) ? -1 : value;
+  }
+
+  function rawDomScrollPhase(domId) {
+    var el = controls.get(domId);
+    return el && el._wxSb ? el._wxSb.phase : 0;
+  }
+
+  function activeDomEventSnapshot(domId) {
+    if (domEventSnapshotStack.length === 0) return null;
+    var snapshot = domEventSnapshotStack[domEventSnapshotStack.length - 1];
+    return snapshot.domId === (domId | 0) ? snapshot : null;
+  }
+
+  function domEventSnapshotPayloadBytes(value, selectedIndices) {
+    var codeUnits = value.length + selectedIndices.length;
+    if (!Number.isSafeInteger(codeUnits) ||
+        codeUnits > Math.floor(MAX_DOM_EVENT_SNAPSHOT_BYTES / 2)) {
+      return -1;
+    }
+    return codeUnits * 2;
+  }
+
+  function releaseDomEventSnapshot(token) {
+    var snapshot = domEventSnapshots.get(token);
+    if (!snapshot) return false;
+
+    // Delete first so duplicate or re-entrant release cannot subtract twice.
+    domEventSnapshots.delete(token);
+    if (!Number.isSafeInteger(snapshot.retainedBytes) ||
+        snapshot.retainedBytes < 0 ||
+        snapshot.retainedBytes > domEventSnapshotPendingBytes) {
+      var scheduler = lifetimeScheduler();
+      if (scheduler && typeof scheduler._failScheduler === 'function') {
+        scheduler._failScheduler(
+          'DOM event snapshot byte accounting underflow', false);
+      }
+      return false;
+    }
+    domEventSnapshotPendingBytes -= snapshot.retainedBytes;
+    return true;
+  }
+
+  function captureDomEventSnapshot(domId, kind) {
+    var scheduler = lifetimeScheduler();
+    if (domEventSnapshots.size >= MAX_DOM_EVENT_SNAPSHOTS ||
+        nextDomEventSnapshotToken > 0xffffffff) {
+      scheduler._failScheduler('DOM event snapshot capacity exhausted', false);
+      return 0;
+    }
+
+    // Read mutable browser state once. The native callback must observe this
+    // receipt, not whichever value the DOM contains when admission opens.
+    var value = rawDomValue(domId);
+    var selectedIndices = rawDomSelectedIndices(domId);
+    var retainedBytes = domEventSnapshotPayloadBytes(value, selectedIndices);
+    if (retainedBytes < 0 ||
+        retainedBytes > MAX_DOM_EVENT_SNAPSHOT_BYTES -
+                          domEventSnapshotPendingBytes) {
+      scheduler._failScheduler(
+        'DOM event snapshot byte capacity exhausted', false);
+      return 0;
+    }
+
+    var token = nextDomEventSnapshotToken++;
+    browserRealm.nextDomEventSnapshotToken = nextDomEventSnapshotToken;
+    var snapshot = Object.freeze({
+      token: token,
+      domId: domId | 0,
+      kind: kind | 0,
+      value: value,
+      boolValue: rawDomBoolValue(domId),
+      intValue: rawDomIntValue(domId),
+      selectedIndices: selectedIndices,
+      lastCommandId: rawDomLastCommandId(domId),
+      scrollPhase: rawDomScrollPhase(domId),
+      retainedBytes: retainedBytes
+    });
+    domEventSnapshots.set(token, snapshot);
+    domEventSnapshotPendingBytes += retainedBytes;
+    return token;
+  }
+
+  window.wxDomEventSnapshotPush = function (token, domId, kind) {
+    token = token >>> 0;
+    var snapshot = domEventSnapshots.get(token);
+    if (!snapshot || snapshot.domId !== (domId | 0) ||
+        snapshot.kind !== (kind | 0) ||
+        domEventSnapshotStack.some(function (item) { return item.token === token; })) {
+      return 0;
+    }
+    domEventSnapshotStack.push(snapshot);
+    return 1;
+  };
+
+  window.wxDomEventSnapshotPop = function (token) {
+    token = token >>> 0;
+    var top = domEventSnapshotStack.length
+      ? domEventSnapshotStack[domEventSnapshotStack.length - 1] : null;
+    if (!top || top.token !== token) return 0;
+    domEventSnapshotStack.pop();
+    return releaseDomEventSnapshot(token) ? 1 : 0;
+  };
+
+  window.wxDomEventSnapshotDiscard = function (token) {
+    token = token >>> 0;
+    for (var i = 0; i < domEventSnapshotStack.length; i++) {
+      if (domEventSnapshotStack[i].token === token) return 0;
+    }
+    return releaseDomEventSnapshot(token) ? 1 : 0;
+  };
+
+  ownerModule['wxDiscardDomEventSnapshots'] = function () {
+    domEventSnapshotStack.length = 0;
+    domEventSnapshots.clear();
+    domEventSnapshotPendingBytes = 0;
+  };
+
+  ownerModule['wxDomEventSnapshotPendingBytes'] = function () {
+    return domEventSnapshotPendingBytes;
+  };
+
+  ownerModule['wxDomEventSnapshotCount'] = function () {
+    return domEventSnapshots.size;
+  };
+
+  ownerModule['wxDomEventSnapshotMaxBytes'] = function () {
+    return MAX_DOM_EVENT_SNAPSHOT_BYTES;
+  };
+
+  function dispatch(domId, kind) {
+    if (!canTouchNative()) return;
+    var scheduler = lifetimeScheduler();
+    var token = captureDomEventSnapshot(domId, kind);
+    if (!token) return;
+
+    try {
+      var accepted = scheduler.runNativeIngressReceipt(
+        'wx DOM event receipt', function (ingressReceiptToken) {
+          var stage = ownerModule['_wx_dom_event_stage'];
+          if (typeof stage !== 'function')
+            throw new Error('wx_dom_event_stage export is missing');
+          return stage(domId, kind, token, ingressReceiptToken) | 0;
+        });
+      if (accepted === 1) return;
+
+      window.wxDomEventSnapshotDiscard(token);
+      if (!scheduler.dead)
+        scheduler._failScheduler('wx DOM event receipt was refused', false);
+    } catch (e) {
+      window.wxDomEventSnapshotDiscard(token);
+      console.error('wx_dom_event(' + domId + ',' + kind + ') failed:', e);
+      failStopAfterNativeTrap('wx DOM event receipt trapped', e);
+      throw e;
     }
   }
 
@@ -342,9 +651,19 @@
   }
 
   window.wxDomCreateControl = function (tlwCssId, type, typeAttr) {
+    if (!isLifetimeActive()) return 0;
     var container = window.__wxGetWindowElement(tlwCssId);
     if (!container) {
       console.error('wxDomCreateControl: no window element for css id ' + tlwCssId);
+      return 0;
+    }
+
+    // The C++ DOM id is an int. Never wrap and alias an object from an older
+    // Module lifetime in this same browser realm.
+    if (nextControlId > 0x7fffffff) {
+      var scheduler = lifetimeScheduler();
+      if (scheduler && typeof scheduler._failScheduler === 'function')
+        scheduler._failScheduler('DOM control identity space exhausted', false);
       return 0;
     }
 
@@ -352,6 +671,7 @@
     var el = built.root;
 
     var domId = nextControlId++;
+    browserRealm.nextControlId = nextControlId;
     el.dataset.wxDomId = String(domId);
     el.classList.add('wx-dom-control');
     el.style.position = 'absolute';
@@ -435,9 +755,27 @@
     return domId;
   };
 
-  window.wxDomDestroyControl = function (domId) {
+  function destroyDomControl(domId) {
     var el = controls.get(domId);
     if (el) {
+      if (openMenuPopup && openMenuPopup._wxOwnerDomId === (domId | 0)) {
+        if (typeof openMenuPopup._wxRequestDismiss === 'function') {
+          // This function is normally called by EM_ASM in a native
+          // destructor. Do not call a Wasm close export while that native
+          // stack is still active. The exact popup closure remains owned until
+          // the first microtask after the destructor returns.
+          var dismiss = openMenuPopup._wxRequestDismiss;
+          var dismissAfterNativeReturn = function () {
+            dismiss('owner control destroyed');
+          };
+          if (typeof queueMicrotask === 'function')
+            queueMicrotask(dismissAfterNativeReturn);
+          else
+            Promise.resolve().then(dismissAfterNativeReturn);
+        } else {
+          closeMenuPopup('owner control destroyed');
+        }
+      }
       if (el.dataset.wxDatalist) {
         var dl = document.getElementById(el.dataset.wxDatalist);
         if (dl) dl.remove();
@@ -457,15 +795,26 @@
         stale.forEach(function (key) { reg.unregisterRendered(key); });
       }
     }
+  }
+
+  window.wxDomDestroyControl = function (domId) {
+    destroyDomControl(domId);
   };
 
-  window.wxDomSetRect = function (domId, x, y, w, h) {
+  window.wxDomSetRect = function (domId, x, y, w, h, screenX, screenY) {
     var el = controls.get(domId);
     if (!el) return;
     el.style.left = x + 'px';
     el.style.top = y + 'px';
     el.style.width = w + 'px';
     el.style.height = h + 'px';
+    // Keep the native top-left separately from browser layout. A secondary
+    // TLW may be under a scrolled/offset #window-container while wx screen
+    // coordinates remain unchanged.
+    el._wxScreenX = screenX;
+    el._wxScreenY = screenY;
+    el._wxScreenWidth = w;
+    el._wxScreenHeight = h;
     // Notebook tabs register their viewport rects in the e2e registry;
     // unlike canvas tabs they don't repaint on move, so re-sync here.
     if (el.dataset.wxNotebook && el._wxTabs) {
@@ -498,8 +847,8 @@
   };
 
   window.wxDomGetValue = function (domId) {
-    var el = inputs.get(domId) || controls.get(domId);
-    return el ? String(el.value) : '';
+    var snapshot = activeDomEventSnapshot(domId);
+    return snapshot ? snapshot.value : rawDomValue(domId);
   };
 
   // Boolean state: checkbox/radio checked, toggle button pressed.
@@ -515,10 +864,8 @@
   };
 
   window.wxDomGetBoolValue = function (domId) {
-    var el = inputs.get(domId) || controls.get(domId);
-    if (!el) return 0;
-    if (el.tagName === 'INPUT') return el.checked ? 1 : 0;
-    return el.getAttribute('aria-pressed') === 'true' ? 1 : 0;
+    var snapshot = activeDomEventSnapshot(domId);
+    return snapshot ? snapshot.boolValue : rawDomBoolValue(domId);
   };
 
   // Numeric state: gauge/slider value, select/radiobox/combobox selection.
@@ -548,36 +895,8 @@
   };
 
   window.wxDomGetIntValue = function (domId) {
-    var el = inputs.get(domId) || controls.get(domId);
-    if (!el) return 0;
-    if (el.dataset && el.dataset.wxScrollbar) {
-      return el._wxSb ? el._wxSb.pos : 0;
-    }
-    if (el.tagName === 'SELECT') return el.selectedIndex;
-    if (el.dataset && el.dataset.wxRadioBox) {
-      var radios = el.querySelectorAll('input[type=radio]');
-      for (var i = 0; i < radios.length; i++) {
-        if (radios[i].checked) return i;
-      }
-      return -1;
-    }
-    if (el.dataset && el.dataset.wxCheckList) {
-      // index of the row whose checkbox last toggled (for wxEVT_CHECKLISTBOX)
-      var t = parseInt(el.dataset.wxLastToggled, 10);
-      return isNaN(t) ? -1 : t;
-    }
-    if (el.dataset && el.dataset.wxDatalist) {
-      // combobox selection = index of the option matching the current text
-      var dl = document.getElementById(el.dataset.wxDatalist);
-      if (dl) {
-        for (var j = 0; j < dl.options.length; j++) {
-          if (dl.options[j].value === el.value) return j;
-        }
-      }
-      return -1;
-    }
-    var v = parseInt(el.value, 10);
-    return isNaN(v) ? 0 : v;
+    var snapshot = activeDomEventSnapshot(domId);
+    return snapshot ? snapshot.intValue : rawDomIntValue(domId);
   };
 
   window.wxDomSetRange = function (domId, minVal, maxVal) {
@@ -714,8 +1033,8 @@
 
   // Phase of the last scroll interaction: 0 track, 1 release, 2 page.
   window.wxDomGetScrollPhase = function (domId) {
-    var el = controls.get(domId);
-    return el && el._wxSb ? (el._wxSb.phase | 0) : 0;
+    var snapshot = activeDomEventSnapshot(domId);
+    return snapshot ? snapshot.scrollPhase : rawDomScrollPhase(domId);
   };
 
   // Publish the thumb ('slider') and track ('slidertrack') to the e2e
@@ -723,7 +1042,7 @@
   // dragSliderTo reads screenX/screenY off the track, so map them explicitly
   // (rectInfo only carries x/y).
   function scheduleScrollbarRegistry(domId, el) {
-    requestAnimationFrame(function () {
+    scheduleLifetimeFrame(function () {
       var reg = window.wxElementRegistry;
       if (!reg || !el.isConnected || !el._wxSb) return;
       var stale = [];
@@ -842,21 +1161,9 @@
   };
 
   window.wxDomGetSelectedIndices = function (domId) {
-    var el = controls.get(domId);
-    if (!el) return '';
-    var out = [];
-    var i;
-    if (el.dataset.wxCheckList) {
-      var boxes = el.querySelectorAll('input[type=checkbox]');
-      for (i = 0; i < boxes.length; i++) {
-        if (boxes[i].checked) out.push(i);
-      }
-    } else if (el.tagName === 'SELECT') {
-      for (i = 0; i < el.options.length; i++) {
-        if (el.options[i].selected) out.push(i);
-      }
-    }
-    return out.join(',');
+    var snapshot = activeDomEventSnapshot(domId);
+    return snapshot ? snapshot.selectedIndices
+                    : rawDomSelectedIndices(domId);
   };
 
   // Bitmap content as a PNG data URL: <img> roots directly; buttons get a
@@ -942,31 +1249,67 @@
   // ========== Menus & toolbars ==========
 
   var openMenuPopup = null;
+  var nextMenuDomIdentity = browserRealm.nextMenuDomIdentity;
 
-  function closeMenuPopup() {
-    if (openMenuPopup) {
-      openMenuPopup.remove();
-      openMenuPopup = null;
-    }
+  function nextMenuBrowserId(prefix) {
+    if (!Number.isSafeInteger(nextMenuDomIdentity))
+      throw new Error('menu browser identity space exhausted');
+    var id = nextMenuDomIdentity++;
+    browserRealm.nextMenuDomIdentity = nextMenuDomIdentity;
+    return 'wx-' + prefix + '-' + lifetime.id + '-' + id;
   }
 
-  document.addEventListener('mousedown', function (ev) {
+  function unregisterRenderedParent(parentId) {
+    if (!parentId) return;
+    var reg = window.wxElementRegistry;
+    if (reg && reg.unregisterRenderedByParent)
+      reg.unregisterRenderedByParent(String(parentId));
+  }
+
+  function detachMenuPopup(pop) {
+    if (!pop) return;
+    // The popup rows are browser objects, not native menu items. Remove their
+    // test/accessibility projection at the same lifetime edge as the DOM
+    // nodes; otherwise a later lookup can return stale row geometry.
+    unregisterRenderedParent(pop.dataset.wxRegistryParent);
+    pop.remove();
+    if (openMenuPopup === pop) openMenuPopup = null;
+  }
+
+  function closeMenuPopup(reason) {
+    var pop = openMenuPopup;
+    if (!pop) return;
+    // A menubar popup owns only browser state and can detach immediately. A
+    // context popup also owns an exact native lease. Its dismiss callback must
+    // request lease settlement before the DOM object can be forgotten.
+    if (typeof pop._wxRequestDismiss === 'function') {
+      pop._wxRequestDismiss(reason || 'popup dismissed');
+      return;
+    }
+    detachMenuPopup(pop);
+  }
+
+  function dismissOpenMenuOnMouseDown(ev) {
+    if (!isLifetimeActive()) return;
     // any click outside an open menu closes it (mousedown so the click on
     // another control still lands)
     if (openMenuPopup && !openMenuPopup.contains(ev.target)) {
       var inTitle = ev.target.closest && ev.target.closest('.wx-menu-title');
       if (!inTitle) closeMenuPopup();
     }
-  });
+  }
+  addLifetimeListener(document, 'mousedown', dismissOpenMenuOnMouseDown);
 
   function registryRegister(id, info) {
+    if (!isLifetimeActive()) return;
     var reg = window.wxElementRegistry;
     if (reg && reg.registerRendered) reg.registerRendered(id, info);
   }
 
   function rectInfo(el) {
     var r = el.getBoundingClientRect();
-    return { x: r.x, y: r.y, width: r.width, height: r.height,
+    return { x: r.x, y: r.y, screenX: r.x, screenY: r.y,
+             width: r.width, height: r.height,
              centerX: r.x + r.width / 2, centerY: r.y + r.height / 2 };
   }
 
@@ -977,6 +1320,11 @@
   // reopenSubmenu(row, subItems) handles a submenu row. Each row is
   // published to the e2e registry under registryParent as 'menuitem'.
   function buildMenuItemRows(pop, items, registryParent, onChoose, reopenSubmenu) {
+    // Rebuilding a submenu reuses its logical parent. Retire the previous
+    // projection first, while unique DOM ids below prevent an old locator
+    // from ever resolving to a replacement row at the same index.
+    unregisterRenderedParent(registryParent);
+    pop.dataset.wxRegistryParent = String(registryParent);
     items.forEach(function (it, idx) {
       if (it.kind === 'separator') {
         var sep = document.createElement('div');
@@ -985,6 +1333,9 @@
         return;
       }
       var row = document.createElement('div');
+      var browserId = nextMenuBrowserId('menu-row');
+      row.id = browserId;
+      row.dataset.wxRenderedId = browserId;
       row.textContent = (it.checked ? '✓ ' : '   ') + it.label +
                         (it.kind === 'submenu' ? '  ▸' : '');
       row.style.cssText = 'padding:2px 14px 2px 6px;cursor:default;' +
@@ -1000,6 +1351,7 @@
         });
         row.addEventListener('click', function (ev) {
           ev.stopPropagation();
+          if (!isLifetimeActive() || !row.isConnected) return;
           if (it.kind === 'submenu') {
             reopenSubmenu(row, it.items || []);
             return;
@@ -1009,13 +1361,14 @@
       }
       pop.appendChild(row);
       // register popup items for the e2e registry (canvas parity)
-      requestAnimationFrame(function () {
-        if (!pop.isConnected) return;
-        registryRegister(registryParent + ':menuitem:' + idx, Object.assign({
+      scheduleLifetimeFrame(function () {
+        if (!pop.isConnected || !row.isConnected ||
+            pop._wxBrowserLifetimeId !== lifetime.id) return;
+        registryRegister(registryParent + ':menuitem:' + browserId, Object.assign({
           elementType: 'menuitem',
           subType: it.kind === 'check' || it.kind === 'radio' ? it.kind : 'normal',
           label: it.label, tooltip: '', enabled: !!it.enabled,
-          parentId: registryParent, index: idx
+          parentId: registryParent, index: idx, browserId: browserId
         }, rectInfo(row)));
       });
     });
@@ -1023,17 +1376,24 @@
 
   // Builds and shows the popup for one menubar menu's items below `anchor`.
   function showMenuPopup(domId, anchor, items, registryParent) {
+    if (!isLifetimeActive() || !anchor || !anchor.isConnected) return;
+    // A submenu anchor is a row in the popup which closeMenuPopup removes.
+    // Snapshot both its geometry and its computed font before that lifetime
+    // edge; a detached row reports an empty rectangle in browsers.
+    var a = anchor.getBoundingClientRect();
+    var anchorFont = anchor.style.font || getComputedStyle(anchor).font;
     closeMenuPopup();
     var pop = document.createElement('div');
     pop.className = 'wx-menu-popup';
-    var a = anchor.getBoundingClientRect();
+    pop._wxOwnerDomId = domId | 0;
+    pop._wxBrowserLifetimeId = lifetime.id;
     pop.style.cssText =
       'position:absolute;z-index:10000;background:#d4d0c8;' +
       'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
       'padding:2px;white-space:pre;min-width:120px;' +
       'left:' + (a.left + window.scrollX) + 'px;' +
       'top:' + (a.bottom + window.scrollY) + 'px;';
-    pop.style.font = anchor.style.font || getComputedStyle(anchor).font;
+    pop.style.font = anchorFont;
 
     buildMenuItemRows(pop, items, registryParent,
       function (id) {
@@ -1061,87 +1421,192 @@
   // serialized by wxMenu::WasmItemsToJson(). x/y in viewport px, or -1
   // (wxDefaultCoord) to use the last pointer position (the KiCad canvas
   // right-click case).
-  Module['wxShowContextMenu'] = function (json, invokerDomId, x, y) {
-    var items;
-    try {
-      items = JSON.parse(json);
-    } catch (e) {
-      console.error('wxShowContextMenu: bad JSON: ' + e.message);
-      return Promise.resolve(-1);
-    }
+  // A native exact-tail can arrive after this adapter lifetime is retired.
+  // Keep resolvers in the browser realm so a replacement adapter's exported
+  // completion hook can still finish the old, already-closing lease.
+  var popupLeaseResolvers = browserRealm.popupLeaseResolvers;
 
-    var vx = x, vy = y;
-    if (x === -1 || y === -1) {
-      vx = lastPointerClientX;
-      vy = lastPointerClientY;
-    } else {
-      var inv = controls.get(invokerDomId);
-      if (inv) {
-        var ir = inv.getBoundingClientRect();
-        vx = ir.left + x; vy = ir.top + y;
-      } else if (Module['canvas']) {
-        var cr = Module['canvas'].getBoundingClientRect();
-        vx = cr.left + x; vy = cr.top + y;
+  ownerModule['wxCompleteContextMenuLease'] = function (leaseScope, result) {
+    var key = leaseScope >>> 0;
+    var resolver = popupLeaseResolvers.get(key);
+    if (!resolver) return false;
+    popupLeaseResolvers.delete(key);
+    resolver.resolve(result | 0);
+    return true;
+  };
+
+  ownerModule['wxRejectContextMenuLeases'] = function (reason) {
+    var error = reason instanceof Error ? reason : new Error(String(reason));
+    var integrityUnknown = !!globalThis.__wxNativeIntegrityUnknown;
+    popupLeaseResolvers.forEach(function (resolver) {
+      // Rejecting an EM_ASYNC_JS-backed Promise schedules its saved native
+      // frame to rewind. After an escaped native trap that frame must remain
+      // stranded for instance replacement; a known JS/native fail-stop may
+      // reject normally.
+      if (!integrityUnknown) resolver.reject(error);
+    });
+    popupLeaseResolvers.clear();
+  };
+
+  ownerModule['wxShowContextMenu'] = function (json, invokerDomId, x, y, leaseScope) {
+    return new Promise(function (resolve, reject) {
+      var leaseKey = leaseScope >>> 0;
+      var scheduler = lifetimeScheduler();
+
+      if (!isLifetimeActive()) {
+        reject(new Error('DOM browser lifetime is no longer active'));
+        return;
       }
-    }
 
-    closeMenuPopup(); // a context menu supersedes any open menubar popup
+      if (!leaseKey || popupLeaseResolvers.has(leaseKey)) {
+        var provenanceError = new Error(
+          'context menu has no unique execution-lease resolver');
+        globalThis.__wxWasmFailed = true;
+        if (scheduler) scheduler.shutdown(provenanceError.message);
+        reject(provenanceError);
+        return;
+      }
 
-    var pop = document.createElement('div');
-    pop.className = 'wx-menu-popup';
-    pop.style.cssText =
-      'position:fixed;z-index:10000;background:#d4d0c8;' +
-      'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
-      'padding:2px;white-space:pre;min-width:120px;left:0;top:0;';
-    if (Module['canvas']) {
-      pop.style.font = getComputedStyle(Module['canvas']).font;
-    }
+      popupLeaseResolvers.set(leaseKey, { resolve: resolve, reject: reject });
 
-    return new Promise(function (resolve) {
+      function requestClose(id) {
+        if (!canTouchNative()) {
+          popupLeaseResolvers.delete(leaseKey);
+          // A rejected EM_ASYNC_JS Promise rewinds its saved native frame.
+          // After an escaped native trap that instance must remain stranded.
+          if (!globalThis.__wxNativeIntegrityUnknown) {
+            reject(new Error(
+              'Wasm runtime is not accepting popup completion'));
+          }
+          return;
+        }
+
+        try {
+          var request = ownerModule['_wx_popup_lease_request_close'];
+          if (typeof request === 'function' && request(leaseScope, id | 0))
+            return;
+
+          popupLeaseResolvers.delete(leaseKey);
+          var requestError = new Error(
+            'context-menu lease close request was refused');
+          globalThis.__wxWasmFailed = true;
+          if (scheduler) scheduler.shutdown(requestError.message);
+          reject(requestError);
+        } catch (e) {
+          popupLeaseResolvers.delete(leaseKey);
+          failStopAfterNativeTrap('context-menu close request trapped', e);
+          throw e;
+        }
+      }
+
+      var items;
+      try {
+        items = JSON.parse(json);
+      } catch (e) {
+        console.error('wxShowContextMenu: bad JSON: ' + e.message);
+        requestClose(-1);
+        return;
+      }
+
+      var pop = null;
       var settled = false;
+
+      function cleanupPopup() {
+        document.removeEventListener('mousedown', onOutside, true);
+        document.removeEventListener('keydown', onKey, true);
+        if (pop) {
+          pop._wxRequestDismiss = null;
+          detachMenuPopup(pop);
+        } else {
+          unregisterRenderedParent('popupmenu');
+        }
+      }
+
       function settle(id) {
         if (settled) return;
         settled = true;
-        document.removeEventListener('mousedown', onOutside, true);
-        document.removeEventListener('keydown', onKey, true);
-        if (pop.parentNode) pop.remove();
-        if (openMenuPopup === pop) openMenuPopup = null;
-        // Drop the popup's e2e-registry entries so the dismissal is observable
-        // (the rows are gone from the DOM; their geometry is now stale).
-        var reg = window.wxElementRegistry;
-        if (reg && reg.unregisterRenderedByParent)
-          reg.unregisterRenderedByParent('popupmenu');
-        resolve(id);
+        cleanupPopup();
+        // Request close now, but let native ownership resolve this Promise
+        // only after the exact leased child reaches zero references.
+        requestClose(id);
       }
-      function onOutside(ev) { if (!pop.contains(ev.target)) settle(-1); }
+      function onOutside(ev) {
+        if (!isLifetimeActive()) return;
+        if (pop && !pop.contains(ev.target)) settle(-1);
+      }
       function onKey(ev) {
+        if (!isLifetimeActive()) return;
         if (ev.key === 'Escape') { ev.stopPropagation(); settle(-1); }
       }
 
       // reopenSubmenu rebuilds the rows in place for a chosen submenu.
       function makeReopen() {
         return function (row, subItems) {
-          pop.textContent = '';
-          buildMenuItemRows(pop, subItems, 'popupmenu',
-            function (id) { settle(id); }, makeReopen());
+          try {
+            if (!isLifetimeActive() || !pop || !pop.isConnected) return;
+            unregisterRenderedParent('popupmenu');
+            pop.textContent = '';
+            buildMenuItemRows(pop, subItems, 'popupmenu',
+              function (id) { settle(id); }, makeReopen());
+          } catch (e) {
+            console.error('wxShowContextMenu: submenu failed: ' + e.message);
+            settle(-1);
+          }
         };
       }
-      buildMenuItemRows(pop, items, 'popupmenu',
-        function (id) { settle(id); }, makeReopen());
 
-      document.body.appendChild(pop);
-      openMenuPopup = pop;
+      try {
+        var vx = x, vy = y;
+        if (x === -1 || y === -1) {
+          vx = lastPointerClientX;
+          vy = lastPointerClientY;
+        } else {
+          var inv = controls.get(invokerDomId);
+          if (inv) {
+            var ir = inv.getBoundingClientRect();
+            vx = ir.left + x; vy = ir.top + y;
+          } else if (ownerModule['canvas']) {
+            var cr = ownerModule['canvas'].getBoundingClientRect();
+            vx = cr.left + x; vy = cr.top + y;
+          }
+        }
 
-      // Clamp to the viewport: flip left/up when overflowing an edge.
-      var w = pop.offsetWidth, h = pop.offsetHeight;
-      var L = vx, T = vy;
-      if (L + w > window.innerWidth) L = Math.max(0, vx - w);
-      if (T + h > window.innerHeight) T = Math.max(0, vy - h);
-      pop.style.left = L + 'px';
-      pop.style.top = T + 'px';
+        closeMenuPopup(); // supersede any open menubar popup
 
-      document.addEventListener('mousedown', onOutside, true);
-      document.addEventListener('keydown', onKey, true);
+        pop = document.createElement('div');
+        pop.className = 'wx-menu-popup';
+        pop._wxOwnerDomId = invokerDomId | 0;
+        pop._wxBrowserLifetimeId = lifetime.id;
+        pop._wxRequestDismiss = function () { settle(-1); };
+        pop.style.cssText =
+          'position:fixed;z-index:10000;background:#d4d0c8;' +
+          'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
+          'padding:2px;white-space:pre;min-width:120px;left:0;top:0;';
+        if (ownerModule['canvas'])
+          pop.style.font = getComputedStyle(ownerModule['canvas']).font;
+
+        buildMenuItemRows(pop, items, 'popupmenu',
+          function (id) { settle(id); }, makeReopen());
+
+        document.body.appendChild(pop);
+        openMenuPopup = pop;
+
+        // Clamp to the viewport: flip left/up when overflowing an edge.
+        var w = pop.offsetWidth, h = pop.offsetHeight;
+        var L = vx, T = vy;
+        if (L + w > window.innerWidth) L = Math.max(0, vx - w);
+        if (T + h > window.innerHeight) T = Math.max(0, vy - h);
+        pop.style.left = L + 'px';
+        pop.style.top = T + 'px';
+
+        document.addEventListener('mousedown', onOutside, true);
+        document.addEventListener('keydown', onKey, true);
+      } catch (e) {
+        cleanupPopup();
+        console.error('wxShowContextMenu: setup failed: ' + e.message);
+        requestClose(-1);
+        return;
+      }
 
       // NO popup pump (docs/features/async/17 S4): the top-level tick is the
       // sole dispatcher and keeps the app painting while DoPopupMenu's chain
@@ -1162,10 +1627,17 @@
       console.error('wxDomMenuSetStructure: bad JSON: ' + e.message);
       return;
     }
+    var structureGeneration = ((el._wxMenuStructureGeneration || 0) + 1) >>> 0;
+    if (!structureGeneration) structureGeneration = 1;
+    el._wxMenuStructureGeneration = structureGeneration;
+    unregisterRenderedParent(String(domId));
     el.textContent = '';
     closeMenuPopup();
     menus.forEach(function (m, idx) {
       var btn = document.createElement('button');
+      var browserId = nextMenuBrowserId('menu-title');
+      btn.id = browserId;
+      btn.dataset.wxRenderedId = browserId;
       btn.className = 'wx-menu-title';
       btn.textContent = m.title;
       btn.style.cssText =
@@ -1174,18 +1646,27 @@
       btn.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
       btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
-        if (openMenuPopup) {
+        if (!isLifetimeActive() || !btn.isConnected ||
+            controls.get(domId) !== el ||
+            el._wxMenuStructureGeneration !== structureGeneration) return;
+        var registryParent = domId + ':' + idx;
+        if (openMenuPopup &&
+            openMenuPopup.dataset.wxRegistryParent === registryParent) {
           closeMenuPopup();
         } else {
-          showMenuPopup(domId, btn, m.items || [], domId + ':' + idx);
+          showMenuPopup(domId, btn, m.items || [], registryParent);
         }
       });
       el.appendChild(btn);
-      requestAnimationFrame(function () {
-        registryRegister(domId + ':menubartitle:' + idx, Object.assign({
+      scheduleLifetimeFrame(function () {
+        if (!btn.isConnected || controls.get(domId) !== el ||
+            el._wxMenuStructureGeneration !== structureGeneration)
+          return;
+        registryRegister(domId + ':menubartitle:' + structureGeneration + ':' + idx,
+          Object.assign({
           elementType: 'menuitem', subType: 'menubar',
           label: m.title, tooltip: '', enabled: true,
-          parentId: String(domId), index: idx
+          parentId: String(domId), index: idx, browserId: browserId
         }, rectInfo(btn)));
       });
     });
@@ -1239,7 +1720,7 @@
         dispatch(domId, EVT.TOOL);
       });
       el.appendChild(btn);
-      requestAnimationFrame(function () {
+      scheduleLifetimeFrame(function () {
         if (!btn.isConnected) return;
         registryRegister(domId + ':tool:' + idx, Object.assign({
           elementType: 'tool', subType: t.kind === 'toggle' ? 'toggle' : 'button',
@@ -1253,9 +1734,9 @@
   // Command id of the last activated menu item / tool (set by the click
   // handlers above; read by wxMenuBar/wxToolBar OnDomEvent).
   window.wxDomGetLastCommandId = function (domId) {
-    var el = controls.get(domId);
-    var v = el ? parseInt(el.dataset.wxLastCommand, 10) : NaN;
-    return isNaN(v) ? -1 : v;
+    var snapshot = activeDomEventSnapshot(domId);
+    return snapshot ? snapshot.lastCommandId
+                    : rawDomLastCommandId(domId);
   };
 
   // ========== Notebook tab strip ==========
@@ -1264,7 +1745,7 @@
   // subType 'selected'/'button' — the same contract the canvas port's
   // notebook keeps, so clickTab() works unchanged.
   function scheduleTabRegistry(domId, el) {
-    requestAnimationFrame(function () {
+    scheduleLifetimeFrame(function () {
       var reg = window.wxElementRegistry;
       if (!reg || !el.isConnected || !el._wxTabs) return;
       var stale = [];
@@ -1292,7 +1773,7 @@
   // singleline/multiline). Keeps clickSpinUp()/findSingleLineTextCtrl()
   // and friends working against the same registry contract.
   function scheduleControlRegistry(domId, el) {
-    requestAnimationFrame(function () {
+    scheduleLifetimeFrame(function () {
       var reg = window.wxElementRegistry;
       if (!reg || !el.isConnected) return;
       var stale = [];
@@ -1459,9 +1940,9 @@
 
   // x/y: #canvas-relative (wx screen) coordinates.
   window.wxDomTooltipShow = function (text, x, y) {
-    if (!text) return;
+    if (!isLifetimeActive() || !text) return;
     var el = ensureTooltipEl();
-    var c = Module['canvas'];
+    var c = ownerModule['canvas'];
     var base = c ? c.getBoundingClientRect() : { left: 0, top: 0 };
     el.textContent = text;
     el.style.display = 'block';
@@ -1490,12 +1971,13 @@
 
   // Any press/keystroke/scroll dismisses the tooltip (capture phase so
   // stopPropagation in control listeners can't keep it alive).
+  function dismissTooltipOnInput() {
+    if (!isLifetimeActive()) return;
+    if (tooltipEl && tooltipEl.style.display !== 'none')
+      tooltipEl.style.display = 'none';
+  }
   ['mousedown', 'keydown', 'wheel'].forEach(function (evName) {
-    document.addEventListener(evName, function () {
-      if (tooltipEl && tooltipEl.style.display !== 'none') {
-        tooltipEl.style.display = 'none';
-      }
-    }, true);
+    addLifetimeListener(document, evName, dismissTooltipOnInput, true);
   });
 
   // Hover tooltips for JS-built surfaces that aren't wx windows
@@ -1504,9 +1986,10 @@
     el.addEventListener('mouseenter', function (ev) {
       if (tooltipHoverTimer) clearTimeout(tooltipHoverTimer);
       tooltipHoverTimer = setTimeout(function () {
+        if (!isLifetimeActive() || !el.isConnected) return;
         var text = getText();
         if (!text) return;
-        var c = Module['canvas'];
+        var c = ownerModule['canvas'];
         var base = c ? c.getBoundingClientRect() : { left: 0, top: 0 };
         window.wxDomTooltipShow(text,
                                 Math.round(ev.clientX - base.left),
@@ -1538,31 +2021,83 @@
   // NOTE: listeners that stopPropagation on mousedown (menubar titles)
   // intentionally opt out of forwarding.
 
-  var canvasRect = null;
-  window.addEventListener('resize', function () { canvasRect = null; });
+  function forwardedWxScreenPoint(ev, control) {
+    if (control && typeof control._wxScreenX === 'number' &&
+        typeof control._wxScreenY === 'number') {
+      // C++ publishes this control's exact native screen box whenever its DOM
+      // rectangle changes. Map the offset within the rendered border box back
+      // to that logical box. The ratio is 1 for the normal CSS-pixel contract,
+      // and also handles host translation/zoom/axis-aligned CSS scaling. It
+      // works identically for absolute dialogs and fixed popup TLWs because
+      // their viewport origin is used only to measure this local offset.
+      // Rotated/skewed wx host trees are outside the port's axis-aligned
+      // native-window geometry contract.
+      var controlRect = control.getBoundingClientRect();
+      var scaleX = controlRect.width > 0
+        ? control._wxScreenWidth / controlRect.width : 1;
+      var scaleY = controlRect.height > 0
+        ? control._wxScreenHeight / controlRect.height : 1;
+      return {
+        x: Math.round(control._wxScreenX +
+                      (ev.clientX - controlRect.left) * scaleX),
+        y: Math.round(control._wxScreenY +
+                      (ev.clientY - controlRect.top) * scaleY)
+      };
+    }
 
-  function wxForwardMouse(ev, kind, deltaY) {
-    var c = Module['canvas'];
-    if (!c) return 0;
-    if (!canvasRect) canvasRect = c.getBoundingClientRect();
+    // Compatibility fallback for a control supplied by an older/custom host
+    // that wasn't created by wxDomCreateControl.
+    var canvas = ownerModule['canvas'];
+    var canvasRect = canvas ? canvas.getBoundingClientRect()
+                            : { left: 0, top: 0 };
+    return {
+      x: Math.round(ev.clientX - canvasRect.left),
+      y: Math.round(ev.clientY - canvasRect.top)
+    };
+  }
+
+  function wxForwardMouse(ev, control, kind, deltaY) {
+    var c = ownerModule['canvas'];
+    if (!c || !canTouchNative()) return 0;
     var mods = (ev.ctrlKey ? 1 : 0) | (ev.shiftKey ? 2 : 0) |
                (ev.altKey ? 4 : 0) | (ev.metaKey ? 8 : 0);
+    var point = forwardedWxScreenPoint(ev, control);
+    var x = point.x;
+    var y = point.y;
+    var button = ev.button | 0;
+    var buttons = ev.buttons | 0;
+    var detail = ev.detail | 0;
+    var wheelDelta = deltaY || 0;
+
+    // wx_dom_mouse's only synchronous refusal is a zero wheel delta. Every
+    // accepted event owns a heap envelope, so the browser can conservatively
+    // consume it while the physical arbiter delivers the exact scalar copy.
+    if (kind === 4 && wheelDelta === 0) return 0;
+
+    var scheduler = lifetimeScheduler();
     try {
-      return Module['ccall']('wx_dom_mouse', 'number',
-        ['number', 'number', 'number', 'number',
-         'number', 'number', 'number', 'number'],
-        [kind,
-         Math.round(ev.clientX - canvasRect.left),
-         Math.round(ev.clientY - canvasRect.top),
-         ev.button | 0, ev.buttons | 0, ev.detail | 0, mods, deltaY || 0]);
-    } catch (e) {
+      var accepted = scheduler.runNativeIngressReceipt(
+        'wx DOM mouse receipt', function (ingressReceiptToken) {
+          var stage = ownerModule['_wx_dom_mouse_stage'];
+          if (typeof stage !== 'function')
+            throw new Error('wx_dom_mouse_stage export is missing');
+          return stage(kind, x, y, button, buttons, detail, mods,
+                       wheelDelta, ingressReceiptToken) | 0;
+        });
+      if (accepted === 1) return 1;
+      if (!scheduler.dead)
+        scheduler._failScheduler('wx DOM mouse receipt was refused', false);
       return 0;
+    } catch (e) {
+      failStopAfterNativeTrap('wx mouse receipt trapped', e);
+      throw e;
     }
   }
 
   function forwardTarget(ev) {
     var t = ev.target;
-    if (!t || t === Module['canvas'] || !t.closest) return null;
+    if (!isLifetimeActive() || !t || t === ownerModule['canvas'] || !t.closest)
+      return null;
     if (t.closest('.wx-menu-popup')) return null;
     return t.closest('.wx-dom-control');
   }
@@ -1571,30 +2106,37 @@
   // canvas where forwardTarget is null) so a "popup at the mouse" context
   // menu lands at the cursor.
   function trackPointer(ev) {
+    if (!isLifetimeActive()) return;
     lastPointerClientX = ev.clientX;
     lastPointerClientY = ev.clientY;
   }
-  document.addEventListener('mousemove', trackPointer, true);
-  document.addEventListener('mousedown', trackPointer, true);
-  document.addEventListener('contextmenu', trackPointer, true);
+  addLifetimeListener(document, 'mousemove', trackPointer, true);
+  addLifetimeListener(document, 'mousedown', trackPointer, true);
+  addLifetimeListener(document, 'contextmenu', trackPointer, true);
 
-  document.addEventListener('mousemove', function (ev) {
-    if (forwardTarget(ev)) wxForwardMouse(ev, 1, 0);
-  });
+  function forwardMouseMove(ev) {
+    var ctl = forwardTarget(ev);
+    if (ctl) wxForwardMouse(ev, ctl, 1, 0);
+  }
+  addLifetimeListener(document, 'mousemove', forwardMouseMove);
 
-  document.addEventListener('mousedown', function (ev) {
+  function forwardMouseDown(ev) {
     var ctl = forwardTarget(ev);
     if (!ctl) return;
-    if (ev.button !== 0 || ctl.dataset.wxPassive) wxForwardMouse(ev, 2, 0);
-  });
+    if (ev.button !== 0 || ctl.dataset.wxPassive)
+      wxForwardMouse(ev, ctl, 2, 0);
+  }
+  addLifetimeListener(document, 'mousedown', forwardMouseDown);
 
-  document.addEventListener('mouseup', function (ev) {
+  function forwardMouseUp(ev) {
     var ctl = forwardTarget(ev);
     if (!ctl) return;
-    if (ev.button !== 0 || ctl.dataset.wxPassive) wxForwardMouse(ev, 3, 0);
-  });
+    if (ev.button !== 0 || ctl.dataset.wxPassive)
+      wxForwardMouse(ev, ctl, 3, 0);
+  }
+  addLifetimeListener(document, 'mouseup', forwardMouseUp);
 
-  document.addEventListener('wheel', function (ev) {
+  function forwardWheel(ev) {
     var ctl = forwardTarget(ev);
     if (!ctl) return;
     // A natively scrollable element under the cursor (textarea, multi-
@@ -1607,10 +2149,11 @@
       }
       if (n === ctl) break;
     }
-    if (wxForwardMouse(ev, 4, ev.deltaY)) ev.preventDefault();
-  }, { passive: false });
+    if (wxForwardMouse(ev, ctl, 4, ev.deltaY)) ev.preventDefault();
+  }
+  addLifetimeListener(document, 'wheel', forwardWheel, { passive: false });
 
-  document.addEventListener('contextmenu', function (ev) {
+  function suppressForwardedContextMenu(ev) {
     var ctl = forwardTarget(ev);
     if (!ctl) return;
     var t = ev.target;
@@ -1619,5 +2162,59 @@
     // wx already received the right-click via the forwarded mousedown/up;
     // suppress the browser menu except over editables (keep native paste).
     if (!editable) ev.preventDefault();
-  });
+  }
+  addLifetimeListener(document, 'contextmenu', suppressForwardedContextMenu);
+
+  function discardDomBrowserLifetime(reason) {
+    if (!lifetime.active) return false;
+
+    // A live context popup owns a native lease. Ask that exact lease to close
+    // while this lifetime can still enter its owner Module. The scheduler's
+    // terminal path rejects leases before it invokes this cleanup hook, so in
+    // that case this step only removes the already-abandoned browser surface.
+    try {
+      closeMenuPopup(reason || 'DOM browser lifetime discarded');
+    } catch (e) {
+      console.error('DOM browser popup cleanup failed:', e);
+    }
+
+    lifetime.active = false;
+    lifetime.listeners.splice(0).forEach(function (listener) {
+      listener.target.removeEventListener(
+        listener.type, listener.handler, listener.options);
+    });
+
+    if (tooltipHoverTimer) {
+      clearTimeout(tooltipHoverTimer);
+      tooltipHoverTimer = null;
+    }
+    if (tooltipEl) {
+      tooltipEl.remove();
+      tooltipEl = null;
+    }
+    if (measureHost) {
+      measureHost.remove();
+      measureHost = null;
+    }
+
+    domEventSnapshotStack.length = 0;
+    domEventSnapshots.clear();
+    domEventSnapshotPendingBytes = 0;
+    Array.from(controls.keys()).forEach(function (domId) {
+      destroyDomControl(domId);
+    });
+    controls.clear();
+    inputs.clear();
+    labels.clear();
+
+    if (browserRealm.lifetime === lifetime) {
+      browserRealm.lifetime = null;
+      window.__wxDomBrowserLifetime = null;
+      window.wxDomEditableFocused = 0;
+    }
+    return true;
+  }
+
+  lifetime.discard = discardDomBrowserLifetime;
+  ownerModule['wxDiscardDomBrowserLifetime'] = discardDomBrowserLifetime;
 })();

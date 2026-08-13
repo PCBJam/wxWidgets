@@ -11,6 +11,8 @@
 
 #include "wx/evtloop.h"
 
+class wxWindow;
+
 // ----------------------------------------------------------------------------
 // wxGUIEventLoop for wxWebAssembly
 // ----------------------------------------------------------------------------
@@ -18,7 +20,12 @@
 class WXDLLIMPEXP_CORE wxGUIEventLoop : public wxEventLoopBase
 {
 public:
-    wxGUIEventLoop() {}
+    wxGUIEventLoop()
+        : m_wasmModalTarget(NULL), m_wasmNestedWaitActive(false),
+          m_wasmExitCode(0) {}
+    explicit wxGUIEventLoop(wxWindow *modalTarget)
+        : m_wasmModalTarget(modalTarget), m_wasmNestedWaitActive(false),
+          m_wasmExitCode(0) {}
 
     virtual bool IsOk() const { return true; }
 
@@ -33,6 +40,9 @@ protected:
     virtual void DoYieldFor(long eventsToProcess);
 
 private:
+    wxWindow *m_wasmModalTarget;
+    bool m_wasmNestedWaitActive;
+    int m_wasmExitCode;
     wxDECLARE_NO_COPY_CLASS(wxGUIEventLoop);
 };
 

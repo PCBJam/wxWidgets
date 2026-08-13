@@ -39,7 +39,7 @@
 
 #include "wx/evtloop.h"
 #include "wx/modalhook.h"
-#include "wx/wasm/private/dispatch.h"
+#include "wx/wasm/private/execution_owner.h"
 #include "wx/wasm/private/mailbox.h"
 #include "wx/wasm/private/yieldwait.h"
 
@@ -63,7 +63,7 @@ void wxDialog::Init()
     m_windowDisabler = NULL;
     m_eventLoop = NULL;
     m_isShowingModal = false;
-    m_modalCallback = NULL;
+    m_focusBeforeModal.Release();
 }
 
 wxDialog::~wxDialog()
@@ -187,6 +187,33 @@ bool wxDialog::IsModal() const
 // _endModal / _pendingModalResult machinery were deleted at doc 20 D-1: the
 // modal is a registered scheduler wait, and no per-modal pump exists.)
 
+namespace
+{
+
+// Showing a modal from a mouse/key handler parks that handler before its normal
+// post-dispatch paint epilogue can run.  A child frame tick must not compensate
+// with wxApp::Paint(): that scans every top-level window and could read the
+// parked parent's half-mutated model.  Instead, publish one lease-bound paint
+// for the exact dialog.  The zero-delay mailbox supplies a browser-task
+// boundary, so a dialog paint which starts a Worker is not nested in the input
+// callback which opened it.
+void wxWasmPaintShownModal(void *arg)
+{
+    wxDialog *dialog = static_cast<wxDialog *>(arg);
+
+    if (dialog->IsShown() && dialog->NeedsPaint())
+        dialog->HandlePaintRequests();
+}
+
+// The dialog remains alive until its exact modal wait resumes.  If close starts
+// before this queued paint is admitted, stale-lease cleanup simply drops the
+// borrowed pointer; it owns no allocation.
+void wxWasmDiscardShownModalPaint(void *)
+{
+}
+
+} // namespace
+
 int wxDialog::ShowModal()
 {
     WX_HOOK_MODAL_DIALOG();
@@ -212,28 +239,60 @@ int wxDialog::ShowModal()
     // real HTML, so they render without a paint loop even pre-main-loop).
     const int waitToken = wxWasmBeginWait("modal");
 
+    if (waitToken <= 0)
+        return wxID_CANCEL;
+
+    const wx_wasm_execution::LeaseToken executionLease =
+            wxWasmExecutionOpenModalLease(
+                    this, wxWasmExecutionScopeForWindow(this),
+                    wx_wasm_execution::ModalWorkMask, waitToken);
+
+    if (!executionLease)
+        return wxID_CANCEL;
+
     m_isShowingModal = true;
+    m_focusBeforeModal = wxWeakRef<wxWindow>(wxWindow::FindFocus());
     Show(true);
+
+    // Match the generic/native wxDialog contract: a true application-modal
+    // dialog disables every other shown top-level window until it closes.
+    // The DOM port implements the physical input barrier in wx.js; the normal
+    // wxWindow enabled flag remains the source of truth.
+    wxASSERT_MSG(!m_windowDisabler, wxT("disabling windows twice?"));
+    m_windowDisabler = new wxWindowDisabler(this);
+    SetFocus();
+
+    wxWasmMailboxEnqueueAfterScoped(
+            &wxWasmPaintShownModal, this, 0,
+            wx_wasm_execution::WorkClass::ModalLifecycle,
+            wxWasmExecutionScopeForWindow(this),
+            &wxWasmDiscardShownModalPaint);
 
     // Suspend the C++ stack until EndModal() resolves it.
     //
-    // The opener's dispatch chain parks here for the modal's whole lifetime;
-    // the legitimate dispatcher keeps running meanwhile, so zero the
-    // dispatch interlock for the park's duration (manual save/restore:
-    // destructors are not reliable across an Asyncify park).
-    const int savedDispatchDepth = wxWasmDispatchDepth;
-    wxWasmDispatchDepth = 0;
+    // The opener's owner remains represented for the modal's whole lifetime;
+    // only transactions admitted by the scoped child lease can run meanwhile.
     const int result = wxWasmYieldUntil(waitToken);
-    wxWasmDispatchRestore(savedDispatchDepth, "ShowModal");
+    wxWasmExecutionCloseModalLease(this, executionLease);
+
+    wxWindow * const previousFocus = m_focusBeforeModal.get();
+    m_focusBeforeModal.Release();
+    if (previousFocus && previousFocus->IsShown() && previousFocus->IsEnabled())
+        previousFocus->SetFocus();
 
     return result;
 }
 
 void wxDialog::ShowModal(std::function<void (int)> callback)
 {
-    ShowModal();
-
-    m_modalCallback = callback;
+    // The callback overload is a completion API, not an EndModal hook. Invoke
+    // it only after the blocking modal call has resumed, closed its execution
+    // lease, restored focus, and made this dialog reusable. This also lets a
+    // callback safely open another modal without nesting under a half-closed
+    // lease.
+    const int result = ShowModal();
+    if (callback)
+        callback(result);
 }
 
 void wxDialog::EndModal(int retCode)
@@ -250,16 +309,12 @@ void wxDialog::EndModal(int retCode)
 
     m_isShowingModal = false;
 
-    // Resolve the innermost registered modal wait (wx LIFO semantics). A
-    // resolve racing ahead of ShowModal's park pre-resolves the promise.
-    wxWasmResolveTopWait("modal", retCode);
+    // Revoke new child admission before the exact wait wake can resume the
+    // opener. The parent owner itself remains present until ShowModal() and
+    // the surrounding handler really return.
+    // The exact wait resolves only when this lease has stopped admitting new
+    // children and its current child transaction reaches zero references.
+    wxWasmExecutionRequestModalClose(this, retCode);
 
     Show(false);
-
-    if (m_modalCallback)
-    {
-        auto callback = m_modalCallback;
-        m_modalCallback = NULL;
-        callback(retCode);
-    }
 }

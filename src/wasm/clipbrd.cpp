@@ -45,7 +45,12 @@ EM_JS(bool, js_isClipboardAPIAvailable, (), {
 // Write text to clipboard.
 // Wait result: 0 = success, 1 = no API, 2 = permission denied, 3 = other error, 4 = timeout
 EM_JS(void, js_writeTextToClipboardStart, (int token, const char* text), {
-    const finish = (v) => globalThis.__wxScheduler.resolveWait(token, v);
+    const scheduler = globalThis.__wxScheduler;
+    const finish = (v) => {
+        if (scheduler && typeof scheduler.runWaitCompletion === 'function')
+            scheduler.runWaitCompletion(
+                'clipboard write completion', token, () => v);
+    };
 
     if (typeof navigator === 'undefined' ||
         typeof navigator.clipboard === 'undefined') {
@@ -82,7 +87,12 @@ EM_JS(void, js_writeTextToClipboardStart, (int token, const char* text), {
 // Read text from clipboard.
 // Wait result: malloc'd text pointer, or 0 on failure (caller frees).
 EM_JS(void, js_readTextFromClipboardStart, (int token), {
-    const finish = (v) => globalThis.__wxScheduler.resolveWait(token, v);
+    const scheduler = globalThis.__wxScheduler;
+    const finish = (v) => {
+        if (scheduler && typeof scheduler.runWaitCompletion === 'function')
+            scheduler.runWaitCompletion(
+                'clipboard read failure completion', token, () => v);
+    };
 
     if (typeof navigator === 'undefined' ||
         typeof navigator.clipboard === 'undefined') {
@@ -101,15 +111,18 @@ EM_JS(void, js_readTextFromClipboardStart, (int token), {
         navigator.clipboard.readText(),
         timeoutPromise
     ]).then((text) => {
-        // Allocate memory for the string and copy it
-        const len = lengthBytesUTF8(text) + 1;
-        const ptr = _malloc(len);
-        if (ptr === 0) {
-            console.error('[wxClipboard] Failed to allocate memory for clipboard text');
-            return finish(0);
-        }
-        stringToUTF8(text, ptr, len);
-        finish(ptr);
+        if (!scheduler || typeof scheduler.runWaitCompletion !== 'function') return;
+        scheduler.runWaitCompletion('clipboard read completion', token, () => {
+            // Allocate memory for the string and copy it.
+            const len = lengthBytesUTF8(text) + 1;
+            const ptr = _malloc(len);
+            if (ptr === 0) {
+                console.error('[wxClipboard] Failed to allocate memory for clipboard text');
+                return 0;
+            }
+            stringToUTF8(text, ptr, len);
+            return ptr;
+        });
     }).catch((err) => {
         if (err.name === 'NotAllowedError') {
             console.warn('[wxClipboard] Clipboard read permission denied: ' + err.message);
@@ -127,7 +140,12 @@ EM_JS(void, js_readTextFromClipboardStart, (int token), {
 // NOTE: deliberately NOT called from IsSupported() — this waits for up
 // to 2 s and must never run on the idle path (see IsSupported below).
 EM_JS(void, js_clipboardHasTextStart, (int token), {
-    const finish = (v) => globalThis.__wxScheduler.resolveWait(token, v);
+    const scheduler = globalThis.__wxScheduler;
+    const finish = (v) => {
+        if (scheduler && typeof scheduler.runWaitCompletion === 'function')
+            scheduler.runWaitCompletion(
+                'clipboard text-probe completion', token, () => v);
+    };
 
     if (typeof navigator === 'undefined' ||
         typeof navigator.clipboard === 'undefined') {
@@ -156,7 +174,12 @@ EM_JS(void, js_clipboardHasTextStart, (int token), {
 
 // Clear the clipboard by writing empty text
 EM_JS(void, js_clearClipboardStart, (int token), {
-    const finish = (v) => globalThis.__wxScheduler.resolveWait(token, v);
+    const scheduler = globalThis.__wxScheduler;
+    const finish = (v) => {
+        if (scheduler && typeof scheduler.runWaitCompletion === 'function')
+            scheduler.runWaitCompletion(
+                'clipboard clear completion', token, () => v);
+    };
 
     if (typeof navigator === 'undefined' ||
         typeof navigator.clipboard === 'undefined') {
@@ -171,7 +194,7 @@ EM_JS(void, js_clearClipboardStart, (int token), {
     });
 
     Promise.race([
-        navigator.clipboard.writeText(''),
+        navigator.clipboard.writeText(String()),
         timeoutPromise
     ]).then(() => finish(0)).catch((err) => {
         console.warn('[wxClipboard] Failed to clear clipboard: ' + err.message);
@@ -184,6 +207,10 @@ EM_JS(void, js_clearClipboardStart, (int token), {
 static int wxClipboardWriteText(const char* text)
 {
     const int token = wxWasmBeginWait("clipboard");
+
+    if (token <= 0)
+        return 1;
+
     js_writeTextToClipboardStart(token, text);
     return wxWasmYieldUntil(token);
 }
@@ -191,6 +218,10 @@ static int wxClipboardWriteText(const char* text)
 static char* wxClipboardReadText()
 {
     const int token = wxWasmBeginWait("clipboard");
+
+    if (token <= 0)
+        return nullptr;
+
     js_readTextFromClipboardStart(token);
     // The malloc'd pointer rides the wait as an int32.
     return (char*) (uintptr_t) (uint32_t) wxWasmYieldUntil(token);
@@ -201,6 +232,10 @@ static char* wxClipboardReadText()
 [[maybe_unused]] static int wxClipboardHasText()
 {
     const int token = wxWasmBeginWait("clipboard");
+
+    if (token <= 0)
+        return 0;
+
     js_clipboardHasTextStart(token);
     return wxWasmYieldUntil(token);
 }
@@ -208,6 +243,10 @@ static char* wxClipboardReadText()
 static int wxClipboardClear()
 {
     const int token = wxWasmBeginWait("clipboard");
+
+    if (token <= 0)
+        return 1;
+
     js_clearClipboardStart(token);
     return wxWasmYieldUntil(token);
 }

@@ -142,13 +142,6 @@ void EmscriptenDoLaunchBrowser(const wxString& url)
     }, static_cast<const char *>(url.utf8_str()));
 }
 
-void EmscriptenDoLaunchBrowserAsync(void *arg)
-{
-    wxString *url = static_cast<wxString *>(arg);
-    EmscriptenDoLaunchBrowser(*url);
-    delete url;
-}
-
 bool wxDoLaunchDefaultBrowser(const wxLaunchBrowserParams& params)
 {
     // TODO: handle wxBROWSER_NEW_WINDOW flag
@@ -159,9 +152,16 @@ bool wxDoLaunchDefaultBrowser(const wxLaunchBrowserParams& params)
     }
     else
     {
-        emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_VI,
-                &EmscriptenDoLaunchBrowserAsync,
-                new wxString(params.url));
+        // A raw Emscripten main-thread proxy callback would enter Wasm and
+        // delete its heap payload without execution-owner admission. Route
+        // worker requests through wx's thread-safe pending-event transport;
+        // the owner filter classifies worker submissions as Ordinary work and
+        // therefore keeps them behind any live modal child.
+        if (!wxTheApp)
+            return false;
+
+        const wxString url(params.url);
+        wxTheApp->CallAfter([url]() { EmscriptenDoLaunchBrowser(url); });
     }
 
     return true;
@@ -180,9 +180,11 @@ bool wxLaunchDefaultApplication(const wxString& path, int WXUNUSED(flags))
         }
         else
         {
-            emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_VI,
-                    &EmscriptenDoLaunchBrowserAsync,
-                    new wxString(path));
+            if (!wxTheApp)
+                return false;
+
+            const wxString url(path);
+            wxTheApp->CallAfter([url]() { EmscriptenDoLaunchBrowser(url); });
         }
         return true;
     }
@@ -201,4 +203,3 @@ wxWindow* wxFindWindowAtPointer(wxPoint& pt)
     pt = wxGetMousePosition();
     return wxFindWindowAtPoint(pt);
 }
-
