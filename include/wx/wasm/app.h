@@ -37,6 +37,15 @@ public:
     // this thunk; public only for the context entry in evtloop.cpp.
     int RunMainLoopOnContext() { return wxAppBase::OnRun(); }
 
+#if wxUSE_EXCEPTIONS
+    // Browser-port contract: an exception escaping an event handler must NOT
+    // tear down the app (the base default exits the main loop, which under
+    // the detached D5 loop reads as a silent clean shutdown mid-session).
+    // Parity with the pre-EH builds, where the throw escaped to the JS
+    // dispatch boundary and was contained there. Surface it, keep running.
+    virtual bool OnExceptionInMainLoop() wxOVERRIDE;
+#endif
+
     // deferGLCanvasWindows: skip a synchronous repaint of any non-main window hosting a
     // wxGLCanvas (the 3D viewer, whose paint runs the multi-threaded CPU raytracer). Used
     // on the mouse-button repaint path (HandleMouseEvent), which is driven synchronously

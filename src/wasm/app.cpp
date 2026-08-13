@@ -58,6 +58,33 @@ wxApp::~wxApp()
     delete m_display;
 }
 
+#if wxUSE_EXCEPTIONS
+bool wxApp::OnExceptionInMainLoop()
+{
+    // Browser-port contract: a throwing event handler must not tear down the
+    // app. The base default exits the main loop — under the detached D5 loop
+    // that reads as a silent clean shutdown mid-session (observed: a throwing
+    // wxEVT_TEXT handler destroying every window). The pre-EH builds survived
+    // because the throw escaped to the JS dispatch boundary and was contained
+    // there; keep that behavior, but say what happened on the console.
+    try
+    {
+        throw;
+    }
+    catch ( const std::exception& e )
+    {
+        fprintf(stderr, "[wx-app] unhandled exception in event handler: %s\n",
+                e.what());
+    }
+    catch ( ... )
+    {
+        fprintf(stderr, "[wx-app] unhandled non-std exception in event handler\n");
+    }
+
+    return true; // keep the main loop running
+}
+#endif
+
 int wxApp::OnRun()
 {
     // JSPI: main() is a promising export, so the loop runs in place and its

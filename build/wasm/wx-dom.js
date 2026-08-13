@@ -88,21 +88,27 @@
   window.wxDomControls = controls;
 
   function dispatch(domId, kind) {
-    try {
-      Module['ccall']('wx_dom_event', null, ['number', 'number'], [domId, kind]);
-    } catch (e) {
+    // Containment for a chain that died mid-flight (trap, or a throwing wx
+    // event handler): its dispatch-interlock guard never unwound — release it
+    // or every later event defers forever behind a chain that is gone.
+    // Guarded: the export is absent in wx builds predating the interlock.
+    var contain = function (e) {
       // Surfaces in test logs; must never throw back into DOM event handlers.
       console.error('wx_dom_event(' + domId + ',' + kind + ') failed:', e);
-      // That chain died mid-flight (trap, or the "async operation already in
-      // flight" abort a park inside this synchronous ccall raises), so its
-      // dispatch-interlock guard never unwound. Release the interlock or every
-      // later event defers forever behind a chain that is gone. Guarded: the
-      // export is absent in wx builds predating the interlock.
       try {
         Module['ccall']('wx_dispatch_abandon', null, [], []);
       } catch (e2) {
         /* nothing else to do - the runtime is already in trouble */
       }
+    };
+    try {
+      var p = Module['ccall']('wx_dom_event', null, ['number', 'number'], [domId, kind]);
+      // JSPI: wx_dom_event is a PROMISING export — a throwing handler
+      // surfaces as an async REJECTION of the returned promise, which the
+      // sync catch below can never see.
+      if (p && typeof p.then === 'function') p.then(null, contain);
+    } catch (e) {
+      contain(e);
     }
   }
 
