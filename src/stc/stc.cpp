@@ -34,10 +34,6 @@
 #include "wx/stc/stc.h"
 #include "wx/stc/private.h"
 
-#ifdef __EMSCRIPTEN__
-    #include "wx/wasm/elementtracker.h"
-#endif
-
 #ifndef WX_PRECOMP
     #include "wx/wx.h"
 #endif // WX_PRECOMP
@@ -5200,18 +5196,6 @@ void wxStyledTextCtrl::StartStyling(int start, int unused)
 void wxStyledTextCtrl::OnPaint(wxPaintEvent& WXUNUSED(evt)) {
     wxPaintDC dc(this);
     m_swx->DoPaint(&dc, GetUpdateRegion().GetBox());
-
-#ifdef __EMSCRIPTEN__
-    // Register the STC control for element tracking
-    WasmUnregisterRenderedElementsByParent(this);
-
-    wxWasmTrackElement(this, "styledtext",
-                       GetReadOnly() ? "readonly" : "editable", 0,
-                       GetName().IsEmpty() ? wxT("Editor") : GetName(),
-                       wxEmptyString,
-                       wxRect(wxPoint(0, 0), GetClientSize()),
-                       IsEnabled() && !GetReadOnly());
-#endif
 }
 
 void wxStyledTextCtrl::OnScrollWin(wxScrollWinEvent& evt) {

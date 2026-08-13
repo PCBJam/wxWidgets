@@ -25,6 +25,7 @@
 #include <string.h>  // strcmp: park-reason comparison
 
 #include <map>
+#include <deque>
 #include <vector>
 
 // Run work on a dispatch context instead of the stack it arrived on (defined
@@ -290,6 +291,14 @@ std::map<int, pcbjam_sched::ContextId> &wxWasmContextWaits()
 
 extern "C" int wxWasmYieldUntil(int token)
 {
+#ifdef PCBJAM_JSPI
+    // JSPI: every activation suspends uniformly through the wait import; there
+    // are no scheduler contexts to park. Early-resolve still short-circuits.
+    if (wxWasmWaitEarlyResolvedJs(token))
+        return wxWasmTakeWaitResultJs(token);
+
+    return wxWasmYieldUntilJs(token);
+#else
     // Phase C: if this wait is running ON a scheduler context, park THAT
     // context rather than suspending the stack in place. yield_park verifies
     // the caller's frame really lies inside the running context's stack, so a
@@ -323,6 +332,7 @@ extern "C" int wxWasmYieldUntil(int token)
     }
 
     return wxWasmYieldUntilJs(token);
+#endif // PCBJAM_JSPI
 }
 
 extern "C" {
@@ -334,7 +344,12 @@ extern "C" {
     // a fresh JS task. Called after a context wake and by the top-level tick.
     void EMSCRIPTEN_KEEPALIVE wxWasmSchedPump()
     {
+#ifndef PCBJAM_JSPI
+        // JSPI: no scheduler contexts exist; wakes resume activations through
+        // their wait promises directly, so the pump is a benign no-op kept
+        // only for JS callers' compatibility during the transition.
         pcbjam_sched::drain_all();
+#endif
     }
 
     void EMSCRIPTEN_KEEPALIVE wxWasmSchedResolveContextWait(int token, int result)
@@ -352,6 +367,7 @@ extern "C" {
             return;
         }
 
+#ifndef PCBJAM_JSPI
         if (!pcbjam_sched::mark_ready(it->second, result))
         {
             // mark_ready beacons the generic refusal; add the wait identity so
@@ -359,6 +375,12 @@ extern "C" {
             EM_ASM({ console.warn("[wx-wait] mark_ready refused for token " + $0 + " ctx " + $1); },
                    token, (int) it->second);
         }
+#else
+        // JSPI: context waits are never registered (wxWasmYieldUntil always
+        // suspends through the wait promise), so reaching here means a shim
+        // routing bug — the loud warn above already fired.
+        (void) it;
+#endif
     }
 
 }  // extern "C"
@@ -409,7 +431,9 @@ extern "C" {
     // wx_dispatch_abandon.
     void EMSCRIPTEN_KEEPALIVE wxWasmSchedAbandon()
     {
+#ifndef PCBJAM_JSPI
         pcbjam_sched::abandon_transition();
+#endif
     }
 
     void EMSCRIPTEN_KEEPALIVE ProcessEvents()
@@ -567,9 +591,17 @@ EM_JS(void, wxWasmExitNestedLoop, (), {
 // handleAsync park, which is "in flight" for the app's whole life and makes a tool-
 // coroutine fiber swap abort ("cannot stop an async operation in flight"). With this
 // per-frame yield the slot is free whenever ProcessEvents runs (docs/features/async/13).
+#ifdef PCBJAM_JSPI
+// JSPI: route through the shim so the frame park shares the one shadow-stack
+// discipline implementation (jspi-scheduler.js _suspendOn; emscripten #27364).
+EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
+    await globalThis.__wxScheduler.frameYield();
+});
+#else
 EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
     await new Promise(function (resolve) { requestAnimationFrame(resolve); });
 });
+#endif
 
 // Deliver the tick's events from a FRESH JS task instead of inline in the main
 // loop (docs/features/async/16 round 6). Everything after wxWasmYieldToBrowser()
@@ -584,28 +616,36 @@ EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
 // re-entrancy-safe: it no-ops into a repaint whenever a chain is parked.
 EM_JS(void, wxWasmScheduleProcessEvents, (), {
     setTimeout(function () {
-        try {
-            Module["_wxWasmTopLevelTick"]();
-        } catch (e) {
-            // Mirror the DOM handlers' guard: a trap here would otherwise leave
-            // the dispatch interlock held by a chain that no longer exists.
+        // A throwing handler must not leave the dispatch interlock held nor a
+        // parked quasi-modal unresolved (silent stall — the asyncify-races
+        // nested_quasi_modal_pump_error case). The containment releases the
+        // innermost registered waits: the nested loop AND the top modal
+        // (5101 = wxID_CANCEL).
+        var contain = function (e) {
             if (Module["_wx_dispatch_abandon"]) Module["_wx_dispatch_abandon"]();
-            // Same for the scheduler: the exception came out through drain()'s
-            // fiber swap, so the transition it started is still "in flight"
-            // and every later pump would refuse to run (doc 22 Phase B).
+            // Asyncify only: the exception came out through drain()'s fiber
+            // swap and the transition is still "in flight" (doc 22 Phase B).
             if (Module["_wxWasmSchedAbandon"]) Module["_wxWasmSchedAbandon"]();
-            // If a quasi-modal's nested loop is open, tear it down. A throwing
-            // handler must not leave the parked nested DoRun unresolved or it
-            // never returns — a silent stall (the asyncify-races
-            // nested_quasi_modal_pump_error case). The containment releases
-            // the innermost registered waits: the nested loop AND the top
-            // modal (5101 = wxID_CANCEL).
             if (globalThis.__wxScheduler) {
                 globalThis.__wxScheduler.resolveTopWait('nested', 0);
                 globalThis.__wxScheduler.resolveTopWait('modal', 5101);
             }
+        };
+        var p;
+        try {
+            p = Module["_wxWasmTopLevelTick"]();
+        } catch (e) {
+            // Asyncify tick: dispatch throws synchronously.
+            contain(e);
             throw e;
         }
+        // JSPI tick: the export is promising, so ANY throw — even one before
+        // the first suspension — arrives as a promise REJECTION, never the
+        // sync catch above. Same containment, async path.
+        Promise.resolve(p).catch(function (e) {
+            contain(e);
+            console.warn("[wx] top-level tick rejected: " + e);
+        });
     }, 0);
 });
 
@@ -651,7 +691,11 @@ extern "C" {
         // the measured overlapped-wake came from running both while the main
         // loop still Asyncify-parked per frame. Flip to 1 to re-enable D on
         // top of a proven scheduler-only main stack.
-#if wxWASM_STAR_DISPATCH
+#if defined(PCBJAM_JSPI)
+        // JSPI: the tick itself is a promising export — dispatch directly; a
+        // handler that suspends parks this tick's own activation.
+        ProcessEvents();
+#elif wxWASM_STAR_DISPATCH
         wxWasmDispatchOnContext();
 #else
         ProcessEvents();
@@ -957,6 +1001,65 @@ extern "C" bool wxWasmMainLoopDetached()
     return g_mainLoopDetached;
 }
 
+#ifdef PCBJAM_JSPI
+// JSPI plain-entry job lane: emscripten_set_*_callback entries cannot suspend
+// (they are not promising exports), so their jobs queue here and the promising
+// wxWasmJobTick delivers them from a fresh task, in order.
+namespace
+{
+struct wxWasmJspiJob
+{
+    void (*fn)(void *);
+    void *arg;
+};
+
+std::deque<wxWasmJspiJob> &wxWasmJspiJobs()
+{
+    static std::deque<wxWasmJspiJob> s_jobs;
+    return s_jobs;
+}
+}  // namespace
+
+EM_JS(int, wxWasmOnPromisingActivationJs, (), {
+    const S = globalThis.__wxScheduler;
+    return (S && S._actStack && S._actStack.length > 0) ? 1 : 0;
+});
+
+EM_JS(void, wxWasmArmJspiJobTickJs, (), {
+    const S = globalThis.__wxScheduler;
+    if (S.__jobTickArmed) return;
+    S.__jobTickArmed = true;
+    setTimeout(function () {
+        S.__jobTickArmed = false;
+        if (S.dead) return;
+        var p = Module["_wxWasmJobTick"]();
+        Promise.resolve(p).catch(function (e) {
+            if (Module["_wx_dispatch_abandon"]) Module["_wx_dispatch_abandon"]();
+            S.resolveTopWait('nested', 0);
+            S.resolveTopWait('modal', 5101);
+            console.warn("[wx-scheduler] job tick error: " + e);
+        });
+    }, 0);
+});
+
+extern "C" void EMSCRIPTEN_KEEPALIVE wxWasmJobTick()
+{
+    // Deliver ONE job per tick: a job that suspends (a click opening a modal)
+    // parks THIS activation; the next job must not run beneath it on the same
+    // activation, so re-arm and let a fresh tick (fresh activation) take it.
+    if (wxWasmJspiJobs().empty())
+        return;
+
+    wxWasmJspiJob job = wxWasmJspiJobs().front();
+    wxWasmJspiJobs().pop_front();
+
+    if (!wxWasmJspiJobs().empty())
+        wxWasmArmJspiJobTickJs();
+
+    job.fn(job.arg);
+}
+#endif // PCBJAM_JSPI
+
 extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg)
 {
     // WHY THIS EXISTS (doc 22 §10, measured 2026-08-07). A DOM event handler
@@ -976,7 +1079,28 @@ extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg)
     if (!fn)
         return;
 
-#if wxWASM_STAR_DISPATCH
+#ifdef PCBJAM_JSPI
+    // JSPI: the two-path rewind mismatch this function existed to prevent is
+    // unrepresentable — but WHERE the job may run still matters. Only a
+    // PROMISING activation may suspend; the emscripten_set_*_callback DOM
+    // entries (canvas mouse/key/wheel/touch) arrive as plain table calls and
+    // trap with SuspendError if a handler below reaches a wait (#22493,
+    // observed on the context-menu suite). So: on a tracked promising
+    // activation run directly; on a plain entry, queue the job and let the
+    // promising job tick deliver it — the same queued semantics the dispatch
+    // interlock already gives these entries while a chain is parked, and the
+    // job lifetime contract (heap-owned, abandoned == self-owned) is built
+    // for exactly this.
+    if (wxWasmOnPromisingActivationJs())
+    {
+        fn(arg);
+    }
+    else
+    {
+        wxWasmJspiJobs().push_back({fn, arg});
+        wxWasmArmJspiJobTickJs();
+    }
+#elif wxWASM_STAR_DISPATCH
     // Already on a dispatch context: same-stack recursion is what wxYield and
     // nested Dispatch() already do, and it keeps the ordering the caller
     // expects.
@@ -1107,6 +1231,13 @@ int wxGUIEventLoop::DoRun()
     // (see the header comment and docs/features/wasm-exceptions/09).
     if (s_wxRunDepth++ > 0)
     {
+#ifdef PCBJAM_JSPI
+        // JSPI: a nested loop is a registered "nested" wait that suspends
+        // whatever activation is running — a tool coroutine's own activation
+        // included. There is no stale-fiber guard to trip and no capture to
+        // misattribute, so the doc-19 mainstack bounce is unnecessary.
+        wxWasmNestedWaitBody(NULL);
+#else
         // A nested loop parks its whole stack for the dialog's lifetime, and
         // WHICH stack that is decides whether the app survives it. On a tool
         // coroutine's stack the park suspends the fiber's body where the fiber
@@ -1118,6 +1249,7 @@ int wxGUIEventLoop::DoRun()
         // non-tool dialog already puts it.
         if (!(wxWasmOnCoroutineStack() && wxWasmRunOnMainStack(&wxWasmNestedWaitBody, NULL)))
             wxWasmNestedWaitBody(NULL);
+#endif
 
         --s_wxRunDepth;
         return 0;
@@ -1157,6 +1289,11 @@ int wxGUIEventLoop::DoRun()
         // guards it is closed.
         wxWasmScheduleProcessEvents();
 
+#ifdef PCBJAM_JSPI
+        // JSPI: main() is a promising export; this loop's activation suspends
+        // for exactly one animation frame per tick. No contexts, no pumps.
+        wxWasmYieldToBrowser();
+#else
         if (pcbjam_sched::can_yield_here())
         {
             // D5: arm the next frame's wake, then yield this context to the
@@ -1171,6 +1308,7 @@ int wxGUIEventLoop::DoRun()
             // in-place park of the main stack.
             wxWasmYieldToBrowser();
         }
+#endif
     }
     --s_wxRunDepth;
 

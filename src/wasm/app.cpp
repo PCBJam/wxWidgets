@@ -60,6 +60,13 @@ wxApp::~wxApp()
 
 int wxApp::OnRun()
 {
+#ifdef PCBJAM_JSPI
+    // JSPI: main() is a promising export, so the loop runs in place and its
+    // per-frame yield suspends main's own activation — the engine manages the
+    // stack. The D5 detach existed to keep the ONE Asyncify slot free of
+    // per-frame parks; there is no slot anymore.
+    return wxAppBase::OnRun();
+#else
     // D5 (pcbjam docs/features/async/22): the main loop moves onto a scheduler
     // context whose per-frame wait is a context park. The main stack is then
     // the scheduler's and nothing else — the per-frame Asyncify park this
@@ -72,6 +79,7 @@ int wxApp::OnRun()
 
     // Context creation failed: run the loop in place, exactly as before D5.
     return wxAppBase::OnRun();
+#endif
 }
 
 // Defined in toplevel.cpp. True if `win` is, or contains, a wxGLCanvas — the 3D viewer,
