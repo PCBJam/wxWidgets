@@ -9,22 +9,22 @@
 #define _WX_WASM_PRIVATE_YIELDWAIT_H_
 
 // The doc-13 §2 yield API (pcbjam docs/features/async/17, step S4), backed by
-// the injected scheduler's wait registry (the shim is the only runtime since
-// doc 20 D-1 — no probe needed). The contract:
+// the jspi-scheduler.js shim's wait registry (the shim is the only runtime —
+// no probe needed). The contract:
 //
-//   int token = wxWasmBeginWait("modal");   // BEFORE showing/parking:
+//   int token = wxWasmBeginWait("modal");   // BEFORE showing/suspending:
 //                                           // a resolve racing ahead of the
-//                                           // park pre-resolves the promise
+//                                           // suspend pre-resolves the wait
 //   ... show UI / start the async thing ...
-//   int result = wxWasmYieldUntil(token);   // asyncify-parks THIS chain;
+//   int result = wxWasmYieldUntil(token);   // suspends THIS chain;
 //                                           // scheduler-managed wake
 //   ... later, from any JS/C++ path ...
 //   wxWasmResolveWait(token, result);       // exact wait
 //   wxWasmResolveTopWait("modal", result);  // or innermost of a kind (LIFO)
 //
 // No per-wait pump exists: the top-level tick is the only dispatcher (it runs
-// at any DoRun depth on scheduler builds), and the parked chain's interlock
-// slot is zeroed by its caller exactly as before. Implemented in evtloop.cpp.
+// at any DoRun depth), and the suspended chain's interlock slot is zeroed by
+// its caller exactly as before. Implemented in evtloop.cpp.
 
 extern "C" int  wxWasmBeginWait(const char *kind);
 extern "C" int  wxWasmYieldUntil(int token);

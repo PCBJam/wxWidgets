@@ -24,7 +24,7 @@
 #include "wx/wasm/private/yieldwait.h"
 
 //-----------------------------------------------------------------------------
-// JavaScript helper functions using Asyncify
+// JavaScript helper functions using scheduler token waits
 //-----------------------------------------------------------------------------
 
 // Check if the browser Clipboard API is available
@@ -34,13 +34,9 @@ EM_JS(bool, js_isClipboardAPIAvailable, (), {
            typeof navigator.clipboard.writeText === 'function';
 });
 
-// W4 quartet, Phase E shape (docs/features/async/22 §5): each clipboard op
-// opens a wait token, starts the JS request, and waits via wxWasmYieldUntil —
-// a context park when the frame stands on a scheduler context, the in-place
-// park otherwise. Every resolution defers to at least a microtask (the
-// early-resolve contract, doc 22 §10 Phase E retry entry); the audited
-// `concurrent-park` firings in the clipboard/dialog specs were exactly these
-// bridges parking in place while another park was live.
+// W4 quartet (docs/features/async/22 §5): each clipboard op opens a wait
+// token, starts the JS request, and suspends via wxWasmYieldUntil. Every
+// resolution defers to at least a microtask (the early-resolve contract).
 
 // Write text to clipboard.
 // Wait result: 0 = success, 1 = no API, 2 = permission denied, 3 = other error, 4 = timeout
@@ -344,12 +340,12 @@ bool wxClipboard::IsSupported(const wxDataFormat& format)
 
         // IsSupported is a synchronous-by-contract predicate that UI-update /
         // paste-enable paths call repeatedly. It must NOT call
-        // js_clipboardHasText(): that EM_ASYNC_JS parks the stack for up to
-        // 2 s awaiting navigator.clipboard.readText() (permission-gated), and
-        // those long-parked Asyncify sleeps overlapping fiber swaps are the
-        // "index out of bounds" crash family (see docs/features/async/). Answer
-        // optimistically from the synchronous capability probe instead; the
-        // real (user-gesture-gated) read happens in GetData().
+        // js_clipboardHasText(): that suspends the caller for up to 2 s
+        // awaiting navigator.clipboard.readText() (permission-gated) on every
+        // poll — and some callers are plain entries that cannot suspend at
+        // all (SuspendError). Answer optimistically from the synchronous
+        // capability probe instead; the real (user-gesture-gated) read
+        // happens in GetData().
         return js_isClipboardAPIAvailable() != 0;
     }
 

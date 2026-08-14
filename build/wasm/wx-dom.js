@@ -91,7 +91,8 @@
     // Containment for a chain that died mid-flight (trap, or a throwing wx
     // event handler): its dispatch-interlock guard never unwound — release it
     // or every later event defers forever behind a chain that is gone.
-    // Guarded: the export is absent in wx builds predating the interlock.
+    // Guarded: defends against serving a stale output/ mix where this glue
+    // and the wasm disagree about the export set.
     var contain = function (e) {
       // Surfaces in test logs; must never throw back into DOM event handlers.
       console.error('wx_dom_event(' + domId + ',' + kind + ') failed:', e);
@@ -1151,9 +1152,8 @@
 
       // NO popup pump (docs/features/async/17 S4): the top-level tick is the
       // sole dispatcher and keeps the app painting while DoPopupMenu's chain
-      // is parked. The menu itself is DOM, its events dispatch as fresh
-      // entries. (The legacy per-popup ProcessEvents pump was deleted at
-      // doc 20 D-1.)
+      // is suspended. The menu itself is DOM, its events dispatch as fresh
+      // entries.
     });
   };
 

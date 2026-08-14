@@ -80,10 +80,10 @@ void wxWasmTimerImpl::ScheduleNextInterval()
 
 void wxWasmTimerImpl::ScheduleTimerCallback(int millisecs, TimerCallbackFunc *callbackFunc)
 {
-    // The expiry lands in the mailbox and the event pump delivers it from a
-    // clean dispatch context (docs/features/async/17 S1), so a timer can no
-    // longer enter the wasm on top of a parked chain — Run()'s parked-retry
-    // below is a tripwire that should never fire.
+    // The expiry lands in the mailbox and the shim's delivery tick invokes
+    // it through the promising _wxWasmMailboxTick export, so a timer can no
+    // longer enter the wasm on top of a suspended chain — Run()'s
+    // parked-retry below is a tripwire that should never fire.
     wxWasmMailboxEnqueueAfter(TimerCallback, callbackFunc, millisecs);
 }
 

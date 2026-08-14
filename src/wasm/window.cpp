@@ -717,11 +717,11 @@ void wxWindowWasm::DestroyScrollbarDom()
 // Shows the DOM context menu and BLOCKS until an item is chosen or the menu
 // is dismissed, returning the chosen command id (-1 = cancelled). The whole
 // modal lifetime lives in JS (Module.wxShowContextMenu), mirroring
-// wxDialog::ShowModal: no C++ object's destructor needs to survive the
-// Asyncify suspension (which is unreliable here). No per-popup pump exists —
-// the top-level tick dispatches while this chain is parked (doc 17 S4).
-// JSPI: route the menu promise through the shim's shadow-stack discipline
-// (jspi-scheduler.js promiseYield; emscripten #27364).
+// wxDialog::ShowModal: the C++ side is a single suspended frame with no
+// per-popup pump — the top-level tick dispatches while this chain is
+// suspended (doc 17 S4). Route the menu promise through the shim's
+// shadow-stack discipline (jspi-scheduler.js promiseYield; emscripten
+// #27364).
 EM_ASYNC_JS(int, wxDomPopupMenuModal,
             (const char *json, int invokerDomId, int x, int y), {
     return await globalThis.__wxScheduler.promiseYield(
@@ -733,8 +733,8 @@ bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
 {
     wxCHECK_MSG(menu, false, wxT("DoPopupMenu: NULL menu"));
 
-    // Build the JSON before suspending: no wxString may need to outlive the
-    // Asyncify park (destructors don't reliably run across it).
+    // Build the JSON up front; the suspended frame keeps it alive for the
+    // menu's whole lifetime.
     const wxString json = menu->WasmItemsToJson();
 
     // x/y are client coords of this window, OR wxDefaultCoord meaning "at the
@@ -742,10 +742,11 @@ bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
     const int vx = (x == wxDefaultCoord) ? -1 : x;
     const int vy = (y == wxDefaultCoord) ? -1 : y;
 
-    // The invoking dispatch chain parks for the menu's whole lifetime; event
-    // dispatch must keep running meanwhile (the menu itself and the rest of
-    // the UI), so zero the dispatch interlock for the park's duration
-    // (manual save/restore: destructors are not reliable across the park).
+    // The invoking dispatch chain suspends for the menu's whole lifetime;
+    // event dispatch must keep running meanwhile (the menu itself and the
+    // rest of the UI), so zero the dispatch interlock for that whole span
+    // (manual save/restore: wxWasmDispatchRestore centralizes the
+    // erased-guard reporting).
     const int savedDispatchDepth = wxWasmDispatchDepth;
     wxWasmDispatchDepth = 0;
     const int chosenId =

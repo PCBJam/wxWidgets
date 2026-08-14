@@ -447,8 +447,8 @@ void EMSCRIPTEN_KEEPALIVE wx_window_move(int cssId, int x, int y)
 
 // Close a non-main top-level window via wxEVT_CLOSE (-> the frame's
 // OnCloseWindow). MUST be invoked as an ASYNC ccall: Close() runs the handler
-// synchronously and may pump the event loop / show a modal, which aborts
-// Asyncify if dispatched from a synchronous DOM-event ccall.
+// synchronously and may show a modal, which suspends — a plain ccall cannot
+// suspend (SuspendError); wx_window_close is a promising export.
 void EMSCRIPTEN_KEEPALIVE wx_window_close(int cssId)
 {
     wxTopLevelWindow* win = wxFindTopLevelByCSSId(cssId);
@@ -472,9 +472,9 @@ void EMSCRIPTEN_KEEPALIVE wx_window_resize(int cssId, int x, int y, int width, i
 
         // The JS resize reassigned (and thus CLEARED) the window's 2D canvas, so the
         // whole window must repaint — not just the strip SetSize invalidated. And
-        // inside a modal dialog's Asyncify event pump the repaint is otherwise
-        // deferred until the next input event (the dialog shows its black background
-        // until the user clicks). Force a full, synchronous repaint now — the same
+        // left to the per-frame tick the repaint lands a frame later (the dialog
+        // flashes its black background meanwhile). Force a full, synchronous
+        // repaint now — the same
         // remedy wxApp uses after a button event (HandleMouseButtonEvent -> Paint).
         // wxApp::Paint() only repaints windows whose NeedsPaint() is set, so this
         // refreshes just the resized window.

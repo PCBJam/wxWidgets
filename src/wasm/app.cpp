@@ -21,12 +21,11 @@
 #include "wx/private/eventloopsourcesmanager.h"
 #include "wx/wasm/private/dispatch.h"
 #include "wx/wasm/private/mailbox.h"
-#include "wx/wasm/private/mainloop.h"
 #include "wx/wasm/private/display.h"
 
-// Defined in evtloop.cpp: run work on a dispatch context instead of the stack
-// it arrived on (doc 22 §10 — every entry that can reach a tool coroutine must
-// go through the scheduler, or the rewind paths do not match).
+// Defined in evtloop.cpp: run work on an activation that may suspend — plain
+// DOM entries queue the job for the promising job tick instead of trapping
+// with SuspendError at the first wait below them.
 extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg);
 #include "wx/wasm/private/keyboard.h"
 #include "wx/wasm/private/mouse.h"
@@ -62,11 +61,11 @@ wxApp::~wxApp()
 bool wxApp::OnExceptionInMainLoop()
 {
     // Browser-port contract: a throwing event handler must not tear down the
-    // app. The base default exits the main loop — under the detached D5 loop
-    // that reads as a silent clean shutdown mid-session (observed: a throwing
-    // wxEVT_TEXT handler destroying every window). The pre-EH builds survived
-    // because the throw escaped to the JS dispatch boundary and was contained
-    // there; keep that behavior, but say what happened on the console.
+    // app. The base default exits the main loop — in the browser that reads
+    // as a silent clean shutdown mid-session (observed: a throwing wxEVT_TEXT
+    // handler destroying every window). The pre-EH builds survived because
+    // the throw escaped to the JS dispatch boundary and was contained there;
+    // keep that behavior, but say what happened on the console.
     try
     {
         throw;
@@ -84,15 +83,6 @@ bool wxApp::OnExceptionInMainLoop()
     return true; // keep the main loop running
 }
 #endif
-
-int wxApp::OnRun()
-{
-    // JSPI: main() is a promising export, so the loop runs in place and its
-    // per-frame yield suspends main's own activation — the engine manages the
-    // stack. The D5 detach existed to keep the ONE Asyncify slot free of
-    // per-frame parks; there is no slot anymore.
-    return wxAppBase::OnRun();
-}
 
 // Defined in toplevel.cpp. True if `win` is, or contains, a wxGLCanvas — the 3D viewer,
 // whose paint runs the multi-threaded CPU raytracer. Shared so Paint() can defer it on
@@ -117,7 +107,7 @@ void wxApp::Paint(bool deferGLCanvasWindows)
         // thread for them. When this Paint() is a SYNCHRONOUS repaint driven from a DOM
         // event callback (a mouse button, see HandleMouseEvent) the main thread can't
         // return to the JS event loop to boot an on-demand Worker → the raytrace join
-        // deadlocks (or aborts the nested Asyncify unwind). Defer it to the per-frame
+        // deadlocks. Defer it to the per-frame
         // ProcessEvents pump (evtloop.cpp), which yields between frames so Workers boot —
         // the same remedy wx_window_resize uses. The window keeps NeedsPaint() set, so the
         // next pump frame repaints it. The MAIN frame's wxGLCanvas is the GAL view (glemu/
@@ -240,9 +230,9 @@ bool wxApp::HandleKeyEvent(wxKeyEvent *event)
 
         if (wxWasmDispatchParked())
         {
-            // Another dispatch chain is Asyncify-parked mid-handler; running
-            // key handlers now would interleave with its half-mutated widget
-            // state. Queue the event for the first pump tick after resume.
+            // Another dispatch chain is suspended mid-handler; running key
+            // handlers now would interleave with its half-mutated widget
+            // state. Queue the event for the first tick after resume.
             // CHAR_HOOK reports "not handled" so the caller still synthesizes
             // the follow-up KEY_DOWN (queued too, order preserved); other
             // types report "handled" so the browser default stays suppressed
@@ -302,10 +292,10 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
 {
     if (wxWasmDispatchParked())
     {
-        // Another dispatch chain is Asyncify-parked mid-handler; running
-        // mouse handlers now would interleave with its half-mutated widget
+        // Another dispatch chain is suspended mid-handler; running mouse
+        // handlers now would interleave with its half-mutated widget
         // state. Keep wxGetMouseState() truthful, queue button events for
-        // the first pump tick after resume (targeted like
+        // the first tick after resume (targeted like
         // SendMouseEventToWindow would), and drop motion/hover synthesis -
         // the next real motion after resume re-syncs it.
         UpdateMouseState(*event);
@@ -460,12 +450,12 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
     // wxPostEvent and (b) calls Refresh()/Invalidate(). Two examples in the symbol
     // chooser: expanding a wxDataViewCtrl row, and selecting a row — which posts
     // EVT_LIBITEM_SELECTED (preview + description update) / EVT_LIBITEM_CHOSEN
-    // (double-click accept+close). Inside a modal's Asyncify-driven event pump
-    // those queued events and their repaints are not flushed until the NEXT input
-    // event, so the panel lags one selection behind and double-click doesn't
+    // (double-click accept+close). Left to the per-frame tick, those queued
+    // events and their repaints land a frame later, so the panel lags one
+    // selection behind and double-click doesn't
     // close. Process the queued events and repaint synchronously after a button
     // event so the interaction takes effect immediately. Motion/wheel are excluded
-    // to avoid per-move churn; idle work stays with the pump.
+    // to avoid per-move churn; idle work stays with the per-frame tick.
     if (event->ButtonDown() || event->ButtonUp() || event->ButtonDClick())
     {
         // ProcessPendingEvents() runs synchronously: it flushes the click's queued
@@ -500,7 +490,7 @@ void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
     {
         // Queue the tick for delivery when the interlock frees instead of
         // dropping it — every tick the user made scrolls, just later (a long
-        // park replays them as a burst, which is the deliver-not-drop
+        // suspension replays them as a burst, which is the deliver-not-drop
         // contract). The wheel resolves its target window from the CURRENT
         // pointer position at delivery, matching what a fresh tick after
         // resume would do.
@@ -709,22 +699,16 @@ const char *GetEventName(int eventType)
 }
 
 // ----------------------------------------------------------------------------
-// DOM entries run on a dispatch context, not on the stack they arrive on
-// (pcbjam docs/features/async/22 §10).
+// DOM entries hand their bodies to the scheduler as jobs
+// (wxWasmRunOnDispatchContext): the emscripten_set_*_callback entries are
+// plain table calls that cannot suspend, so a handler that reaches a wait
+// must run on a promising activation instead.
 //
-// A DOM handler enters wasm on the MAIN stack. Dispatching there reaches a
-// KiCad tool coroutine through libcontext's DIRECT symmetric swap, while the
-// tick reaches that same coroutine through the dispatch context as a STAR
-// TRANSFER — and a capture written by one path cannot be rewound by the other
-// ("index out of bounds" in doRewind, measured on every canvas tool). So the
-// handler bodies below are packaged as jobs and handed to the scheduler.
-//
-// LIFETIME. A job usually runs to completion inside wxWasmRunOnDispatchContext
-// (the context parks again and the pump returns), but it MAY park — a click
-// that opens a modal keeps the job alive for the dialog's lifetime. The job is
-// therefore heap-owned, and ownership goes to whoever finishes last: the job
-// deletes itself if the caller has already given up on it, otherwise the
-// caller deletes it and reads its result.
+// LIFETIME. A job usually runs to completion inside wxWasmRunOnDispatchContext,
+// but it MAY suspend — a click that opens a modal keeps the job alive for the
+// dialog's lifetime. The job is therefore heap-owned, and ownership goes to
+// whoever finishes last: the job deletes itself if the caller has already
+// given up on it, otherwise the caller deletes it and reads its result.
 // ----------------------------------------------------------------------------
 namespace
 {

@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////////
 // Name:        src/wasm/dialog.cpp
-// Purpose:     wxDialog implementation for WASM using Asyncify for modal dialogs
+// Purpose:     wxDialog implementation for WASM using JSPI for modal dialogs
 // Author:      Robert Roebling, Vaclav Slavik (original univ)
-//              Adam Hilss (WASM port), extended for Asyncify
+//              Adam Hilss (WASM port), extended for suspending modals
 // Copyright:   (c) 2001 SciTech Software, Inc. (www.scitechsoft.com)
 //              (c) 2022 Adam Hilss
 // Licence:     wxWindows licence
@@ -13,8 +13,8 @@
 // wxWidgets event loop approach doesn't work in WASM (JavaScript is
 // single-threaded and cannot truly block).
 //
-// ShowModal() registers a "modal" wait with the injected scheduler shim and
-// Asyncify-suspends the C++ stack on it; EndModal() resolves the innermost
+// ShowModal() registers a "modal" wait with the scheduler shim and
+// JSPI-suspends the C++ stack on it; EndModal() resolves the innermost
 // registered wait and the stack resumes (docs/features/async/17 S4). The
 // top-level tick is the sole event dispatcher while the modal is open.
 
@@ -181,11 +181,8 @@ bool wxDialog::IsModal() const
 }
 
 // ----------------------------------------------------------------------------
-// WASM-specific modal implementation using Asyncify
+// WASM-specific modal implementation using JSPI
 // ----------------------------------------------------------------------------
-// (The legacy startModal event pump and its Module._wxModalResolvers /
-// _endModal / _pendingModalResult machinery were deleted at doc 20 D-1: the
-// modal is a registered scheduler wait, and no per-modal pump exists.)
 
 int wxDialog::ShowModal()
 {
@@ -217,10 +214,10 @@ int wxDialog::ShowModal()
 
     // Suspend the C++ stack until EndModal() resolves it.
     //
-    // The opener's dispatch chain parks here for the modal's whole lifetime;
-    // the legitimate dispatcher keeps running meanwhile, so zero the
-    // dispatch interlock for the park's duration (manual save/restore:
-    // destructors are not reliable across an Asyncify park).
+    // The opener's dispatch chain suspends here for the modal's whole
+    // lifetime; the legitimate dispatcher keeps running meanwhile, so zero
+    // the dispatch interlock for that whole span (manual save/restore:
+    // wxWasmDispatchRestore centralizes the erased-guard reporting).
     const int savedDispatchDepth = wxWasmDispatchDepth;
     wxWasmDispatchDepth = 0;
     const int result = wxWasmYieldUntil(waitToken);

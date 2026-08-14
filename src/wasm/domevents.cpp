@@ -81,10 +81,9 @@ wxString wxDomBitmapToDataURL(const wxBitmap& bitmap)
 extern "C"
 {
 
-// Called from wx-dom.js event listeners. Dispatches directly into the wx
-// event machinery — the same pattern the mouse/keyboard Emscripten callbacks
-// use (each JS callback is a fresh WASM entry, so this works even while a
-// modal dialog has the main C++ stack Asyncify-suspended).
+// Called from wx-dom.js event listeners as an awaited call on a promising
+// export: each call is a fresh WASM entry that may itself suspend, so this
+// works even while a modal dialog keeps another chain suspended.
 void EMSCRIPTEN_KEEPALIVE wx_dom_event(int domId, int kind)
 {
     wxDomWindowMap::iterator it = gs_domWindows.find(domId);
@@ -97,11 +96,11 @@ void EMSCRIPTEN_KEEPALIVE wx_dom_event(int domId, int kind)
 
     if ( wxWasmDispatchParked() )
     {
-        // Another dispatch chain is Asyncify-parked mid-handler; defer this
-        // DOM event to the first pump tick after resume instead of running
-        // handlers over its half-mutated widget state. CallAfter binds the
-        // deferred call to the window's event queue, so it dies with the
-        // window if that is destroyed first.
+        // Another dispatch chain is suspended mid-handler; defer this DOM
+        // event to the first tick after resume instead of running handlers
+        // over its half-mutated widget state. CallAfter binds the deferred
+        // call to the window's event queue, so it dies with the window if
+        // that is destroyed first.
         window->CallAfter([window, domId, kind]() {
             gs_currentEventDomId = domId;
             window->OnDomEvent(static_cast<wxDomEventKind>(kind));

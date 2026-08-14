@@ -28,21 +28,12 @@ public:
     wxApp();
     virtual ~wxApp();
 
-    // D5 (pcbjam docs/features/async/22): hand the main loop to a scheduler
-    // context and return immediately — the app keeps running, driven by
-    // browser frame ticks, and main() returns with the runtime alive.
-    virtual int OnRun() wxOVERRIDE;
-
-    // The detached main-loop context body runs the stock main loop through
-    // this thunk; public only for the context entry in evtloop.cpp.
-    int RunMainLoopOnContext() { return wxAppBase::OnRun(); }
-
 #if wxUSE_EXCEPTIONS
     // Browser-port contract: an exception escaping an event handler must NOT
-    // tear down the app (the base default exits the main loop, which under
-    // the detached D5 loop reads as a silent clean shutdown mid-session).
-    // Parity with the pre-EH builds, where the throw escaped to the JS
-    // dispatch boundary and was contained there. Surface it, keep running.
+    // tear down the app (the base default exits the main loop, which in the
+    // browser reads as a silent clean shutdown mid-session). Parity with the
+    // pre-EH builds, where the throw escaped to the JS dispatch boundary and
+    // was contained there. Surface it, keep running.
     virtual bool OnExceptionInMainLoop() wxOVERRIDE;
 #endif
 

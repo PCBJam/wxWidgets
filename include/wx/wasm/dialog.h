@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////
 // Name:        wx/wasm/dialog.h
 // Purpose:     wxDialog class declaration for the WASM DOM port.
-//              Implemented by the shared src/wasm/dialog.cpp (Asyncify modal
+//              Implemented by the shared src/wasm/dialog.cpp (JSPI modal
 //              loop); this declaration mirrors wx/univ/dialog.h, which that
 //              file was originally written against.
 // Licence:     wxWindows licence

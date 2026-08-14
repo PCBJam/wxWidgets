@@ -20,7 +20,8 @@
 #include "wx/wasm/private/yieldwait.h"
 
 //-----------------------------------------------------------------------------
-// JavaScript helper functions using Asyncify for Local Font Access API
+// JavaScript helper functions using scheduler token waits for the
+// Local Font Access API
 //-----------------------------------------------------------------------------
 
 // Check if the Local Font Access API is available
@@ -29,12 +30,11 @@ EM_JS(bool, js_isFontAccessAPIAvailable, (), {
            typeof window.queryLocalFonts === 'function';
 });
 
-// W5, Phase E shape (docs/features/async/22 §5): the enumeration opens a wait
-// token, starts the query, and waits via wxWasmYieldUntil instead of
-// Asyncify-parking in place. All output writes happen in the resolve callback
-// BEFORE resolveWait — the parked caller reads them only after it resumes,
-// the same ordering the in-place park had. Resolution always defers to at
-// least a microtask (the early-resolve contract).
+// W5 (docs/features/async/22 §5): the enumeration opens a wait token, starts
+// the query, and suspends via wxWasmYieldUntil. All output writes happen in
+// the resolve callback BEFORE resolveWait — the suspended caller reads them
+// only after it resumes. Resolution always defers to at least a microtask
+// (the early-resolve contract).
 //
 // Wait result: number of fonts found, -1 on error/permission denied.
 // Font names are stored in the provided array (caller allocates pointers, we
