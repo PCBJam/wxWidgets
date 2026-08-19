@@ -290,6 +290,105 @@ void wxMenuBar::WasmRebuildMenus()
     InvalidateBestSize();
 }
 
+#if wxUSE_ACCEL
+
+// Depth-first search for an enabled, non-separator item whose parsed
+// accelerator ("\tCtrl+S" in the label) matches keyCode+accelFlags.
+static wxMenuItem *WasmFindAccelItem(wxMenu *menu, int keyCode, int accelFlags)
+{
+    for (wxMenuItemList::compatibility_iterator node =
+             menu->GetMenuItems().GetFirst();
+         node;
+         node = node->GetNext())
+    {
+        wxMenuItem *item = node->GetData();
+
+        if (item->IsSubMenu())
+        {
+            wxMenuItem *found =
+                WasmFindAccelItem(item->GetSubMenu(), keyCode, accelFlags);
+            if (found)
+                return found;
+            continue;
+        }
+
+        if (item->IsSeparator() || !item->IsEnabled())
+            continue;
+
+        wxAcceleratorEntry *accel = item->GetAccel();
+        if (!accel)
+            continue;
+
+        int entryKey = accel->GetKeyCode();
+        if (entryKey >= 'a' && entryKey <= 'z')
+            entryKey -= 'a' - 'A';
+
+        const bool match =
+            entryKey == keyCode &&
+            (accel->GetFlags() & (wxACCEL_ALT | wxACCEL_CTRL | wxACCEL_SHIFT))
+                == accelFlags;
+        delete accel;
+
+        if (match)
+            return item;
+    }
+
+    return NULL;
+}
+
+bool wxMenuBar::WasmTranslateAccel(const wxKeyEvent& event)
+{
+    int keyCode = event.GetKeyCode();
+    if (keyCode >= 'a' && keyCode <= 'z')
+        keyCode -= 'a' - 'A';
+
+    const int flags = (event.ControlDown() ? wxACCEL_CTRL : 0) |
+                      (event.ShiftDown() ? wxACCEL_SHIFT : 0) |
+                      (event.AltDown() ? wxACCEL_ALT : 0);
+
+    // Only modifier chords: plain and shift-only keys stay with whatever
+    // widget has focus (canvas hotkeys, text entry), matching the pre-accel
+    // behavior of the port.
+    if (!(flags & (wxACCEL_CTRL | wxACCEL_ALT)))
+        return false;
+
+    for (size_t pos = 0; pos < GetMenuCount(); pos++)
+    {
+        if (!IsEnabledTop(pos))
+            continue;
+
+        wxMenuItem *item = WasmFindAccelItem(GetMenu(pos), keyCode, flags);
+        if (!item)
+            continue;
+
+        // Dispatch like OnDomEvent() does for a DOM menu click.
+        const bool checkable = item->IsCheckable();
+        if (checkable)
+            item->Toggle();
+
+        wxMenu *menu = item->GetMenu();
+        if (menu)
+            menu->SendEvent(item->GetId(),
+                            checkable ? item->IsChecked() : -1);
+
+        if (checkable)
+            WasmRebuildMenus();
+
+        return true;
+    }
+
+    return false;
+}
+
+#else // !wxUSE_ACCEL
+
+bool wxMenuBar::WasmTranslateAccel(const wxKeyEvent& WXUNUSED(event))
+{
+    return false;
+}
+
+#endif // wxUSE_ACCEL/!wxUSE_ACCEL
+
 void wxMenuBar::OnDomEvent(wxDomEventKind kind)
 {
     if (kind == wxDOM_EVENT_MENU)

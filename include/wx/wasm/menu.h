@@ -9,6 +9,8 @@
 
 #include "wx/vector.h"
 
+class WXDLLIMPEXP_CORE wxKeyEvent;
+
 class WXDLLIMPEXP_CORE wxMenu : public wxMenuBase
 {
 public:
@@ -61,6 +63,12 @@ public:
 
     // wxEVT_MENU dispatch for clicks on the DOM menu popups
     virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
+
+    // The port has no native accelerator handling, so unhandled modifier
+    // chords (Ctrl/Cmd+key) are matched against the menu items' "\tCtrl+S"
+    // accelerators here and dispatched exactly like a DOM menu click.
+    // Returns true if an enabled item matched and its event was sent.
+    bool WasmTranslateAccel(const wxKeyEvent& event);
 
 protected:
     // intrinsic size of the DOM menubar, used by wxFrame::PositionMenuBar()

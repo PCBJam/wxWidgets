@@ -12,7 +12,9 @@
 
 #include "wx/apptrait.h"
 #include "wx/dnd.h"
+#include "wx/frame.h"
 #include "wx/log.h"
+#include "wx/menu.h"
 #include "wx/nonownedwnd.h"
 #include "wx/toplevel.h"
 #include "wx/utils.h"
@@ -784,6 +786,27 @@ struct wxWasmKeyJob : wxWasmDomJob
     bool preventDefault = true;
 };
 
+// The port has no native accelerator path, so a KEY_DOWN chord nobody's
+// CHAR_HOOK claimed is matched against the active frame's menubar
+// accelerators ("Save\tCtrl+S") — like native menu accelerators, this fires
+// no matter which widget inside the frame has focus.
+bool TranslateMenuAccel(const wxKeyEvent &event)
+{
+#if wxUSE_MENUBAR
+    wxWindow *focus = wxWindow::FindFocus();
+    wxWindow *top = focus ? wxGetTopLevelParent(focus)
+                          : wxTheApp ? wxTheApp->GetTopWindow() : NULL;
+    wxFrame *frame = wxDynamicCast(top, wxFrame);
+    if (frame == NULL)
+        return false;
+
+    wxMenuBar *menuBar = frame->GetMenuBar();
+    return menuBar != NULL && menuBar->WasmTranslateAccel(event);
+#else
+    return false;
+#endif
+}
+
 void wxWasmRunKeyJob(void *arg)
 {
     wxWasmKeyJob *job = static_cast<wxWasmKeyJob *>(arg);
@@ -797,8 +820,16 @@ void wxWasmRunKeyJob(void *arg)
         if (!app->HandleKeyEvent(&charHookEvent) ||
             charHookEvent.IsNextEventAllowed())
         {
+            // Menubar accelerator translation for unclaimed chords. Skipped
+            // while a dispatch is parked: HandleKeyEvent only queued the
+            // event above, and firing a menu handler now would interleave
+            // with the suspended chain's half-mutated state.
+            if (!wxWasmDispatchParked() && TranslateMenuAccel(event))
+            {
+                job->preventDefault = true;
+            }
             // The browser does not generate char events for some key codes
-            if (KeyCodeNeedsCharEvent(event.GetKeyCode()))
+            else if (KeyCodeNeedsCharEvent(event.GetKeyCode()))
             {
                 if (!app->HandleKeyEvent(&event))
                 {
@@ -814,7 +845,9 @@ void wxWasmRunKeyJob(void *arg)
         }
         else
         {
-            job->preventDefault = false;
+            // The CHAR_HOOK was claimed (a hotkey): suppress the browser
+            // default (Ctrl/Cmd+S must not open the save-page dialog).
+            job->preventDefault = true;
         }
     }
     else
@@ -850,7 +883,17 @@ EM_BOOL KeyCallback(int eventType,
                            ae.isContentEditable)) ? 1 : 0;
         }))
     {
-        if (strcmp(emscriptenEvent->key, "Escape") != 0)
+        // App-owned chords still reach wx even from inside a text field —
+        // native menu accelerators fire regardless of focus, and the
+        // browser default (Cmd/Ctrl+S = save page) is never wanted.
+        // Editing chords (Cmd+C/V/X/A/Z/…) stay with the input.
+        const char *key = emscriptenEvent->key;
+        const bool saveChord =
+            (emscriptenEvent->ctrlKey || emscriptenEvent->metaKey) &&
+            !emscriptenEvent->altKey &&
+            (key[0] == 's' || key[0] == 'S') && key[1] == '\0';
+
+        if (strcmp(key, "Escape") != 0 && !saveChord)
             return EM_FALSE;
     }
 
