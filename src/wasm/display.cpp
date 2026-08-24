@@ -112,6 +112,19 @@ double wxContentScaleFactor()
 
 class wxDisplayFactorySingleWasm : public wxDisplayFactorySingle
 {
+public:
+    // The base implementation bails out with wxNOT_FOUND for windows whose
+    // GetHandle() is null — which in this port is EVERY window (wxWindowWasm
+    // has no native handle; windows are DOM-backed). Callers persisting window
+    // geometry (e.g. KiCad's SaveWindowSettings) then store display = -1 and
+    // their restore path treats the position as invalid and re-centres the
+    // frame on every reopen. There is exactly one display here, so any window
+    // that exists is on display 0.
+    virtual int GetFromWindow(const wxWindow *window) wxOVERRIDE
+    {
+        return window ? 0 : wxNOT_FOUND;
+    }
+
 protected:
     virtual wxDisplayImpl *CreateSingleDisplay()
     {
