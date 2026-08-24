@@ -167,6 +167,19 @@ bool wxDialog::Show(bool show)
     if (show && CanDoLayoutAdaptation())
         DoLayoutAdaptation();
 
+    // Native ports centre dialogs created at wxDefaultPosition (the window
+    // manager / CW_USEDEFAULT does it for them); this port maps
+    // wxDefaultPosition to a literal (0, 0) (nonownedwnd.cpp) with no platform
+    // placement, dropping every unpositioned dialog in the top-left corner.
+    // That was masked for years by DIALOG_SHIM::Show unconditionally
+    // re-centring while wxDisplay::GetFromWindow() returned wxNOT_FOUND here;
+    // with the display lookup fixed, provide the native default ourselves:
+    // centre (on the display, matching the old visual behavior) any dialog
+    // still at the default spot when first shown. A dialog whose position was
+    // restored or set explicitly is not at (0, 0) and is left alone.
+    if ( show && !IsShown() && GetPosition() == wxPoint(0, 0) )
+        Centre();
+
     bool ret = wxDialogBase::Show(show);
 
     if ( show )
