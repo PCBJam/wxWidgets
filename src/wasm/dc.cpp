@@ -428,14 +428,37 @@ void wxWasmDCImpl::DoDrawRoundedRectangle(wxCoord x, wxCoord y,
 {
     wxCHECK_RET(IsOk(), wxT("invalid dc"));
 
+    // negative radius means a fraction of the smaller dimension (see gtk/dcclient.cpp)
+    if (radius < 0.0)
+        radius = - radius * ((width < height) ? width : height);
+
+    double xx = LogicalToDeviceDoubleX(x);
+    double yy = LogicalToDeviceDoubleY(y);
+    double ww = LogicalToDeviceXRel(width);
+    double hh = LogicalToDeviceYRel(height);
+    double rr = LogicalToDeviceXRel((wxCoord)radius);
+
+    if (ww < 0.0) { ww = -ww; xx -= ww; }
+    if (hh < 0.0) { hh = -hh; yy -= hh; }
+
+    if (rr <= 0.0)
+    {
+        DoDrawRectangle(x, y, width, height);
+        return;
+    }
+
+    // keep 2*radius within both sides, otherwise the corner arcs overlap
+    if (2.0 * rr > ww) rr = ww / 2.0;
+    if (2.0 * rr > hh) rr = hh / 2.0;
+
     EM_ASM({
         drawRoundedRect($0, $1, $2, $3, $4, $5, $6, $7);
     }, GetJavascriptId(),
-       LogicalToDeviceDoubleX(x),
-       LogicalToDeviceDoubleY(y),
-       LogicalToDeviceXRel(width),
-       LogicalToDeviceYRel(height),
-       radius,
+       xx,
+       yy,
+       ww,
+       hh,
+       rr,
        m_brush.IsNonTransparent(),
        m_pen.IsNonTransparent());
 }

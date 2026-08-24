@@ -1658,6 +1658,12 @@ if (typeof navigator !== 'undefined') {
   var drawRoundedRect = function (id, x, y, width, height, radius, fill, stroke) {
     var ctx = getContext(id);
 
+    if (width < 0) { width = -width; x -= width; }
+    if (height < 0) { height = -height; y -= height; }
+    // arcTo throws IndexSizeError on a negative radius; also keep the corner
+    // arcs from overlapping when the radius exceeds half a side
+    radius = Math.max(0, Math.min(radius, width / 2, height / 2));
+
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
     ctx.lineTo(x + width - radius, y);
