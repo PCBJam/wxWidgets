@@ -975,9 +975,15 @@ void wxWindowWasm::SetFocus()
         caret->OnSetFocus();
 #endif // wxUSE_CARET
 
-    // Keep browser focus in sync (no-op if the element already has it).
+    // Keep browser focus in sync (no-op if the element already has it). A
+    // canvas-drawn window taking wx focus must also take BROWSER focus away
+    // from whichever wx-dom control had it: the mouse callback preventDefaults
+    // mousedown, so the browser never moves focus off a DOM <input> on its
+    // own, and the keyboard callback would keep routing keys to that input.
     if (m_domId)
         wxDomFocus(m_domId);
+    else
+        wxDomBlurActive();
 }
 
 void wxWindowWasm::KillFocus()

@@ -261,6 +261,17 @@ inline void wxDomFocus(int domId)
     EM_ASM({ wxDomFocus($0); }, domId);
 }
 
+// Browser focus must FOLLOW wx focus in both directions: wxDomFocus above
+// moves it onto a DOM-backed control; this drops it when wx focus moves to a
+// canvas-drawn window (a wx-dom control that kept document.activeElement
+// after a canvas click would otherwise own every keystroke — the keyboard
+// callback hands keys to a focused DOM editable). Only wx-dom controls are
+// blurred; page-level inputs outside wx are left alone.
+inline void wxDomBlurActive()
+{
+    EM_ASM({ if (typeof wxDomBlurActive === 'function') wxDomBlurActive(); });
+}
+
 // CSS font string — the port's wxFont native info desc IS a CSS font.
 inline void wxDomSetFont(int domId, const wxString& cssFont)
 {

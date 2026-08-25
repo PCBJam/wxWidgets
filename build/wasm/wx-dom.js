@@ -915,6 +915,17 @@
     if (el && document.activeElement !== el) el.focus();
   };
 
+  // Counterpart of wxDomFocus for wx focus moving to a canvas-drawn window
+  // (wxWindowWasm::SetFocus): drop browser focus from the wx-dom control that
+  // still has it, so keys go back to wx. Controls outside wx-dom (the host
+  // page's own inputs) are never touched.
+  window.wxDomBlurActive = function () {
+    var ae = document.activeElement;
+    if (ae && ae !== document.body && ae.closest && ae.closest('.wx-dom-control')) {
+      ae.blur();
+    }
+  };
+
   window.wxDomSetFont = function (domId, cssFont) {
     var el = controls.get(domId);
     if (el && cssFont) el.style.font = cssFont;
