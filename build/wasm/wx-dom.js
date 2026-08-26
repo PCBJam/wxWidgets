@@ -473,6 +473,9 @@
     el.style.top = y + 'px';
     el.style.width = w + 'px';
     el.style.height = h + 'px';
+    // A control that moves under (or out from under) an open secondary window
+    // changes the input-barrier geometry — wx.js recomputes it (rAF-coalesced).
+    wxScheduleBarrierRecompute();
     // Notebook tabs register their viewport rects in the e2e registry;
     // unlike canvas tabs they don't repaint on move, so re-sync here.
     if (el.dataset.wxNotebook && el._wxTabs) {

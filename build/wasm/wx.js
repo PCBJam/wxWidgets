@@ -443,6 +443,29 @@ if (typeof navigator !== 'undefined') {
     return displayScaleFactor;
   };
 
+  // wx "screen" coords are #canvas-relative CSS px (the mouse-ingress and
+  // element-registry contract: emscripten targetX/Y and wx-dom's forwarded
+  // events are both computed against #canvas). Positioned window elements
+  // live in OTHER CSS frames — absolute children of #window-container, or the
+  // viewport for fixed popups — and those frames need not share #canvas's
+  // origin (template.html puts #window-container BELOW the canvas, so
+  // unanchored windows land a full viewport off-screen). Returns the offset
+  // that maps wx screen coords into the element's frame. Measured per call:
+  // both rects are viewport-relative so scroll cancels, and no cache means no
+  // invalidation bugs. #canvas always exists and has live geometry by the
+  // time any secondary window is placed (they are created after runtime
+  // init, when the shell has flipped the canvas to display:block).
+  var wxScreenBase = function (isFixed) {
+    var canvasRect = document.getElementById('canvas').getBoundingClientRect();
+    if (isFixed) {
+      return { left: canvasRect.left, top: canvasRect.top };
+    }
+    var containerRect =
+        document.getElementById('window-container').getBoundingClientRect();
+    return { left: canvasRect.left - containerRect.left,
+             top: canvasRect.top - containerRect.top };
+  };
+
   /* wxNonOwnedWindow */
 
   // Ensure #window-container creates a stacking context so GL canvases
@@ -453,8 +476,32 @@ if (typeof navigator !== 'undefined') {
   var windowContainer = (typeof document !== 'undefined')
       ? document.getElementById('window-container') : null;
   if (windowContainer) {
-    windowContainer.style.position = 'relative';
+    // The app's coordinate anchors (#main-window wrapping #canvas, and
+    // #window-container holding secondary windows) must not move with page
+    // flow: content above them (the template's status block) collapses when
+    // the app starts, and an anchor that shifts AFTER windows were placed
+    // strands those windows at stale offsets. A host that positioned the
+    // elements itself (the kicad pages pin both at 0,0) is respected; an
+    // unpositioned one gets the same pinned-overlay layout enforced here.
+    // #window-container also creates a stacking context (z-index:1) so GL
+    // canvases render above the 2D #canvas inside #main-window.
+    if (document.defaultView.getComputedStyle(windowContainer).position === 'static') {
+      windowContainer.style.position = 'absolute';
+      windowContainer.style.left = '0';
+      windowContainer.style.top = '0';
+    }
     windowContainer.style.zIndex = '1';
+
+    // wx-dom controls are absolute children of #main-window carrying
+    // wx-screen (canvas-origin) coords, so #main-window must be a positioned
+    // element wrapping #canvas at its top-left.
+    var mainWindowEl = document.getElementById('main-window');
+    if (mainWindowEl &&
+        document.defaultView.getComputedStyle(mainWindowEl).position === 'static') {
+      mainWindowEl.style.position = 'absolute';
+      mainWindowEl.style.left = '0';
+      mainWindowEl.style.top = '0';
+    }
 
     // Window-chrome CSS for the divs createWindow() builds (.window /
     // .window.toplevel / .window-canvas). Injected here — the code that creates
@@ -479,20 +526,26 @@ if (typeof navigator !== 'undefined') {
         // in wx-dom.js and the main frame is #canvas — neither matches
         // .window.toplevel, so neither is affected.
         '.window.toplevel {',
-        '  border: 1px solid #808080;',
+        // outline, not border: a border shifts the padding box (where
+        // .window-canvas and wx-dom controls anchor) 1px off the wx model
+        // rect; an outline draws outside the box with zero layout effect.
+        '  outline: 1px solid #808080;',
         '  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.35);',
         '}',
-        // Input barrier for windows shadowed by a higher, overlapping top-level
-        // window (see recomputeModalBarrier). Each dialog control is a real DOM
-        // element with pointer-events:auto, so without this a click over an
-        // upper modal's canvas-drawn area (which is pointer-events:none) still
-        // hit-tests the live control of the dialog beneath it. Forcing the whole
-        // subtree to pointer-events:none — !important to beat the inline
-        // pointer-events:auto wx-dom.js sets on controls — drops the click
-        // through to #canvas, where the C++ hit-test routes it to the true
-        // topmost window. Native wx leans on the OS to block input to shadowed
-        // windows; the browser has no such barrier, so we add one here.
-        '.window.wx-inert, .window.wx-inert * {',
+        // Input barrier for surfaces shadowed by a higher, overlapping
+        // top-level window (see recomputeModalBarrier). Each dialog/main-frame
+        // control is a real DOM element with pointer-events:auto, so without
+        // this a click over an upper window's canvas-drawn area (which is
+        // pointer-events:none) still hit-tests the live control beneath it —
+        // a dialog's control under a higher dialog, or a main-frame control
+        // (e.g. pcbnew's track-width <select>) under a secondary frame like
+        // the 3D viewer. Forcing the subtree to pointer-events:none —
+        // !important to beat the inline pointer-events:auto wx-dom.js sets on
+        // controls — drops the click through to #canvas, where the C++
+        // hit-test routes it to the true topmost window. Native wx leans on
+        // the OS to block input to shadowed windows; the browser has no such
+        // barrier, so we add one here.
+        '.wx-inert, .wx-inert * {',
         '  pointer-events: none !important;',
         '}',
         '.window-canvas {',
@@ -596,11 +649,9 @@ if (typeof navigator !== 'undefined') {
 
       // Popup/transient windows (toolbar palettes, color pickers, etc.) are
       // floating overlays. Position them relative to the viewport instead of
-      // absolutely within #window-container — the container is not at the
-      // viewport origin (it sits below other page content), so an absolutely
-      // positioned popup lands far from its intended screen coordinates and is
-      // effectively unreachable. `fixed` makes the screen coords passed to
-      // setWindowRect map straight to viewport coords, independent of layout.
+      // absolutely within #window-container so they never scroll with page
+      // content; setWindowRect maps their wx screen coords to the viewport
+      // via wxScreenBase(true) (#canvas's viewport offset).
       if (classList && (' ' + classList + ' ').indexOf(' popup ') !== -1) {
         window.style.position = 'fixed';
       }
@@ -663,14 +714,21 @@ if (typeof navigator !== 'undefined') {
 
     var windowData = windowMap.get(id);
 
-    var header = document.getElementsByClassName('header')[0];
-    var headerHeight = header ? header.offsetHeight : 0;
-
     var window = windowData.window;
-    window.style.left = x + 'px';
-    window.style.top = y + headerHeight + 'px';
+    if (id === 0) {
+      // The main window owns #canvas — it DEFINES the wx screen origin.
+      window.style.left = x + 'px';
+      window.style.top = y + 'px';
+    } else {
+      var base = wxScreenBase(window.style.position === 'fixed');
+      window.style.left = (x + base.left) + 'px';
+      window.style.top = (y + base.top) + 'px';
+    }
     window.style.width = width + 'px';
     window.style.height = height + 'px';
+
+    // A moved/resized window changes which main-frame controls it shadows.
+    wxScheduleBarrierRecompute();
 
     var canvas = windowData.canvas;
 
@@ -799,14 +857,11 @@ if (typeof navigator !== 'undefined') {
         return;
       }
       // Place the window's top-left so the grab point stays under the cursor,
-      // relative to #window-container, then convert to wx screen coords — the
-      // inverse of setWindowRect (top = y + headerHeight).
-      var container = document.getElementById('window-container');
-      var crect = container ? container.getBoundingClientRect() : { left: 0, top: 0 };
-      var header = document.getElementsByClassName('header')[0];
-      var headerHeight = header ? header.offsetHeight : 0;
-      pendingX = Math.round(ev.clientX - grabDX - crect.left);
-      pendingY = Math.round(ev.clientY - grabDY - crect.top - headerHeight);
+      // in wx screen coords (#canvas-relative CSS px) — the inverse of
+      // setWindowRect's wxScreenBase anchoring.
+      var canvasRect = document.getElementById('canvas').getBoundingClientRect();
+      pendingX = Math.round(ev.clientX - grabDX - canvasRect.left);
+      pendingY = Math.round(ev.clientY - grabDY - canvasRect.top);
       ev.stopPropagation();
       if (!rafPending) {
         rafPending = true;
@@ -941,15 +996,13 @@ if (typeof navigator !== 'undefined') {
           h = MIN_H;
         }
 
-        // Convert the top-left back to wx screen coords — the inverse of setWindowRect
-        // (top = y + headerHeight), the same transform the title-bar drag uses.
-        var container = document.getElementById('window-container');
-        var crect = container ? container.getBoundingClientRect() : { left: 0, top: 0 };
-        var header = document.getElementsByClassName('header')[0];
-        var headerHeight = header ? header.offsetHeight : 0;
+        // Convert the top-left back to wx screen coords (#canvas-relative CSS
+        // px) — the inverse of setWindowRect's wxScreenBase anchoring, the
+        // same transform the title-bar drag uses.
+        var canvasRect = document.getElementById('canvas').getBoundingClientRect();
         pending = {
-          x: Math.round(left - crect.left),
-          y: Math.round(top - crect.top - headerHeight),
+          x: Math.round(left - canvasRect.left),
+          y: Math.round(top - canvasRect.top),
           w: Math.round(w),
           h: Math.round(h)
         };
@@ -1088,6 +1141,46 @@ if (typeof navigator !== 'undefined') {
       // Also block focus/keyboard on the shadowed window where supported; the
       // pointer-events CSS above is what actually re-routes the clicks.
       try { w.el.inert = shadowed; } catch (e) { /* older engine: CSS suffices */ }
+    });
+
+    // The main window (id 0) is excluded from `wins` — its #canvas must stay
+    // live — but its wx-dom controls sit ABOVE #canvas with
+    // pointer-events:auto, so a click meant to fall through an overlapping
+    // secondary window's pointer-events:none surface lands on a control of
+    // the frame BENEATH it instead (the 3D viewer's toolbar row over pcbnew's
+    // track-width <select> popped that select's native dropdown). Secondary
+    // windows always paint above #main-window (#window-container is
+    // z-index:1), so a main-frame control that any visible one overlaps must
+    // not take input. Per-control granularity: controls outside the overlap
+    // (e.g. the layers panel beside a small viewer) stay interactive.
+    var mainData = windowMap.get(0);
+    if (mainData && mainData.window) {
+      mainData.window.querySelectorAll(
+          '.wx-dom-control, .wx-tab-strip, [data-wx-menu-bar="1"]')
+        .forEach(function (c) {
+          var covered = false;
+          if (wins.length) {
+            var cr = c.getBoundingClientRect();
+            if (cr.width > 0 && cr.height > 0) {
+              covered = wins.some(function (w) { return rectsOverlap(w.rect, cr); });
+            }
+          }
+          c.classList.toggle('wx-inert', covered);
+          try { c.inert = covered; } catch (e) { /* older engine: CSS suffices */ }
+        });
+    }
+  };
+
+  // Window rects change per animation frame during a titlebar drag or edge
+  // resize, and wx-dom controls move during main-frame relayout — coalesce
+  // the barrier recomputes those trigger instead of running one per call.
+  var barrierRecomputePending = false;
+  var wxScheduleBarrierRecompute = function () {
+    if (typeof document === 'undefined' || barrierRecomputePending) return;
+    barrierRecomputePending = true;
+    requestAnimationFrame(function () {
+      barrierRecomputePending = false;
+      recomputeModalBarrier();
     });
   };
 
@@ -1314,11 +1407,12 @@ if (typeof navigator !== 'undefined') {
       return;
     }
 
-    var header = document.getElementsByClassName('header')[0];
-    var headerHeight = header ? header.offsetHeight : 0;
-
-    canvas.style.left = x + 'px';
-    canvas.style.top = (y + headerHeight) + 'px';
+    // GL canvases are absolute children of #window-container — anchor them
+    // the same way setWindowRect anchors window divs, so they stay glued to
+    // their frame in hosts where the container is not at the canvas origin.
+    var base = wxScreenBase(false);
+    canvas.style.left = (x + base.left) + 'px';
+    canvas.style.top = (y + base.top) + 'px';
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
 
