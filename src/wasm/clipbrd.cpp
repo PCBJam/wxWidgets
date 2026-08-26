@@ -248,8 +248,11 @@ bool wxClipboard::IsOpened() const
 
 bool wxClipboard::SetData(wxDataObject *data)
 {
-    // SetData clears existing data and sets new data
-    Clear();
+    // AddData overwrites the browser clipboard anyway; a browser Clear()
+    // here would cost an extra JSPI round-trip (up to 2 s) per copy and
+    // leave the clipboard EMPTY when the subsequent write fails. Only the
+    // local cache needs dropping.
+    m_textCache.Clear();
     return AddData(data);
 }
 
@@ -373,10 +376,13 @@ bool wxClipboard::GetData(wxDataObject& data)
             {
                 text = wxString::FromUTF8(browserText);
                 free(browserText);
-                gotFromBrowser = true;
 
-                // Update local cache
-                m_textCache = text;
+                // An EMPTY browser read is a miss, not a result: it is what
+                // a cleared clipboard (or our own failed write) looks like,
+                // and must not shadow a fresh local cache.
+                gotFromBrowser = !text.IsEmpty();
+                if (gotFromBrowser)
+                    m_textCache = text;
             }
         }
 
