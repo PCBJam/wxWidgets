@@ -328,7 +328,12 @@ private:
 // ----------------------------------------------------------------------------
 
 #if wxUSE_UNICODE
-    #if defined(__WXGTK20__) || defined(__WXX11__) || defined(__WXQT__)
+    #if defined(__WXGTK20__) || defined(__WXX11__) || defined(__WXQT__) \
+            || defined(__WXWASM__)
+        // wasm: wxUSE_UNICODE_UTF8 build; src/wasm/clipbrd.cpp exchanges
+        // wxDF_UNICODETEXT data with the browser Clipboard API as UTF-8.
+        // Without this the default (wxChar) branch below served UTF-32,
+        // which the clipboard truncated at the first NUL byte.
         #define wxNEEDS_UTF8_FOR_TEXT_DATAOBJ
     #elif defined(__WXMAC__)
         #define wxNEEDS_UTF16_FOR_TEXT_DATAOBJ

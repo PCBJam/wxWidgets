@@ -361,4 +361,22 @@ bool wxFileDataObject::SetData(size_t len, const void *buf)
     return true;
 }
 
+// ----------------------------------------------------------------------------
+// wxTextDataObject
+// ----------------------------------------------------------------------------
+
+#if wxUSE_UNICODE
+
+// With wxNEEDS_UTF8_FOR_TEXT_DATAOBJ (see wx/dataobj.h) wxTextDataObject
+// advertises two formats; the definition lives in each port's dataobj.cpp
+// (this is also the class's key function, anchoring its vtable).
+void wxTextDataObject::GetAllFormats(wxDataFormat *formats,
+                                     wxDataObjectBase::Direction WXUNUSED(dir)) const
+{
+    *formats++ = wxDataFormat(wxDF_UNICODETEXT);
+    *formats = wxDataFormat(wxDF_TEXT);
+}
+
+#endif // wxUSE_UNICODE
+
 #endif // wxUSE_DATAOBJ
