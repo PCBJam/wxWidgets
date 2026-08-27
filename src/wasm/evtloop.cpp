@@ -315,9 +315,15 @@ namespace
 // innermost "nested" wait to resume this stack.
 void wxWasmNestedWaitBody(void *)
 {
+    // Token 0 = the scheduler refused the wait (dead or terminal instance):
+    // never begin a park nothing can resolve — return without touching the
+    // dispatch interlock.
+    const int token = wxWasmBeginWait("nested");
+    if (token <= 0)
+        return;
+
     const int savedDispatchDepth = wxWasmDispatchDepth;
     wxWasmDispatchDepth = 0;
-    const int token = wxWasmBeginWait("nested");
     wxWasmYieldUntil(token);   // suspends until resolved
     wxWasmDispatchRestore(savedDispatchDepth, "NestedLoop");
 }
