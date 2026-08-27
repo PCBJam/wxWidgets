@@ -105,7 +105,15 @@ public:
     // DOM events (click/input/focus...) routed here by src/wasm/domevents.cpp.
     virtual void OnDomEvent(wxDomEventKind kind);
 
-    virtual WXWidget GetHandle() const wxOVERRIDE { return NULL; }
+    // There is no native handle in this port, but common code uses
+    // GetHandle() as an "is the window created?" probe (wxComboCtrlBase::
+    // PositionTextCtrl bails on NULL and left combo text ctrls at their
+    // 10px creation size; wxWindowBase::Destroy, wxTopLevelWindowBase::
+    // Destroy). Hand out an opaque non-null token once Create() completed.
+    virtual WXWidget GetHandle() const wxOVERRIDE
+    {
+        return m_isCreated ? const_cast<wxWindowWasm *>(this) : NULL;
+    }
 
     virtual bool HasTransparentBackground() wxOVERRIDE;
 

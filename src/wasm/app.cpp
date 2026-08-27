@@ -860,6 +860,25 @@ void wxWasmRunKeyJob(void *arg)
 
 }  // namespace
 
+// A keydown whose browser default (if any) is harmless and whose 'keypress'
+// we need: single-character key without Ctrl/Meta/Alt (Shift is fine).
+bool KeyEventIsPlainPrintable(const EmscriptenKeyboardEvent &ev)
+{
+    if (ev.ctrlKey || ev.metaKey || ev.altKey)
+        return false;
+
+    const char *key = ev.key;
+    if (key[0] == '\0')
+        return false;
+
+    // One UTF-8 code point: ASCII byte, or a lead byte followed only by
+    // continuation bytes.
+    size_t i = 1;
+    while (key[i] != '\0' && (static_cast<unsigned char>(key[i]) & 0xC0) == 0x80)
+        i++;
+    return key[i] == '\0' && (static_cast<unsigned char>(key[0]) >= 0x20);
+}
+
 EM_BOOL KeyCallback(int eventType,
                     const EmscriptenKeyboardEvent *emscriptenEvent,
                     void *userData)
@@ -920,9 +939,21 @@ EM_BOOL KeyCallback(int eventType,
             preventDefault = job->preventDefault;
             delete job;
         }
-        // else: the handler parked (a modal opened from a key). It owns
-        // itself now, and preventDefault keeps its default — the browser
-        // cannot be kept waiting for a dialog.
+        else
+        {
+            // No synchronous answer: the handler parked (a modal opened from
+            // a key), or — the common case — this plain (non-promising) DOM
+            // entry had to queue the job for the promising job tick
+            // (wxWasmRunOnDispatchContext). The browser cannot wait, so
+            // decide the default here. Preventing it for a plain printable
+            // key would cancel the browser's 'keypress', which is the ONLY
+            // source of wxEVT_CHAR in this port — canvas-drawn text widgets
+            // (wxStyledTextCtrl grid editors) then never receive typed
+            // characters. Let plain printable keys through (their browser
+            // default outside an editable is nothing); keep suppressing
+            // chords, Tab, function keys etc. as before.
+            preventDefault = !KeyEventIsPlainPrintable(*emscriptenEvent);
+        }
     }
 
     return preventDefault;
