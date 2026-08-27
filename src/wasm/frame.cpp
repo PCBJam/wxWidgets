@@ -62,6 +62,20 @@ void wxFrame::OnSize(wxSizeEvent& event)
     PositionToolBar();
 #endif // wxUSE_TOOLBAR
 
+    // A menubar/toolbar attached (or shown/hidden) AFTER children were laid
+    // out moves the client-area origin: children keep their wx rects, so no
+    // DoMoveWindow fires for them, yet their TLW-relative DOM rects are now
+    // stale (a wxTextCtrl inside a wxAuiToolBar created before
+    // SetMenuBar() sat a menubar-height too high, under the menubar's own
+    // DOM node, which then swallowed its clicks — CvPcb's footprint filter).
+    // Re-project the whole DOM subtree whenever the origin changes.
+    const wxPoint origin = GetClientAreaOrigin();
+    if ( origin != m_domClientOrigin )
+    {
+        m_domClientOrigin = origin;
+        UpdateDomGeometry();
+    }
+
     event.Skip();
 }
 

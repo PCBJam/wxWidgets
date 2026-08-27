@@ -59,6 +59,13 @@ protected:
     virtual void DoSetClientSize(int width, int height) wxOVERRIDE;
 
 private:
+    // Client-area origin as of the last OnSize. Frame bars (menubar, native
+    // toolbar) live at NEGATIVE client offsets, so attaching/showing one
+    // shifts every child's on-screen position without changing any child's
+    // wx (parent-relative) rect — DOM-backed controls must be re-projected
+    // explicitly when this changes (see OnSize).
+    wxPoint m_domClientOrigin;
+
     wxDECLARE_DYNAMIC_CLASS(wxFrame);
     wxDECLARE_EVENT_TABLE();
 };
