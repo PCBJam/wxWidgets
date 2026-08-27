@@ -565,7 +565,25 @@ wxSize wxBitmapBundle::GetPreferredLogicalSizeFor(const wxWindow* window) const
 {
     wxCHECK_MSG( window, wxDefaultSize, "window must be valid" );
 
+#ifdef __WXWASM__
+    // The DOM port keeps logical units in CSS pixels (content scale 1.0) while
+    // selecting bitmaps at the device-pixel ratio (DPI scale 2.0 on retina).
+    // A bitmap picked at scale s draws at phys/s logical pixels (wxBitmap's
+    // scale factor), so the preferred LOGICAL size must divide by the same
+    // scale — FromPhys() would divide by the content scale (1.0) and report the
+    // physical size, making every image-bearing row (wxTreeCtrl hierarchy
+    // pane, wxDataView icon cells, aui tabs) reserve 2x the drawn icon height.
+    const double scale = window->GetDPIScaleFactor();
+    wxSize size = GetPreferredBitmapSizeAtScale(scale);
+    if ( scale != 1.0 && size != wxDefaultSize )
+    {
+        size.x = wxRound(size.x / scale);
+        size.y = wxRound(size.y / scale);
+    }
+    return size;
+#else
     return window->FromPhys(GetPreferredBitmapSizeAtScale(window->GetDPIScaleFactor()));
+#endif
 }
 
 wxSize wxBitmapBundle::GetPreferredBitmapSizeAtScale(double scale) const

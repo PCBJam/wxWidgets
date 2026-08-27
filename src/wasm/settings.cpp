@@ -95,6 +95,12 @@ wxColour wxSystemSettingsNative::GetColour(wxSystemColour index)
 
             case wxSYS_COLOUR_HIGHLIGHTTEXT:
             case wxSYS_COLOUR_CAPTIONTEXT:
+            // The generic renderer paints a SELECTED item rect in HIGHLIGHT
+            // whether or not the control has focus; the unfocused text colour
+            // must stay readable on it (wxTreeCtrl/wxListCtrl draw unfocused
+            // selections with LISTBOXHIGHLIGHTTEXT — defaulting it to the
+            // window text colour gave black-on-blue in the hierarchy pane).
+            case wxSYS_COLOUR_LISTBOXHIGHLIGHTTEXT:
                 return *wxWHITE;
 
             default:
@@ -131,6 +137,7 @@ wxColour wxSystemSettingsNative::GetColour(wxSystemColour index)
 
         case wxSYS_COLOUR_HIGHLIGHTTEXT:
         case wxSYS_COLOUR_CAPTIONTEXT:
+        case wxSYS_COLOUR_LISTBOXHIGHLIGHTTEXT: // see the dark scheme note
             return *wxWHITE;
 
         default:
