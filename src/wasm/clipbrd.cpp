@@ -176,10 +176,15 @@ EM_JS(void, js_clearClipboardStart, (int token), {
 });
 
 // The synchronous faces the wxClipboard methods below keep calling; each is
-// now a token wait over its Start() half above.
+// now a token wait over its Start() half above. Token 0 = the scheduler
+// refused the wait (dead or terminal instance): return each face's FAILURE
+// shape — the fabricated instant-0 result used to read as SUCCESS for
+// write/clear.
 static int wxClipboardWriteText(const char* text)
 {
     const int token = wxWasmBeginWait("clipboard");
+    if (token <= 0)
+        return 3; // other error — callers fall back to the local cache
     js_writeTextToClipboardStart(token, text);
     return wxWasmYieldUntil(token);
 }
@@ -187,6 +192,8 @@ static int wxClipboardWriteText(const char* text)
 static char* wxClipboardReadText()
 {
     const int token = wxWasmBeginWait("clipboard");
+    if (token <= 0)
+        return nullptr;
     js_readTextFromClipboardStart(token);
     // The malloc'd pointer rides the wait as an int32.
     return (char*) (uintptr_t) (uint32_t) wxWasmYieldUntil(token);
@@ -197,6 +204,8 @@ static char* wxClipboardReadText()
 [[maybe_unused]] static int wxClipboardHasText()
 {
     const int token = wxWasmBeginWait("clipboard");
+    if (token <= 0)
+        return -1; // error
     js_clipboardHasTextStart(token);
     return wxWasmYieldUntil(token);
 }
@@ -204,6 +213,8 @@ static char* wxClipboardReadText()
 static int wxClipboardClear()
 {
     const int token = wxWasmBeginWait("clipboard");
+    if (token <= 0)
+        return 1; // failure
     js_clearClipboardStart(token);
     return wxWasmYieldUntil(token);
 }

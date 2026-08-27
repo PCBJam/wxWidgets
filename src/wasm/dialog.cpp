@@ -209,6 +209,16 @@ int wxDialog::ShowModal()
     // real HTML, so they render without a paint loop even pre-main-loop).
     const int waitToken = wxWasmBeginWait("modal");
 
+    // Token 0 = the scheduler refused the wait (dead or terminal instance):
+    // never show a modal that no EndModal can ever dismiss. Cancel matches
+    // the containment convention (wxWasmExitNestedLoop / the shim's error
+    // containment both resolve modals with wxID_CANCEL).
+    if (waitToken <= 0)
+    {
+        SetReturnCode(wxID_CANCEL);
+        return wxID_CANCEL;
+    }
+
     m_isShowingModal = true;
     Show(true);
 
