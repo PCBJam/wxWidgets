@@ -438,10 +438,36 @@ void wxWindowWasm::UpdateDomVisibility()
     }
 }
 
+bool wxWindowWasm::WasmSendDomCharHook(int keyCode)
+{
+    wxKeyEvent hook(wxEVT_CHAR_HOOK);
+    hook.m_keyCode = keyCode;
+    hook.SetEventObject(this);
+    hook.SetId(GetId());
+    // wxEVT_CHAR_HOOK propagates to parents by construction (wxKeyEvent::
+    // InitPropagation), so a hook bound on a container (KiCad LIB_TREE on its
+    // wxSearchCtrl) sees a key typed into the inner DOM <input>.
+    const bool handled = HandleWindowEvent(hook);
+    return handled && !hook.IsNextEventAllowed();
+}
+
 void wxWindowWasm::OnDomEvent(wxDomEventKind kind)
 {
     switch ( kind )
     {
+        case wxDOM_EVENT_KEY_UP:
+            WasmSendDomCharHook(WXK_UP);
+            break;
+        case wxDOM_EVENT_KEY_DOWN:
+            WasmSendDomCharHook(WXK_DOWN);
+            break;
+        case wxDOM_EVENT_KEY_PAGEUP:
+            WasmSendDomCharHook(WXK_PAGEUP);
+            break;
+        case wxDOM_EVENT_KEY_PAGEDOWN:
+            WasmSendDomCharHook(WXK_PAGEDOWN);
+            break;
+
         case wxDOM_EVENT_FOCUSIN:
             // Keep the wx focus model truthful when the browser moves focus.
             if ( gs_focusWindow != this && CanAcceptFocus() )

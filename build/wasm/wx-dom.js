@@ -74,7 +74,12 @@
   // Mirror of wxDomEventKind in include/wx/wasm/window.h.
   var EVT = { CLICK: 1, INPUT: 2, CHANGE: 3, FOCUSIN: 4, FOCUSOUT: 5,
               ENTER: 6, SPIN_UP: 7, SPIN_DOWN: 8, MENU: 9, TOOL: 10,
-              TAB: 11, SCROLL: 12 };
+              TAB: 11, SCROLL: 12,
+              KEY_UP: 13, KEY_DOWN: 14, KEY_PAGEUP: 15, KEY_PAGEDOWN: 16 };
+  // Navigation keys an <input> does not need for editing, forwarded to wx as
+  // wxEVT_CHAR_HOOK (findings O-2: filter-box Enter/arrows were dead).
+  var NAV_KEY_EVT = { ArrowUp: EVT.KEY_UP, ArrowDown: EVT.KEY_DOWN,
+                      PageUp: EVT.KEY_PAGEUP, PageDown: EVT.KEY_PAGEDOWN };
 
   // Last pointer position in viewport (clientX/Y) coordinates — read by
   // wxShowContextMenu when DoPopupMenu is invoked "at the mouse" (the KiCad
@@ -425,6 +430,12 @@
         valueEl.addEventListener('keydown', function (ev) {
           if (ev.key === 'Enter' && valueEl.tagName === 'INPUT') {
             dispatch(domId, EVT.ENTER);
+          } else if (valueEl.tagName === 'INPUT' && NAV_KEY_EVT[ev.key] &&
+                     !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+            // Fire-and-forget: wx_dom_event is a promising export, so the
+            // browser default (caret to start/end) cannot be gated on the
+            // handler's answer — harmless in a single-line input.
+            dispatch(domId, NAV_KEY_EVT[ev.key]);
           }
           // Typing belongs to the input; don't let the window-level
           // Emscripten keyboard handler see it (belt — the C++ callback

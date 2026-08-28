@@ -1192,6 +1192,11 @@ bool wxWindowBase::IsEnabled() const
 #elif defined(__WXOSX__)
     // must do everything ourselves
     #undef wxHAS_NATIVE_ENABLED_MANAGEMENT
+#elif defined(__WXWASM__)
+    // DOM-backed controls are independent <button>/<input> nodes: nothing
+    // propagates an ancestor's enabled state to them (findings O-3 — a control
+    // created under a disabled frame stayed DOM-disabled for life).
+    #undef wxHAS_NATIVE_ENABLED_MANAGEMENT
 #else
     #define wxHAS_NATIVE_ENABLED_MANAGEMENT
 #endif

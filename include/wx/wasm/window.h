@@ -26,7 +26,14 @@ enum wxDomEventKind
     wxDOM_EVENT_MENU = 9,
     wxDOM_EVENT_TOOL = 10,
     wxDOM_EVENT_TAB = 11,
-    wxDOM_EVENT_SCROLL = 12
+    wxDOM_EVENT_SCROLL = 12,
+    // Navigation keys typed into a DOM editable (findings O-2): the browser
+    // owns typing, but wx code binds wxEVT_CHAR_HOOK for Enter/arrows on
+    // filter boxes (KiCad LIB_TREE) — these carry that hook across.
+    wxDOM_EVENT_KEY_UP = 13,
+    wxDOM_EVENT_KEY_DOWN = 14,
+    wxDOM_EVENT_KEY_PAGEUP = 15,
+    wxDOM_EVENT_KEY_PAGEDOWN = 16
 };
 
 class WXDLLIMPEXP_CORE wxWindowWasm : public wxWindowBase
@@ -104,6 +111,12 @@ public:
 
     // DOM events (click/input/focus...) routed here by src/wasm/domevents.cpp.
     virtual void OnDomEvent(wxDomEventKind kind);
+
+    // Synthesize wxEVT_CHAR_HOOK for a key the DOM editable already
+    // processed (Enter / arrows). Returns true when a handler consumed it
+    // (handled and did not DoAllowNextEvent()), i.e. the control-level
+    // follow-up (wxEVT_TEXT_ENTER) must be suppressed like on native ports.
+    bool WasmSendDomCharHook(int keyCode);
 
     // There is no native handle in this port, but common code uses
     // GetHandle() as an "is the window created?" probe (wxComboCtrlBase::

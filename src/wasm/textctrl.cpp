@@ -120,6 +120,12 @@ void wxTextCtrl::OnDomEvent(wxDomEventKind kind)
         }
 
         case wxDOM_EVENT_ENTER:
+            // Native ordering: wxEVT_CHAR_HOOK first (a consuming handler —
+            // KiCad LIB_TREE's Enter-confirms — suppresses everything
+            // after it), then the control's own wxEVT_TEXT_ENTER.
+            if (WasmSendDomCharHook(WXK_RETURN))
+                return;
+
             if (GetWindowStyle() & wxTE_PROCESS_ENTER)
             {
                 wxCommandEvent event(wxEVT_TEXT_ENTER, GetId());
