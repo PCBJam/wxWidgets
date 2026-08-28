@@ -9,6 +9,7 @@
 #include "wx/wxprec.h"
 
 #include "wx/window.h"
+#include "wx/popupwin.h"
 
 #include "wx/app.h"
 #include "wx/caret.h"
@@ -1059,7 +1060,13 @@ void wxWindowWasm::SetFocus()
     // behaviour). Checked BEFORE the
     // accept-focus bail-out: whether or not the frame itself may hold focus, a
     // `frame->SetFocus()` must still land on its child.
-    if ( IsTopLevel() && IsEnabled() )
+    //
+    // Real frames/dialogs only: wxPopupWindow also reports IsTopLevel(), but a
+    // transient popup takes focus ITSELF on Popup() and dismisses on its own
+    // kill-focus (wxPopupFocusHandler) — delegating its SetFocus to a child left
+    // the popup never focused and so never dismissed on an outside click
+    // (e2e/popup.spec.ts "dismisses on outside click", regression of the P-4 fix).
+    if ( IsTopLevel() && IsEnabled() && !wxDynamicCast(this, wxPopupWindow) )
     {
         wxWindowWasm *target = NULL;
         std::map<wxWindowWasm *, wxWindowWasm *>::iterator it = gs_lastFocusedChild.find(this);
