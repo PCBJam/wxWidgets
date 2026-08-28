@@ -382,15 +382,23 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
                 // canvas holds focus. Grabbing focus to the toolbar on every tool click broke
                 // Esc and other canvas hotkeys until the user re-clicked the canvas. (Can't
                 // include the aui header from wx core, so detect toolbars by class name.)
+                // The same holds for the MENUBAR (findings P-4): native menubars never
+                // take keyboard focus, but this port's wxMenuBar is an ordinary window, so
+                // Place → Place Footprints left the menubar as the frame's last-focused
+                // child and every hotkey pressed on a chooser-held part was lost until
+                // the placement click.
                 bool toolbarClick = false;
 
                 for (wxWindow* w = g_mouseWindow; w != NULL; w = w->GetParent())
                 {
-                    if (w->GetClassInfo()->GetClassName() &&
-                        wxString(w->GetClassInfo()->GetClassName()).Lower().Contains("toolbar"))
+                    if (w->GetClassInfo()->GetClassName())
                     {
-                        toolbarClick = true;
-                        break;
+                        wxString cls = wxString(w->GetClassInfo()->GetClassName()).Lower();
+                        if (cls.Contains("toolbar") || cls.Contains("menubar"))
+                        {
+                            toolbarClick = true;
+                            break;
+                        }
                     }
                 }
 

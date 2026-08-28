@@ -24,6 +24,7 @@
 #include "wx/wasm/private/dom.h"
 
 #include <emscripten.h>
+#include <map>
 
 #if wxUSE_COMBOBOX || wxUSE_COMBOCTRL
 #include "wx/combo.h"
@@ -35,6 +36,76 @@
 wxWindow *g_mouseWindow = NULL;
 
 static wxWindowWasm *gs_focusWindow = NULL;
+
+// P-4 (pcbjam findings group P): a top-level window's SetFocus() must land on a CHILD, the way
+// the native ports behave (GTK/MSW give a frame's focus to its last-focused descendant). This
+// port keeps one flat gs_focusWindow, so `frame->SetFocus()` — what KIWAY_PLAYER::ShowModal
+// does to hand focus back after a modal chooser — focused the frame itself and every hotkey
+// was delivered to a window that has no key handlers (KiCad's tool dispatcher listens on the
+// canvas) until the next mouse click. Remember, per top-level window, the descendant that last
+// held focus; entries die with either window (see the destructor).
+static std::map<wxWindowWasm *, wxWindowWasm *> gs_lastFocusedChild;
+
+static wxWindowWasm *wxWasmTopLevelOf(wxWindowWasm *win)
+{
+    wxWindow *w = win;
+    while (w && !w->IsTopLevel())
+        w = w->GetParent();
+    return static_cast<wxWindowWasm *>(w);
+}
+
+// Toolbars and menubars never hold keyboard focus on the native ports (app.cpp's click
+// path exempts them too) — never hand a frame's focus to one.
+static bool wxWasmIsBarWindow(wxWindow *w)
+{
+    for (; w != NULL && !w->IsTopLevel(); w = w->GetParent())
+    {
+        if (w->GetClassInfo()->GetClassName())
+        {
+            wxString cls = wxString(w->GetClassInfo()->GetClassName()).Lower();
+            if (cls.Contains("toolbar") || cls.Contains("menubar"))
+                return true;
+        }
+    }
+    return false;
+}
+
+// The descendant a frame's focus should land on when nothing was focused before: the
+// LARGEST shown, focusable, non-bar descendant. "First focusable" is wrong for an
+// application frame full of panes (the first hit is some pane's search box); the main
+// work area — a canvas — is by construction the biggest child, which is also what a
+// user expects to be typing into.
+static wxWindowWasm *wxWasmBestFocusableChild(wxWindow *parent, long &bestArea)
+{
+    wxWindowWasm *best = NULL;
+    for (wxWindowList::compatibility_iterator node = parent->GetChildren().GetFirst();
+         node; node = node->GetNext())
+    {
+        wxWindow *child = node->GetData();
+        if (!child->IsShown() || child->IsTopLevel() || child->IsBeingDeleted() ||
+            wxWasmIsBarWindow(child))
+            continue;
+        if (child->CanAcceptFocus() && child->IsShownOnScreen())
+        {
+            wxSize sz = child->GetSize();
+            long area = (long)sz.x * (long)sz.y;
+            if (area > bestArea)
+            {
+                bestArea = area;
+                best = static_cast<wxWindowWasm *>(child);
+            }
+        }
+        if (wxWindowWasm *deep = wxWasmBestFocusableChild(child, bestArea))
+            best = deep;
+    }
+    return best;
+}
+
+static wxWindowWasm *wxWasmFirstFocusableChild(wxWindow *parent)
+{
+    long bestArea = 0;
+    return wxWasmBestFocusableChild(parent, bestArea);
+}
 static wxWindowWasm *gs_nextFocusWindow = NULL;
 static wxWindowWasm *gs_captureWindow = NULL;
 
@@ -225,6 +296,16 @@ wxWindowWasm::~wxWindowWasm()
     if (gs_focusWindow == this)
     {
         gs_focusWindow = NULL;
+    }
+    // P-4: forget this window as a top-level's last-focused child, and its own record.
+    gs_lastFocusedChild.erase(this);
+    for (std::map<wxWindowWasm *, wxWindowWasm *>::iterator it = gs_lastFocusedChild.begin();
+         it != gs_lastFocusedChild.end(); )
+    {
+        if (it->second == this)
+            it = gs_lastFocusedChild.erase(it);
+        else
+            ++it;
     }
 #if wxUSE_TOOLTIPS
     // Drop the hovered-window pointer too, so a pending tooltip timer can't
@@ -972,8 +1053,46 @@ void wxWindowWasm::UpdateChildrenDOMVisibility()
 
 void wxWindowWasm::SetFocus()
 {
+    // P-4: focusing a top-level window means focusing one of its children — the one that
+    // last had focus, else the largest focusable one (wxWasmBestFocusableChild). Only when
+    // it has no focusable child at all does the frame itself take focus (the pre-fix
+    // behaviour). Checked BEFORE the
+    // accept-focus bail-out: whether or not the frame itself may hold focus, a
+    // `frame->SetFocus()` must still land on its child.
+    if ( IsTopLevel() && IsEnabled() )
+    {
+        wxWindowWasm *target = NULL;
+        std::map<wxWindowWasm *, wxWindowWasm *>::iterator it = gs_lastFocusedChild.find(this);
+        // IsShownOnScreen, not IsShown: a control inside a collapsed/hidden pane still
+        // reports IsShown() — the search pane's text box took focus at boot and would
+        // otherwise be "restored" forever.
+        if ( it != gs_lastFocusedChild.end() && it->second->IsShownOnScreen() &&
+             !it->second->IsBeingDeleted() && it->second->CanAcceptFocus() &&
+             !wxWasmIsBarWindow(it->second) )
+            target = it->second;
+        else
+            target = wxWasmFirstFocusableChild(this);
+
+        if ( target && target != this )
+        {
+            target->SetFocus();
+            return;
+        }
+    }
+
     if ( gs_focusWindow == this || !CanAcceptFocus() )
         return; // nothing to do, focused already
+
+    if ( !IsTopLevel() && !wxWasmIsBarWindow(this) )
+    {
+        if ( wxWindowWasm *tlw = wxWasmTopLevelOf(this) )
+        {
+            if ( tlw != this )
+            {
+                gs_lastFocusedChild[tlw] = this;
+            }
+        }
+    }
 
     wxWindowWasm *prevFocusWindow = gs_focusWindow;
 
