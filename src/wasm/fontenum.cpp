@@ -127,6 +127,15 @@ bool wxFontEnumerator::EnumerateFacenames(wxFontEncoding WXUNUSED(encoding),
 
     // Call JavaScript to enumerate fonts
     const int token = wxWasmBeginWait("font");
+
+    // Token 0 = the scheduler refused the wait (dead or terminal instance):
+    // never start a completion that writes the heap of a damaged module.
+    if (token <= 0)
+    {
+        delete[] fontNames;
+        return false;
+    }
+
     js_enumerateFontsStart(token, fontNames, MAX_FONTS, fixedWidthOnly);
     int count = wxWasmYieldUntil(token);
 
