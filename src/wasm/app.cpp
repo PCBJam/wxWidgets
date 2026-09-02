@@ -34,6 +34,8 @@ extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg);
 #include "wx/wasm/private/timer.h"
 
 #include <emscripten.h>
+#include <deque>
+#include <string>
 #include <emscripten/html5.h>
 
 void RegisterEmscriptenCallbacks(wxApp* app);
@@ -792,7 +794,120 @@ struct wxWasmKeyJob : wxWasmDomJob
     // The browser needs a synchronous answer; the job writes it here before it
     // can park, and a job that parks anyway leaves the caller's default.
     bool preventDefault = true;
+    // Deferred-printable pairing (wxWasmPendingKey below): non-zero when this
+    // KEY_DOWN job was queued for a later tick AFTER KeyCallback had already
+    // told the browser to allow the key's default. The browser's 'keypress'
+    // is then attached here as `charEvent` instead of running as a job of
+    // its own, and delivered after the CHAR_HOOK/KEY_DOWN phase — only if
+    // that phase did not consume the key.
+    unsigned pendingSerial = 0;
+    bool hasChar = false;
+    wxKeyEvent charEvent;
 };
+
+// ---------------------------------------------------------------------------
+// Pairing a browser 'keypress' with its deferred 'keydown'.
+//
+// Native wx generates wxEVT_CHAR only when the preceding wxEVT_CHAR_HOOK /
+// wxEVT_KEY_DOWN left the key unconsumed. In the browser the character is a
+// separate 'keypress' event, and the only way to withhold it is
+// preventDefault() on the 'keydown' — an answer KeyCallback must give BEFORE
+// the deferred wx job has run. For a plain printable key it answers "allow"
+// (an owner-drawn text control needs the character), so the 'keypress' fires
+// even when the key turns out to be a hotkey. Dispatching that 'keypress' as
+// its own wxEVT_CHAR job ran KiCad's hotkey a second time: eeschema's `R`
+// rotated 180 degrees per press (once from CHAR_HOOK, once from CHAR).
+//
+// So the 'keypress' is matched by DOM `code` to the pending deferred keydown
+// and attached to THAT job, which delivers wxEVT_CHAR after its key phase on
+// the same activation — native order, native suppression. If the key phase
+// already finished when the 'keypress' arrives, the recorded verdict decides:
+// consumed → swallow it, otherwise it runs as an ordinary character job.
+// Records are bounded (fast typing queues a few) and cleared on 'keyup'.
+// ---------------------------------------------------------------------------
+struct wxWasmPendingKey
+{
+    unsigned serial = 0;
+    std::string code;           // KeyboardEvent.code (falls back to .key)
+    wxWasmKeyJob *job = NULL;   // valid until phaseDone — the job frees itself
+    bool phaseDone = false;
+    bool consumed = false;
+};
+
+const size_t wxWasmPendingKeysMax = 16;
+
+std::deque<wxWasmPendingKey> &wxWasmPendingKeys()
+{
+    static std::deque<wxWasmPendingKey> s_keys;
+    return s_keys;
+}
+
+wxWasmPendingKey *wxWasmFindPendingKey(unsigned aSerial)
+{
+    for (wxWasmPendingKey &k : wxWasmPendingKeys())
+        if (k.serial == aSerial)
+            return &k;
+    return NULL;
+}
+
+/** Oldest record for a DOM code — 'keypress' follows its 'keydown' in order. */
+wxWasmPendingKey *wxWasmFindPendingKeyByCode(const std::string &aCode)
+{
+    for (wxWasmPendingKey &k : wxWasmPendingKeys())
+        if (k.code == aCode)
+            return &k;
+    return NULL;
+}
+
+void wxWasmErasePendingKey(unsigned aSerial)
+{
+    std::deque<wxWasmPendingKey> &keys = wxWasmPendingKeys();
+    for (std::deque<wxWasmPendingKey>::iterator it = keys.begin(); it != keys.end(); ++it)
+    {
+        if (it->serial == aSerial)
+        {
+            keys.erase(it);
+            return;
+        }
+    }
+}
+
+/** Every record for a DOM code (auto-repeat queues several) — on 'keyup'. */
+void wxWasmErasePendingKeysByCode(const std::string &aCode)
+{
+    std::deque<wxWasmPendingKey> &keys = wxWasmPendingKeys();
+    for (std::deque<wxWasmPendingKey>::iterator it = keys.begin(); it != keys.end();)
+    {
+        if (it->code == aCode)
+            it = keys.erase(it);
+        else
+            ++it;
+    }
+}
+
+wxWasmPendingKey &wxWasmAddPendingKey(const std::string &aCode, wxWasmKeyJob *aJob)
+{
+    static unsigned s_serial = 0;
+    if (++s_serial == 0)
+        s_serial = 1;
+
+    std::deque<wxWasmPendingKey> &keys = wxWasmPendingKeys();
+    while (keys.size() >= wxWasmPendingKeysMax)
+        keys.pop_front();  // stale: its job publishes into nothing, harmless
+
+    wxWasmPendingKey pending;
+    pending.serial = s_serial;
+    pending.code = aCode;
+    pending.job = aJob;
+    aJob->pendingSerial = s_serial;
+    keys.push_back(pending);
+    return keys.back();
+}
+
+std::string wxWasmKeyEventCode(const EmscriptenKeyboardEvent &aEvent)
+{
+    return aEvent.code[0] != '\0' ? std::string(aEvent.code) : std::string(aEvent.key);
+}
 
 // The port has no native accelerator path, so a KEY_DOWN chord nobody's
 // CHAR_HOOK claimed is matched against the active frame's menubar
@@ -856,6 +971,32 @@ void wxWasmRunKeyJob(void *arg)
             // The CHAR_HOOK was claimed (a hotkey): suppress the browser
             // default (Ctrl/Cmd+S must not open the save-page dialog).
             job->preventDefault = true;
+        }
+
+        // Deferred-printable pairing epilogue (wxWasmPendingKey). After the
+        // key phase `preventDefault` is exactly "the key was consumed": a
+        // claimed CHAR_HOOK, a menubar accelerator and a handled KEY_DOWN all
+        // set it; only an unhandled KEY_DOWN clears it. (While a dispatch
+        // chain is parked HandleKeyEvent queues the events and reports them
+        // handled, so the character is dropped — the same outcome the
+        // synchronous path had when it still cancelled every 'keypress'.)
+        const bool consumed = job->preventDefault;
+
+        if (job->pendingSerial != 0)
+        {
+            if (wxWasmPendingKey *pending = wxWasmFindPendingKey(job->pendingSerial))
+            {
+                pending->job = NULL;
+                pending->phaseDone = true;
+                pending->consumed = consumed;
+            }
+        }
+
+        if (job->hasChar)
+        {
+            wxWasmErasePendingKey(job->pendingSerial);
+            if (!consumed)
+                app->HandleKeyEvent(&job->charEvent);
         }
     }
     else
@@ -938,6 +1079,43 @@ EM_BOOL KeyCallback(int eventType,
                        static_cast<const char*>(key_char.utf8_str()));
         */
 
+        const std::string domCode = wxWasmKeyEventCode(*emscriptenEvent);
+
+        if (eventType == EMSCRIPTEN_EVENT_KEYPRESS)
+        {
+            // A character whose 'keydown' job was deferred (wxWasmPendingKey):
+            // it belongs to that job, not to a job of its own.
+            if (wxWasmPendingKey *pending = wxWasmFindPendingKeyByCode(domCode))
+            {
+                if (!pending->phaseDone)
+                {
+                    // The keydown's CHAR_HOOK/KEY_DOWN have not run yet (or
+                    // are parked): attach, the job decides after its key
+                    // phase. A canvas 'keypress' has no browser default worth
+                    // keeping (Firefox quick-find on '/' is the exception —
+                    // and unwanted).
+                    pending->job->hasChar = true;
+                    pending->job->charEvent = event;
+                    return EM_TRUE;
+                }
+
+                // The key phase already ran: apply its verdict.
+                const bool consumed = pending->consumed;
+                wxWasmErasePendingKey(pending->serial);
+                if (consumed)
+                    return EM_TRUE;  // native wx: no wxEVT_CHAR after a claimed key
+                // else: an ordinary character for the focused control — fall
+                // through to the normal job below.
+            }
+        }
+        else if (eventType == EMSCRIPTEN_EVENT_KEYUP)
+        {
+            // 'keypress' always precedes 'keyup': whatever is still recorded
+            // for this key will not be paired any more (auto-repeat may have
+            // queued several). Attached characters live on their jobs.
+            wxWasmErasePendingKeysByCode(domCode);
+        }
+
         wxWasmKeyJob* job = new wxWasmKeyJob();
         job->app = app;
         job->event = event;
@@ -961,6 +1139,13 @@ EM_BOOL KeyCallback(int eventType,
             // default outside an editable is nothing); keep suppressing
             // chords, Tab, function keys etc. as before.
             preventDefault = !KeyEventIsPlainPrintable(*emscriptenEvent);
+
+            // That 'keypress' WILL fire now, whether or not the deferred
+            // CHAR_HOOK/KEY_DOWN turn out to consume the key. Record the
+            // keydown so the character is paired with this job instead of
+            // becoming an independent wxEVT_CHAR (wxWasmPendingKey).
+            if (!preventDefault && eventType == EMSCRIPTEN_EVENT_KEYDOWN)
+                wxWasmAddPendingKey(domCode, job);
         }
     }
 
