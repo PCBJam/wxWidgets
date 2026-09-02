@@ -2391,12 +2391,21 @@ if (typeof navigator !== 'undefined') {
   var pendingDropX = 0;
   var pendingDropY = 0;
 
+  var dragDropHandlersRegistered = false;
+
   var registerDragDropHandlers = function () {
+    // G-14: RegisterEmscriptenCallbacks runs once per constructed frame (the
+    // merged kicad_editor builds several), and every call stacked ANOTHER
+    // full listener set on the same canvas — one real drop then ran N times.
+    if (dragDropHandlersRegistered) {
+      return;
+    }
     var canvas = Module.canvas;
     if (!canvas) {
       console.error('[DND] Module.canvas not available');
       return;
     }
+    dragDropHandlersRegistered = true;
 
     // Prevent default to enable drop
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function (eventName) {

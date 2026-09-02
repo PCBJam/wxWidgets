@@ -1371,9 +1371,28 @@ void OnFileDropped(const char* path, int x, int y)
 {
     // printf("[DND] OnFileDropped: %s at (%d, %d)\n", path, x, y);
 
-    // Find the window that should receive the drop event
+    // Find the window under the drop point
     wxPoint dropPoint(x, y);
     wxWindow* target = wxFindWindowAtPoint(dropPoint);
+
+    // G-14: wxDropFilesEvent does NOT propagate upward, and the windows that
+    // registered interest via DragAcceptFiles() are ancestors (KiCad's frames)
+    // while the leaf under the pointer is a child panel/canvas — delivering to
+    // the leaf silently lost every drop. On non-MSW ports DragAcceptFiles()
+    // works by installing a wxDropTarget (wincmn.cpp, DragAcceptFilesTarget),
+    // so "accepts drops" is queryable as GetDropTarget() != NULL — the same
+    // test the in-app drag path uses (src/wasm/dnd.cpp). Walk up to the first
+    // such window, falling back to the leaf's top-level window. (A custom
+    // non-file wxDropTarget up-chain would win this walk; the port's real
+    // consumers all use DragAcceptFiles, so that trade-off is acceptable.)
+    for (wxWindow* w = target; w != nullptr; w = w->GetParent())
+    {
+        if (w->GetDropTarget() != nullptr || w->IsTopLevel())
+        {
+            target = w;
+            break;
+        }
+    }
 
     // Fall back to top window if no window found at point
     if (target == nullptr && wxTheApp != nullptr)
@@ -1391,7 +1410,7 @@ void OnFileDropped(const char* path, int x, int y)
     wxString* files = new wxString[1];
     files[0] = wxString::FromUTF8(path);
 
-    // Create and dispatch the drop files event
+    // Create the drop files event
     wxDropFilesEvent event(wxEVT_DROP_FILES, 1, files);
     event.SetEventObject(target);
 
@@ -1399,7 +1418,16 @@ void OnFileDropped(const char* path, int x, int y)
     wxPoint clientPos = target->ScreenToClient(dropPoint);
     event.m_pos = clientPos;
 
-    target->HandleWindowEvent(event);
+    // G-14 (part 2): deliver on the event queue, never synchronously. This
+    // plain export is not a promising entry, so a drop handler that suspends
+    // under JSPI (KiCad's append-board flow reads files and can raise
+    // dialogs) would die with SuspendError before the fix reached it. Queued
+    // delivery runs under the pump's promising tick where suspension is
+    // legal, and honors the parked-dispatch discipline the same way
+    // HandleMouseEvent's parked path does. wxPostEvent clones the event
+    // (wxDropFilesEvent deep-copies its file array), and the stack copy here
+    // still frees the original array.
+    wxPostEvent(target->GetEventHandler(), event);
 }
 
 } // extern "C"
