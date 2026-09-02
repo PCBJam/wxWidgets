@@ -8,6 +8,8 @@
 
 #include "wx/wxprec.h"
 
+#include <vector>
+
 #include "wx/window.h"
 #include "wx/popupwin.h"
 
@@ -1027,10 +1029,23 @@ bool wxWindowWasm::Show(bool show)
 
 void wxWindowWasm::UpdateChildrenDOMVisibility()
 {
+    // Iterate a SNAPSHOT of the child list, never the live list: a child's
+    // Show() override may reorder its parent's children while this walk is
+    // stepping through them. KiCad's WEBGL_GAL::Show() calls Raise(), which
+    // (below) deletes the child's own list node and appends a fresh one, so a
+    // live iterator would advance through a freed node — a use-after-free that
+    // surfaces as "memory access out of bounds" in this recursion whenever the
+    // freed node's memory has been reused (heap-layout dependent: observed only
+    // under some browser locales / builds, in SCH_EDIT_FRAME's ctor via
+    // wxAuiManager::Update on the design-block preview canvas).
     wxWindowList& children = GetChildren();
+    std::vector<wxWindow*> snapshot;
+    snapshot.reserve(children.GetCount());
     for (wxWindowList::iterator i = children.begin(); i != children.end(); ++i)
+        snapshot.push_back(*i);
+
+    for (wxWindow *child : snapshot)
     {
-        wxWindow *child = *i;
         if (child)
         {
             // Call Show() on child with its current state to trigger any
