@@ -55,7 +55,8 @@ public:
 
     virtual int GetSelection() const wxOVERRIDE;
 
-    // wxEVT_LISTBOX from the real <select multiple>'s change
+    // wxEVT_LISTBOX from the real <select multiple>'s change,
+    // wxEVT_LISTBOX_DCLICK from its dblclick
     virtual void OnDomEvent(wxDomEventKind kind) wxOVERRIDE;
 
 protected:
@@ -64,6 +65,9 @@ protected:
     virtual const char *WasmDomNodeType() const { return "listbox"; }
 
     virtual void DoSetFirstItem(int n) wxOVERRIDE;
+
+    // Row under a client point, from the live DOM row geometry.
+    virtual int DoListHitTest(const wxPoint& point) const wxOVERRIDE;
 
     virtual void DoSetSelection(int n, bool select) wxOVERRIDE;
 

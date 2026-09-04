@@ -202,6 +202,12 @@ protected:
     // these classes may call our DismissAndNotify()
     friend class wxPopupWindowHandler;
     friend class wxPopupFocusHandler;
+#ifdef __WXWASM__
+    // The wasm port has no pointer grab: it dismisses transient popups from
+    // its mouse pipeline / SetFocus() (src/wasm/window.cpp), the same
+    // notify-on-outside-click these handlers implement on the other ports.
+    friend void wxWasmDismissTransientPopupsOutside(wxWindow *target);
+#endif
 
     // the handlers we created, may be NULL (if not, must be deleted)
     wxPopupWindowHandler *m_handlerPopup;

@@ -12,9 +12,14 @@
 #include "wx/log.h"
 #include <emscripten/html5.h>
 
+#include <cstdlib>
+
 // Double-click detection threshold (ms). Matches the default
 // wxSYS_DCLICK_MSEC on most platforms.
 #define WASM_DCLICK_MSEC 500.0
+// Max distance (CSS px, per axis) between the two presses of a double-click
+// (GTK gtk-double-click-distance default 5; MSW SM_CXDOUBLECLK default 4).
+#define WASM_DCLICK_DISTANCE 5
 
 namespace
 {
@@ -72,12 +77,26 @@ wxEventType GetMouseEventType(int emscriptenEventType,
     // on MOUSEDOWN lets wxEVT_LEFT_DCLICK arrive at the same point in the
     // sequence as on desktop (between LEFT_DOWN and LEFT_UP), which is
     // what wxGenericListCtrl's activation logic expects.
+    // ...and, as on every desktop port, only when the two presses land
+    // within a few pixels of each other (GTK gtk-double-click-distance 5,
+    // MSW SM_CXDOUBLECLK 4): a toolbar click followed 400 ms later by a
+    // click on the canvas, or a combo button followed by a pick in its
+    // dropdown, are two single clicks. Without the distance test the second
+    // press arrived as wxEVT_LEFT_DCLICK and tools that only act on
+    // IsClick() (KiCad's zone tool) or handlers bound to LEFT_DOWN only
+    // (KiCad's filter-combo popups) silently ignored it.
     static double lastMouseDownTime = 0.0;
     static unsigned short lastMouseDownButton = 0xFFFF;
+    static long lastMouseDownX = 0;
+    static long lastMouseDownY = 0;
     int clickCount = 1;
     if (emscriptenEventType == EMSCRIPTEN_EVENT_MOUSEDOWN)
     {
-        if (event.button == lastMouseDownButton &&
+        const bool nearLast =
+            std::abs(event.targetX - lastMouseDownX) <= WASM_DCLICK_DISTANCE &&
+            std::abs(event.targetY - lastMouseDownY) <= WASM_DCLICK_DISTANCE;
+
+        if (event.button == lastMouseDownButton && nearLast &&
             (event.timestamp - lastMouseDownTime) < WASM_DCLICK_MSEC)
         {
             clickCount = 2;
@@ -89,6 +108,8 @@ wxEventType GetMouseEventType(int emscriptenEventType,
         {
             lastMouseDownTime = event.timestamp;
             lastMouseDownButton = event.button;
+            lastMouseDownX = event.targetX;
+            lastMouseDownY = event.targetY;
         }
     }
 

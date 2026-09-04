@@ -167,6 +167,13 @@ inline void wxDomSetItemSelected(int domId, int index, bool selected)
     EM_ASM({ wxDomSetItemSelected($0, $1, $2); }, domId, index, selected);
 }
 
+// Row index of a listbox/checklist under a point in the control's client
+// coordinates, -1 for none (wxListBox::HitTest).
+inline int wxDomListHitTest(int domId, int x, int y)
+{
+    return EM_ASM_INT({ return wxDomListHitTest($0, $1, $2); }, domId, x, y);
+}
+
 // Selected indices of a multi-select listbox, comma-joined ("" = none).
 inline wxString wxDomGetSelectedIndices(int domId)
 {

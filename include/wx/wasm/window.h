@@ -33,7 +33,10 @@ enum wxDomEventKind
     wxDOM_EVENT_KEY_UP = 13,
     wxDOM_EVENT_KEY_DOWN = 14,
     wxDOM_EVENT_KEY_PAGEUP = 15,
-    wxDOM_EVENT_KEY_PAGEDOWN = 16
+    wxDOM_EVENT_KEY_PAGEDOWN = 16,
+    // Double-click on a DOM listbox row -> wxEVT_LISTBOX_DCLICK (native
+    // ports fire it; KiCad's filter popups bind it as "accept").
+    wxDOM_EVENT_DBLCLICK = 17
 };
 
 class WXDLLIMPEXP_CORE wxWindowWasm : public wxWindowBase
@@ -248,5 +251,16 @@ private:
 };
 
 extern wxWindow *g_mouseWindow;
+
+// Transient popups (wxPopupTransientWindow: combo dropdowns, toolbar
+// palettes) dismiss on a button press or a focus move outside them. Native
+// ports get that from a pointer grab (GTK) or window activation (MSW); this
+// port applies the rule directly from the mouse pipeline and SetFocus().
+// Dismisses (with notification) every shown transient popup that does not
+// contain `target` (NULL = nothing under the pointer).
+void wxWasmDismissTransientPopupsOutside(wxWindow *target);
+
+// True when `window` lives inside a shown wxPopupTransientWindow.
+bool wxWasmIsInsideShownTransientPopup(wxWindow *window);
 
 #endif // __WX_WASM_WINDOW_H__

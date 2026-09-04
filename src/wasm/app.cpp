@@ -363,6 +363,15 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
             }
         }
 
+        // A button press outside a shown transient popup (combo dropdown,
+        // toolbar palette) dismisses it before the press is delivered — the
+        // native ports' grab/activation semantics (wxWasmDismissTransientPopupsOutside).
+        // A press the converter reports as a double-click is still a press.
+        if (event->ButtonDown() || event->ButtonDClick())
+        {
+            wxWasmDismissTransientPopupsOutside(g_mouseWindow);
+        }
+
         if (g_mouseWindow != NULL)
         {
             wxEventType eventType = event->GetEventType();

@@ -75,7 +75,8 @@
   var EVT = { CLICK: 1, INPUT: 2, CHANGE: 3, FOCUSIN: 4, FOCUSOUT: 5,
               ENTER: 6, SPIN_UP: 7, SPIN_DOWN: 8, MENU: 9, TOOL: 10,
               TAB: 11, SCROLL: 12,
-              KEY_UP: 13, KEY_DOWN: 14, KEY_PAGEUP: 15, KEY_PAGEDOWN: 16 };
+              KEY_UP: 13, KEY_DOWN: 14, KEY_PAGEUP: 15, KEY_PAGEDOWN: 16,
+              DBLCLICK: 17 };
   // Navigation keys an <input> does not need for editing, forwarded to wx as
   // wxEVT_CHAR_HOOK (findings O-2: filter-box Enter/arrows were dead).
   var NAV_KEY_EVT = { ArrowUp: EVT.KEY_UP, ArrowDown: EVT.KEY_DOWN,
@@ -229,6 +230,14 @@
       case 'listbox': {
         root = document.createElement('select');
         root.multiple = true;
+        root.dataset.wxListBox = '1';
+        // wxListBox is the one interactive control whose wx-side mouse
+        // events are part of its contract: native ports deliver
+        // wxEVT_LEFT_DOWN for a click on a row (KiCad's FILTER_COMBOPOPUP
+        // — the net/footprint/symbol filter dropdowns — accepts a row from
+        // exactly that event + HitTest). Forward LEFT presses alongside
+        // the browser's own row selection; see the input-forwarding block.
+        root.dataset.wxForwardLeft = '1';
         break;
       }
       case 'spinbutton': {
@@ -407,6 +416,13 @@
         dispatch(domId, EVT.CLICK);
         ev.stopPropagation();
       });
+      if (el.dataset.wxListBox) {
+        // Row double-click -> wxEVT_LISTBOX_DCLICK (see wxListBox::OnDomEvent).
+        el.addEventListener('dblclick', function (ev) {
+          dispatch(domId, EVT.DBLCLICK);
+          ev.stopPropagation();
+        });
+      }
       el.addEventListener('focusin', function () {
         if (isEditable(valueEl)) {
           window.wxDomEditableFocused = 1;
@@ -904,6 +920,31 @@
     } else if (el.tagName === 'SELECT' && el.options[index]) {
       el.options[index].selected = !!on;
     }
+  };
+
+  // wxListBox::HitTest: the row index under a point given in the control's
+  // own client coordinates (CSS px from its top-left), -1 for none. Rows are
+  // the <option>s of a <select multiple> or the row elements of a checklist;
+  // geometry comes from the live layout, so scrolling is accounted for.
+  window.wxDomListHitTest = function (domId, x, y) {
+    var el = controls.get(domId);
+    if (!el) return -1;
+    var base = el.getBoundingClientRect();
+    var px = base.left + x;
+    var py = base.top + y;
+    if (px < base.left || py < base.top ||
+        px >= base.right || py >= base.bottom) {
+      return -1;
+    }
+    var rows = el.dataset.wxCheckList ? el.children : el.options;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i].getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      if (px >= r.left && px < r.right && py >= r.top && py < r.bottom) {
+        return i;
+      }
+    }
+    return -1;
   };
 
   window.wxDomGetSelectedIndices = function (domId) {
@@ -1609,7 +1650,9 @@
   //  - LEFT clicks on interactive controls take only the native control
   //    path (their click listeners + wx_dom_event); we forward left
   //    clicks only for passive controls (dataset.wxPassive: statictext,
-  //    gauge), middle/right always.
+  //    gauge) and for controls whose wx contract includes them
+  //    (dataset.wxForwardLeft: wxListBox — LEFT_DOWN + HitTest is how
+  //    KiCad's filter popups accept a row), middle/right always.
   // NOTE: listeners that stopPropagation on mousedown (menubar titles)
   // intentionally opt out of forwarding.
 
@@ -1657,16 +1700,20 @@
     if (forwardTarget(ev)) wxForwardMouse(ev, 1, 0);
   });
 
+  function forwardsLeft(ctl) {
+    return !!(ctl.dataset.wxPassive || ctl.dataset.wxForwardLeft);
+  }
+
   document.addEventListener('mousedown', function (ev) {
     var ctl = forwardTarget(ev);
     if (!ctl) return;
-    if (ev.button !== 0 || ctl.dataset.wxPassive) wxForwardMouse(ev, 2, 0);
+    if (ev.button !== 0 || forwardsLeft(ctl)) wxForwardMouse(ev, 2, 0);
   });
 
   document.addEventListener('mouseup', function (ev) {
     var ctl = forwardTarget(ev);
     if (!ctl) return;
-    if (ev.button !== 0 || ctl.dataset.wxPassive) wxForwardMouse(ev, 3, 0);
+    if (ev.button !== 0 || forwardsLeft(ctl)) wxForwardMouse(ev, 3, 0);
   });
 
   document.addEventListener('wheel', function (ev) {

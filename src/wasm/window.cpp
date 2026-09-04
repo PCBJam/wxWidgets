@@ -110,6 +110,70 @@ static wxWindowWasm *wxWasmFirstFocusableChild(wxWindow *parent)
     return wxWasmBestFocusableChild(parent, bestArea);
 }
 static wxWindowWasm *gs_nextFocusWindow = NULL;
+
+// ----------------------------------------------------------------------------
+// Transient popup dismissal
+// ----------------------------------------------------------------------------
+//
+// wxPopupTransientWindow's generic dismissal (src/common/popupcmn.cpp) pushes
+// wxPopupFocusHandler on the ONE window Popup() focused and relies on a
+// pointer grab (GTK) / activation (MSW) for clicks outside. Neither exists
+// here, and when the popup's content is a wxPanel (wxComboCtrl popups such as
+// KiCad's FILTER_COMBOPOPUP) wxControlContainer delegates that SetFocus to a
+// child, so the handler's window never held focus and an outside click left
+// the dropdown open. The port implements the rule itself: a button press or a
+// focus move to a window outside a shown transient popup dismisses it, and the
+// press is then delivered normally (a grab-dismissed click is reposted to the
+// window beneath on the native ports too).
+
+static wxPopupTransientWindow *wxWasmTransientPopupOf(wxWindow *window)
+{
+    for (wxWindow *w = window; w != NULL; w = w->GetParent())
+    {
+        if (wxPopupTransientWindow *popup = wxDynamicCast(w, wxPopupTransientWindow))
+            return popup;
+        if (w->IsTopLevel())
+            break;
+    }
+    return NULL;
+}
+
+bool wxWasmIsInsideShownTransientPopup(wxWindow *window)
+{
+    wxPopupTransientWindow *popup = wxWasmTransientPopupOf(window);
+    return popup != NULL && popup->IsShown();
+}
+
+void wxWasmDismissTransientPopupsOutside(wxWindow *target)
+{
+    // Collect first: DismissAndNotify() re-enters SetFocus() (wxComboCtrl
+    // refocuses itself on dismiss) and may reorder wxTopLevelWindows.
+    std::vector<wxPopupTransientWindow *> shown;
+    for (wxWindowList::const_iterator it = wxTopLevelWindows.begin();
+         it != wxTopLevelWindows.end(); ++it)
+    {
+        wxPopupTransientWindow *popup = wxDynamicCast(*it, wxPopupTransientWindow);
+        if (popup != NULL && popup->IsShown())
+            shown.push_back(popup);
+    }
+
+    for (size_t i = 0; i < shown.size(); ++i)
+    {
+        wxPopupTransientWindow *popup = shown[i];
+        bool inside = false;
+        for (wxWindow *w = target; w != NULL; w = w->GetParent())
+        {
+            if (w == popup)
+            {
+                inside = true;
+                break;
+            }
+        }
+
+        if (!inside && popup->IsShown())
+            popup->DismissAndNotify();
+    }
+}
 static wxWindowWasm *gs_captureWindow = NULL;
 
 // ----------------------------------------------------------------------------
@@ -1104,6 +1168,16 @@ void wxWindowWasm::SetFocus()
 
     if ( gs_focusWindow == this || !CanAcceptFocus() )
         return; // nothing to do, focused already
+
+    // Focus leaving a shown transient popup dismisses it (see the helper
+    // above). Dismissal can re-enter SetFocus(), so re-check afterwards.
+    if ( gs_focusWindow != NULL && wxWasmIsInsideShownTransientPopup(gs_focusWindow) )
+    {
+        wxWasmDismissTransientPopupsOutside(this);
+
+        if ( gs_focusWindow == this )
+            return;
+    }
 
     if ( !IsTopLevel() && !wxWasmIsBarWindow(this) )
     {
