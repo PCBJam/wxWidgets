@@ -237,6 +237,13 @@ extern "C" void wxWasmResolveTopWait(const char *kind, int result)
 // by wxGUIEventLoop::Dispatch()/wxYield, which deliberately dispatch NESTED
 // inside a running handler chain (the interlock only forbids interleaving
 // with a PARKED chain, not same-stack recursion).
+// Completed ProcessIdle() passes, for the e2e harness (wxWasmIdlePassCount):
+// idle runs only every third tick, so a test that just committed something
+// whose consequences run from wxEVT_UPDATE_UI (a wxGrid auto-size that
+// accepts+hides the open cell editor, say) can wait for the pass that
+// delivers them instead of racing it with the next click.
+static unsigned s_idlePasses = 0;
+
 static void wxWasmProcessEventsUngated()
 {
     static int counter = 0;
@@ -247,10 +254,18 @@ static void wxWasmProcessEventsUngated()
     if (counter++ % 3 == 0)
     {
         wxTheApp->ProcessIdle();
+        ++s_idlePasses;
     }
 }
 
 extern "C" {
+
+    // Plain export (reads a counter, runs no wx code): callable from any JS
+    // context, including while a dispatch chain is parked.
+    unsigned EMSCRIPTEN_KEEPALIVE wxWasmIdlePassCount()
+    {
+        return s_idlePasses;
+    }
 
     // Called by a JS entry point whose ccall into wx died abnormally (trap or
     // Emscripten abort): that chain's guard destructor never ran, so release
