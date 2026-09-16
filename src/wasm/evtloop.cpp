@@ -152,6 +152,12 @@ extern "C" void wxWasmMailboxDeliver()
 }
 
 int wxWasmMailboxNestedBaseline = -1;
+int wxWasmMailboxSleptDepth = -1;
+
+extern "C" void wxWasmNoteSleep()
+{
+    wxWasmMailboxSleptDepth = wxWasmDispatchDepth;
+}
 
 extern "C" void wxWasmMailboxDeliverNested()
 {
@@ -587,15 +593,20 @@ void wxGUIEventLoop::DoYieldFor(long eventsToProcess)
     // see wxWasmMailboxDeliverNested. Their handlers may post events, so
     // drain the mailbox before the pending-event loop.
     //
-    // Only for a yield that asks for timer events. wxYield()/wxSafeYield()
-    // pass wxEVT_CATEGORY_ALL (KiCad's RunSynchronousAction spin - the
-    // paste-move - is that case); wxProgressDialog's updates yield with
-    // wxEVT_CATEGORY_UI|USER_INPUT and native wx keeps timer events pending
-    // across them. KiCad drives a board/schematic load through exactly that
-    // dialog, so delivering timers there would run repaint/auto-pan handlers
-    // in the middle of a load - a re-entrancy the native ports never see.
-    if (eventsToProcess & wxEVT_CATEGORY_TIMER)
+    // Only for the RunSynchronousAction spin signature: a yield that asks
+    // for timer events from a chain that SLEPT at this depth since the last
+    // delivery (`wxYield(); wxMilliSleep(1);`). The mask alone is not enough:
+    // KiCad's symbol-editor boot issues a bare wxEVT_CATEGORY_TIMER yield at
+    // depth 1 with timers pending, and running those nested hung the boot
+    // (staging CI 2026-09-16). Boot and progress-dialog yields never sleep
+    // between yields, so they never match; the paste spin matches from its
+    // second iteration on (1 ms later).
+    if ((eventsToProcess & wxEVT_CATEGORY_TIMER)
+        && wxWasmMailboxSleptDepth == wxWasmDispatchDepth)
+    {
+        wxWasmMailboxSleptDepth = -1;
         wxWasmMailboxDeliverNested();
+    }
 
     while (Pending())
     {
