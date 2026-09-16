@@ -91,15 +91,17 @@ void TimerCallbackFunc::Run()
 {
     bool selfDestruct = true;
 
-    if (!IsCanceled() && wxWasmDispatchParked())
+    if (!IsCanceled() && wxWasmMailboxMustDefer())
     {
         // TRIPWIRE (should never fire): the mailbox only delivers when the
-        // dispatch interlock is free, so Run() cannot be entered parked via
-        // the mailbox lane. If it fires anyway, re-queue rather than run the
-        // handler over the parked chain's half-mutated widget state -
-        // ScheduleNextInterval()'s deadline bookkeeping keeps periodic
-        // timers on cadence afterwards. Reported at escalating thresholds
-        // (~59 retries/second at 17ms).
+        // dispatch interlock is free - or, for a NESTED delivery, on behalf
+        // of the parked chain's own wxYield() (wxWasmMailboxDeliverNested;
+        // that case is not a deferral). Otherwise Run() cannot be entered
+        // parked via the mailbox lane. If it fires anyway, re-queue rather
+        // than run the handler over the parked chain's half-mutated widget
+        // state - ScheduleNextInterval()'s deadline bookkeeping keeps
+        // periodic timers on cadence afterwards. Reported at escalating
+        // thresholds (~59 retries/second at 17ms).
         ++m_parkRetries;
         if (m_parkRetries == 60 || m_parkRetries == 300 || m_parkRetries == 1200 ||
             (m_parkRetries > 1200 && m_parkRetries % 1200 == 0))

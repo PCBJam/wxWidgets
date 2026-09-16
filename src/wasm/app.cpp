@@ -50,7 +50,8 @@ extern wxLog* wxCreateLogWasm();
 IMPLEMENT_DYNAMIC_CLASS(wxApp, wxAppBase)
 
 wxApp::wxApp()
-    : m_display(new wxWasmDisplay())
+    : m_display(new wxWasmDisplay()),
+      m_parkedMotionQueued(false)
 {
     printf("Creating app\n");
     RegisterEmscriptenCallbacks(this);
@@ -292,19 +293,46 @@ void wxApp::UpdateMouseState(const wxMouseEvent& event)
     m_mouseState.SetPosition(event.GetPosition());
 }
 
+void wxApp::ProcessPendingEvents()
+{
+    // Every drain re-opens the parked-motion coalescing window (see
+    // HandleMouseEvent), whether or not the queued motion is processed by
+    // this particular drain: under-posting is bounded to one drain,
+    // over-posting is a duplicate motion the receiver treats as a no-op.
+    m_parkedMotionQueued = false;
+    wxAppBase::ProcessPendingEvents();
+}
+
 void wxApp::HandleMouseEvent(wxMouseEvent *event)
 {
     if (wxWasmDispatchParked())
     {
         // Another dispatch chain is suspended mid-handler; running mouse
         // handlers now would interleave with its half-mutated widget
-        // state. Keep wxGetMouseState() truthful, queue button events for
-        // the first tick after resume (targeted like
-        // SendMouseEventToWindow would), and drop motion/hover synthesis -
-        // the next real motion after resume re-syncs it.
+        // state. Keep wxGetMouseState() truthful and queue the event for
+        // the parked chain's own wxYield() or the first tick after resume
+        // (targeted like SendMouseEventToWindow would). Hover synthesis
+        // (enter/leave, cursor shape) stays skipped - it walks the widget
+        // state the interlock protects; the next live motion re-syncs it.
+        //
+        // Button events are queued 1:1. Motion is coalesced to ONE queued
+        // event per drain: a chain that spins in
+        //   while (running) { wxYield(); wxMilliSleep(1); }
+        // (KiCad's TOOL_MANAGER::RunSynchronousAction - the paste-move, a
+        // commit-backed drag) is parked here for the whole interaction, and
+        // its wxYield() drains this queue. Dropping motion instead left
+        // KiCad's move tool without a single TA_MOUSE_MOTION, so a pasted
+        // item never followed the pointer although the (queued) click still
+        // placed it. KiCad's WX_VIEW_CONTROLS::onMotion reads the LIVE
+        // pointer (wxGetMousePosition, kept fresh by UpdateMouseState), so
+        // one motion per drain is enough to re-sync it; a burst of moves
+        // during a long park does not pile up.
         UpdateMouseState(*event);
 
-        if (event->ButtonDown() || event->ButtonUp() || event->ButtonDClick())
+        const bool isMotion = event->GetEventType() == wxEVT_MOTION;
+
+        if (event->ButtonDown() || event->ButtonUp() || event->ButtonDClick()
+            || (isMotion && !m_parkedMotionQueued))
         {
             wxWindow *target = GetMouseWindow(event->GetPosition());
 
@@ -315,6 +343,9 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
                 queued.SetEventObject(target);
                 queued.SetId(target->GetId());
                 wxPostEvent(target->GetEventHandler(), queued);
+
+                if (isMotion)
+                    m_parkedMotionQueued = true;
             }
         }
 
@@ -322,6 +353,9 @@ void wxApp::HandleMouseEvent(wxMouseEvent *event)
     }
 
     wxWasmDispatchGuard dispatchGuard;
+
+    // A live motion supersedes any motion still queued from a park.
+    m_parkedMotionQueued = false;
 
     if (wxDropSource::IsDragInProgress())
     {
@@ -507,7 +541,7 @@ static void WheelReplay(void *p)
 
 void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
 {
-    if (wxWasmDispatchParked())
+    if (wxWasmMailboxMustDefer())
     {
         // Queue the tick for delivery when the interlock frees instead of
         // dropping it — every tick the user made scrolls, just later (a long
@@ -515,6 +549,9 @@ void wxApp::HandleMouseWheelEvent(wxMouseEvent *event)
         // contract). The wheel resolves its target window from the CURRENT
         // pointer position at delivery, matching what a fresh tick after
         // resume would do.
+        // A replay reaching here through the parked chain's own wxYield()
+        // (wxWasmMailboxDeliverNested) is delivered, so zooming works inside
+        // a RunSynchronousAction spin too.
         wxWasmMailboxEnqueueAfter(WheelReplay, new wxMouseEvent(*event), 0);
         return;
     }

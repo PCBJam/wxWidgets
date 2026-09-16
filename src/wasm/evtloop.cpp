@@ -151,6 +151,33 @@ extern "C" void wxWasmMailboxDeliver()
     }
 }
 
+int wxWasmMailboxNestedBaseline = -1;
+
+extern "C" void wxWasmMailboxDeliverNested()
+{
+    if (!wxTheApp)
+        return;
+
+    // Consent is scoped to this depth (see mailbox.h): handlers run with the
+    // caller's guard on the stack, then take their own like any dispatch.
+    const int savedBaseline = wxWasmMailboxNestedBaseline;
+    wxWasmMailboxNestedBaseline = wxWasmDispatchDepth;
+
+    // Same snapshot budget as wxWasmMailboxDeliver: a timer re-armed with
+    // delay 0 must not turn one wxYield into an endless drain.
+    int budget = wxWasmMailboxJsPending();
+    while (budget-- > 0)
+    {
+        void *fn = NULL;
+        void *arg = NULL;
+        if (!wxWasmMailboxJsPop(&fn, &arg))
+            break;
+        reinterpret_cast<void (*)(void *)>(fn)(arg);
+    }
+
+    wxWasmMailboxNestedBaseline = savedBaseline;
+}
+
 extern "C" {
 
     // The mailbox's own dispatch entry (docs/features/async/17 S1). Called by
@@ -555,6 +582,12 @@ void wxGUIEventLoop::WakeUp()
 
 void wxGUIEventLoop::DoYieldFor(long eventsToProcess)
 {
+    // Native wxYield semantics: due timers (and queued wheel ticks) run here
+    // on behalf of the calling chain, even while it holds the interlock -
+    // see wxWasmMailboxDeliverNested. Their handlers may post events, so
+    // drain the mailbox before the pending-event loop.
+    wxWasmMailboxDeliverNested();
+
     while (Pending())
     {
         Dispatch();

@@ -8,6 +8,8 @@
 #ifndef _WX_WASM_PRIVATE_MAILBOX_H_
 #define _WX_WASM_PRIVATE_MAILBOX_H_
 
+#include "wx/wasm/private/dispatch.h"
+
 // The mailbox front-end of the wx scheduler (pcbjam docs/features/
 // async/17, step S1). The shim (scripts/common/shims/jspi-scheduler.js,
 // linked as a --pre-js) provides a JS-side FIFO; deferred browser callbacks
@@ -32,5 +34,30 @@ extern "C" void wxWasmMailboxEnqueueAfter(void (*fn)(void *), void *arg,
 // self-re-arming timer cannot starve the paint that follows in
 // ProcessEvents.
 extern "C" void wxWasmMailboxDeliver();
+
+// Nested delivery: deliver due messages ON BEHALF OF the chain that holds the
+// interlock, because that chain asked for it - wxYield(). Native wx's
+// wxYield dispatches pending timer events; a handler that spins in
+//   while (busy) { wxYield(); wxMilliSleep(1); }
+// (KiCad's TOOL_MANAGER::RunSynchronousAction: the paste-move) is parked here
+// for the whole interaction and, without this, its own refresh/auto-pan
+// timers and any wheel ticks stayed queued until it finished (the pasted item
+// was moved to the cursor in the model but not DRAWN until a mouse move forced
+// a synchronous repaint). Called from wxGUIEventLoop::DoYieldFor.
+extern "C" void wxWasmMailboxDeliverNested();
+
+// Interlock depth at which the running nested delivery was started, or -1
+// when none is active. A message handler that would otherwise defer on
+// wxWasmDispatchParked() lets a nested delivery through when the depth is
+// exactly that baseline: the parked chain is the caller. Once a delivered
+// handler suspends, its own guard raises the depth above the baseline, so
+// a fresh browser entry arriving meanwhile still defers - same rule as
+// everywhere else.
+extern int wxWasmMailboxNestedBaseline;
+
+inline bool wxWasmMailboxMustDefer()
+{
+    return wxWasmDispatchParked() && wxWasmDispatchDepth != wxWasmMailboxNestedBaseline;
+}
 
 #endif // _WX_WASM_PRIVATE_MAILBOX_H_

@@ -57,6 +57,11 @@ public:
     // Internal use only
     wxWasmDisplay* GetDisplay() { return m_display; }
 
+    // Clears the parked-motion coalescing flag before the base drain, so
+    // the next motion that arrives while a chain is parked is queued again
+    // (see HandleMouseEvent's parked branch).
+    virtual void ProcessPendingEvents() wxOVERRIDE;
+
     bool HandleKeyEvent(wxKeyEvent *event);
     void HandleMouseEvent(wxMouseEvent *event);
     void HandleMouseWheelEvent(wxMouseEvent *event);
@@ -84,6 +89,12 @@ private:
 
     // Mouse
     wxMouseState m_mouseState;
+
+    // True while ONE wxEVT_MOTION has been queued for a parked dispatch
+    // chain and no ProcessPendingEvents() drain has run since (motion is
+    // coalesced while parked; buttons are queued 1:1). Self-healing: every
+    // drain clears it, not the event's consumption.
+    bool m_parkedMotionQueued;
 
     friend class wxDropSource;
 };
