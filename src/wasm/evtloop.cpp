@@ -601,12 +601,16 @@ void wxGUIEventLoop::DoYieldFor(long eventsToProcess)
     // (staging CI 2026-09-16). Boot and progress-dialog yields never sleep
     // between yields, so they never match; the paste spin matches from its
     // second iteration on (1 ms later).
-    if ((eventsToProcess & wxEVT_CATEGORY_TIMER)
-        && wxWasmMailboxSleptDepth == wxWasmDispatchDepth)
-    {
-        wxWasmMailboxSleptDepth = -1;
+    //
+    // The sleep mark is consumed by the FIRST yield after it, whether or not
+    // that yield qualifies: a sleep in some other loop (progress reporter,
+    // simulator wait, a startup library wait) must not leave a mark behind
+    // for an unrelated timer-capable yield later at the same depth.
+    const bool sleptJustBefore = wxWasmMailboxSleptDepth == wxWasmDispatchDepth;
+    wxWasmMailboxSleptDepth = -1;
+
+    if (sleptJustBefore && (eventsToProcess & wxEVT_CATEGORY_TIMER))
         wxWasmMailboxDeliverNested();
-    }
 
     while (Pending())
     {

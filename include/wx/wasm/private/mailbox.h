@@ -56,8 +56,9 @@ extern "C" void wxWasmMailboxDeliverNested();
 
 // Set by the main-thread sleep shim (pcbjam wasm/shims/nanosleep_yield.c,
 // weak-linked): the dispatch depth at which the current chain last slept, or
-// -1. DoYieldFor consumes it. A chain that yields without sleeping between
-// yields never matches.
+// -1. The first DoYieldFor after it consumes it (matching or not), so only a
+// yield immediately following a sleep qualifies; a chain that yields without
+// sleeping between yields never matches.
 extern int wxWasmMailboxSleptDepth;
 extern "C" void wxWasmNoteSleep();
 
