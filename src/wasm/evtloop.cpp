@@ -586,7 +586,16 @@ void wxGUIEventLoop::DoYieldFor(long eventsToProcess)
     // on behalf of the calling chain, even while it holds the interlock -
     // see wxWasmMailboxDeliverNested. Their handlers may post events, so
     // drain the mailbox before the pending-event loop.
-    wxWasmMailboxDeliverNested();
+    //
+    // Only for a yield that asks for timer events. wxYield()/wxSafeYield()
+    // pass wxEVT_CATEGORY_ALL (KiCad's RunSynchronousAction spin - the
+    // paste-move - is that case); wxProgressDialog's updates yield with
+    // wxEVT_CATEGORY_UI|USER_INPUT and native wx keeps timer events pending
+    // across them. KiCad drives a board/schematic load through exactly that
+    // dialog, so delivering timers there would run repaint/auto-pan handlers
+    // in the middle of a load - a re-entrancy the native ports never see.
+    if (eventsToProcess & wxEVT_CATEGORY_TIMER)
+        wxWasmMailboxDeliverNested();
 
     while (Pending())
     {

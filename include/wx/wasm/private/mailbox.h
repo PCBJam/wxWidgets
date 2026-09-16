@@ -43,7 +43,10 @@ extern "C" void wxWasmMailboxDeliver();
 // for the whole interaction and, without this, its own refresh/auto-pan
 // timers and any wheel ticks stayed queued until it finished (the pasted item
 // was moved to the cursor in the model but not DRAWN until a mouse move forced
-// a synchronous repaint). Called from wxGUIEventLoop::DoYieldFor.
+// a synchronous repaint). Called from wxGUIEventLoop::DoYieldFor, and only for
+// a yield whose category mask includes wxEVT_CATEGORY_TIMER (wxYield's ALL) -
+// a wxProgressDialog update yields UI|USER_INPUT and must not run timers, as
+// on the native ports.
 extern "C" void wxWasmMailboxDeliverNested();
 
 // Interlock depth at which the running nested delivery was started, or -1
