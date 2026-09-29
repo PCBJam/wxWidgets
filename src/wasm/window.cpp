@@ -245,6 +245,12 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
         parentId = reinterpret_cast<uintptr_t>(window->GetParent());
     }
 
+    // The owning top-level window (frame/dialog). Plain container panels are
+    // never registered (see isBaseClassType above), so parentId chains break
+    // at the first panel; this lets the page ask "is this control inside that
+    // dialog?" directly (guide overlay, overlay-system 0002 M3).
+    uintptr_t topLevelId = reinterpret_cast<uintptr_t>(wxGetTopLevelParent(window));
+
     // Call the appropriate JavaScript helper function (defined in wx.js)
     if (isNew) {
         EM_ASM({
@@ -256,7 +262,8 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
                 $4, $5, $6, $7,
                 $8 ? $8.toString() : null,
                 $9 ? true : false,
-                $10 ? true : false
+                $10 ? true : false,
+                $11 ? $11.toString() : null
             );
         },
         id,
@@ -267,7 +274,8 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
         size.GetWidth(), size.GetHeight(),
         parentId,
         visible ? 1 : 0,
-        enabled ? 1 : 0);
+        enabled ? 1 : 0,
+        topLevelId);
     } else {
         EM_ASM({
             wxElementUpdate(
@@ -278,7 +286,8 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
                 $4, $5, $6, $7,
                 $8 ? $8.toString() : null,
                 $9 ? true : false,
-                $10 ? true : false
+                $10 ? true : false,
+                $11 ? $11.toString() : null
             );
         },
         id,
@@ -289,7 +298,31 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
         size.GetWidth(), size.GetHeight(),
         parentId,
         visible ? 1 : 0,
-        enabled ? 1 : 0);
+        enabled ? 1 : 0,
+        topLevelId);
+    }
+}
+
+// Re-report a window and every descendant: their screen positions all shift
+// when an ancestor moves, but only the moved window gets DoMoveWindow — the
+// registry kept the descendants' old coordinates (a dragged dialog's controls
+// stayed where the dialog used to be). Iterates snapshots of the child lists,
+// like UpdateChildrenDOMVisibility, and only touches registry entries.
+static void UpdateElementRegistryTree(wxWindowWasm* window)
+{
+    if (!window) return;
+
+    UpdateElementRegistry(window, false);
+
+    wxWindowList& children = window->GetChildren();
+    std::vector<wxWindow*> snapshot(children.begin(), children.end());
+
+    for (wxWindow* child : snapshot)
+    {
+        // Top-level children (dialogs parented to a frame) keep their own
+        // screen position when the parent moves.
+        if (child && !child->IsTopLevel())
+            UpdateElementRegistryTree(dynamic_cast<wxWindowWasm*>(child));
     }
 }
 
@@ -1667,6 +1700,7 @@ void wxWindowWasm::DoMoveWindow(int x, int y, int width, int height)
 
     if (m_x != clientX || m_y != clientY || m_width != width || m_height != height)
     {
+        const bool originMoved = m_x != clientX || m_y != clientY;
         wxRect oldPos = wxRect(m_x, m_y, m_width, m_height);
         oldPos.Offset(parentOrigin);
 
@@ -1685,8 +1719,12 @@ void wxWindowWasm::DoMoveWindow(int x, int y, int width, int height)
             parent->RefreshRect(newPos);
         }
 
-        // Update element position in JS registry
-        UpdateElementRegistry(this, false);
+        // Update element position in JS registry — the whole subtree when
+        // the origin moved, since every descendant's screen position did too.
+        if (originMoved)
+            UpdateElementRegistryTree(this);
+        else
+            UpdateElementRegistry(this, false);
 
         UpdateDomGeometry();
     }

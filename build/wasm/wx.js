@@ -244,7 +244,7 @@
 })();
 
 // Helper functions called from C++ via EM_ASM
-function wxElementRegister(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled) {
+function wxElementRegister(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled, topLevelId) {
   if (window.wxElementRegistry) {
     window.wxElementRegistry.register(id, {
       id: id,
@@ -258,6 +258,9 @@ function wxElementRegister(id, label, name, typeName, screenX, screenY, width, h
       centerX: screenX + Math.floor(width / 2),
       centerY: screenY + Math.floor(height / 2),
       parentId: parentId,
+      // The owning frame/dialog (wxGetTopLevelParent) — containers between
+      // are not registered, so parentId chains stop short of it.
+      topLevelId: topLevelId,
       visible: visible,
       enabled: enabled,
       lastUpdated: Date.now()
@@ -265,7 +268,7 @@ function wxElementRegister(id, label, name, typeName, screenX, screenY, width, h
   }
 }
 
-function wxElementUpdate(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled) {
+function wxElementUpdate(id, label, name, typeName, screenX, screenY, width, height, parentId, visible, enabled, topLevelId) {
   if (window.wxElementRegistry) {
     var elem = window.wxElementRegistry.elements.get(id);
     if (elem) {
@@ -279,6 +282,7 @@ function wxElementUpdate(id, label, name, typeName, screenX, screenY, width, hei
       elem.centerX = screenX + Math.floor(width / 2);
       elem.centerY = screenY + Math.floor(height / 2);
       elem.parentId = parentId;
+      elem.topLevelId = topLevelId;
       elem.visible = visible;
       elem.enabled = enabled;
       elem.lastUpdated = Date.now();
