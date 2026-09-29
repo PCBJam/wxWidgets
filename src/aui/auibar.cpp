@@ -2546,7 +2546,7 @@ void wxAuiToolBar::OnPaint(wxPaintEvent& WXUNUSED(evt))
 
         wxWasmTrackElement(this, "tool", subType, static_cast<int>(j),
                            registryLabel, item.m_shortHelp, itemRect,
-                           isEnabled);
+                           isEnabled, item.GetId());
     }
 #endif
 }

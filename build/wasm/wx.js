@@ -294,9 +294,9 @@ function wxElementUnregister(id) {
 }
 
 // Helper functions for rendered elements (called from C++ via EM_ASM)
-function wxRenderedElementRegister(id, parentId, elementType, subType, label, tooltip, screenX, screenY, width, height, enabled, index) {
+function wxRenderedElementRegister(id, parentId, elementType, subType, label, tooltip, screenX, screenY, width, height, enabled, index, userId) {
   if (window.wxElementRegistry) {
-    window.wxElementRegistry.registerRendered(id, {
+    var info = {
       id: id,
       parentId: parentId,
       elementType: elementType,
@@ -312,7 +312,10 @@ function wxRenderedElementRegister(id, parentId, elementType, subType, label, to
       enabled: enabled,
       index: index,
       lastUpdated: Date.now()
-    });
+    };
+    // The item's own id (toolbar tool id), when the paint site passed one.
+    if (userId !== undefined) info.userId = userId;
+    window.wxElementRegistry.registerRendered(id, info);
   }
 }
 

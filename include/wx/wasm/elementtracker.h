@@ -20,11 +20,13 @@ class wxGenericListCtrl;
 
 // Low-level registration (implemented in src/wasm/elementtracker.cpp).
 // The registry id is "parentId:elementType:index"; coordinates are screen
-// coordinates.
+// coordinates. `userId` (optional) is the item's own identifier, e.g. a
+// toolbar tool's id, stored as the entry's `userId` so the page can map an
+// item to what it does (the guide overlay's `tool:<action>` targets).
 void WasmRegisterRenderedElement(wxWindow* parent, const char* elementType,
     const char* subType, int index, const wxString& label,
     const wxString& tooltip, int screenX, int screenY, int width, int height,
-    bool enabled);
+    bool enabled, int userId = wxID_NONE);
 void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
 
 // Convenience wrapper for the common case: the element rect is relative to
@@ -32,7 +34,8 @@ void WasmUnregisterRenderedElementsByParent(wxWindow* parent);
 // hooks stay one-liners.
 void wxWasmTrackElement(wxWindow* parent, const char* elementType,
     const char* subType, int index, const wxString& label,
-    const wxString& tooltip, const wxRect& rect, bool enabled = true);
+    const wxString& tooltip, const wxRect& rect, bool enabled = true,
+    int userId = wxID_NONE);
 
 // Typed helpers where the whole hook collapses to one call.
 #if wxUSE_GRID

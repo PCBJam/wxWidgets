@@ -31,7 +31,8 @@ void WasmRegisterRenderedElement(
     const wxString& tooltip,
     int screenX, int screenY,
     int width, int height,
-    bool enabled)
+    bool enabled,
+    int userId)
 {
     if (!parent) return;
 
@@ -49,7 +50,8 @@ void WasmRegisterRenderedElement(
             UTF8ToString($5),
             $6, $7, $8, $9,
             $10 ? true : false,
-            $2
+            $2,
+            $12 ? $11 : undefined
         );
     },
     parentId,
@@ -60,7 +62,9 @@ void WasmRegisterRenderedElement(
     tooltip.utf8_str().data(),
     screenX, screenY,
     width, height,
-    enabled ? 1 : 0);
+    enabled ? 1 : 0,
+    userId,
+    userId != wxID_NONE ? 1 : 0);
 }
 
 // Unregister all rendered elements for a parent
@@ -78,7 +82,7 @@ void WasmUnregisterRenderedElementsByParent(wxWindow* parent)
 void wxWasmTrackElement(wxWindow* parent, const char* elementType,
                         const char* subType, int index,
                         const wxString& label, const wxString& tooltip,
-                        const wxRect& rect, bool enabled)
+                        const wxRect& rect, bool enabled, int userId)
 {
     if (!parent) return;
 
@@ -87,7 +91,7 @@ void wxWasmTrackElement(wxWindow* parent, const char* elementType,
     WasmRegisterRenderedElement(parent, elementType, subType, index,
                                 label, tooltip,
                                 screenPos.x + rect.x, screenPos.y + rect.y,
-                                rect.width, rect.height, enabled);
+                                rect.width, rect.height, enabled, userId);
 }
 
 #if wxUSE_GRID
