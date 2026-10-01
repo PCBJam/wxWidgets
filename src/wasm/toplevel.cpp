@@ -131,8 +131,12 @@ wxTopLevelWindowWasm::~wxTopLevelWindowWasm()
 
 bool wxTopLevelWindowWasm::HasTitleBar() const
 {
-    // Main frame already has a native title bar.
-    return !IsMainFrame() && !(GetWindowStyle() & wxFRAME_NO_TASKBAR);
+    // Main frame already has a native title bar. wxFRAME_NO_TASKBAR marks popups and
+    // tooltips (no bar) — but also captioned windows that merely stay out of the OS
+    // taskbar, like KiCad's footprint and symbol chooser frames: those keep their
+    // caption, or they open with no title, no drag handle and no close X.
+    long style = GetWindowStyle();
+    return !IsMainFrame() && (!(style & wxFRAME_NO_TASKBAR) || (style & wxCAPTION));
 }
 
 bool wxTopLevelWindowWasm::UseDomTitleBar() const

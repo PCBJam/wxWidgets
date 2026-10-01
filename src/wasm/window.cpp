@@ -217,6 +217,17 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
         return;
     }
 
+    // KiCad's STD_BITMAP_BUTTON is a wxPanel without RTTI of its own, yet a real
+    // button the user clicks — e.g. "browse footprints" next to a field — that the
+    // guide overlay must be able to point at (overlay-system 0005). Recognise it by
+    // the window name KiCad gives it and register it (an upsert) under that name as
+    // its type on its first layout update; plain panels stay unregistered.
+    bool isStdBitmapButton = !isNew && typeName == wxT("wxPanel") &&
+                             window->GetName() == wxT("StdBitmapButton");
+    if (isStdBitmapButton) {
+        typeName = wxT("StdBitmapButton");
+    }
+
     // Some widgets (e.g. wxCollapsiblePane) override GetLabel() to access child
     // widgets that don't exist yet during base class construction. Skip GetLabel()
     // for these widgets to avoid WASM memory access errors (NULL pointer dereference).
@@ -252,7 +263,7 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
     uintptr_t topLevelId = reinterpret_cast<uintptr_t>(wxGetTopLevelParent(window));
 
     // Call the appropriate JavaScript helper function (defined in wx.js)
-    if (isNew) {
+    if (isNew || isStdBitmapButton) {
         EM_ASM({
             wxElementRegister(
                 $0.toString(),
