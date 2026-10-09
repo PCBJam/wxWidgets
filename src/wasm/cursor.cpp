@@ -254,6 +254,22 @@ wxCursor::wxCursor(int cursorType)
 
 void wxCursor::Install() const
 {
+    // An invalid cursor (wxCursor(), wxNullCursor) has no ref data. It is what
+    // wxSetCursor(wxNullCursor) passes to reset the cursor, and what
+    // wxEndBusyCursor() reinstalls when no global cursor was set before
+    // wxBeginBusyCursor(). Reading its type would dereference null: on wasm that
+    // does not trap but reads whatever lies at address 8 - Emscripten's stack
+    // cookie in ASSERTIONS builds, a negative "type" that sent setCursor() into its
+    // custom-bitmap branch and threw (fatal under ~wxBusyCursor). Show the default
+    // pointer instead, as the other ports do for wxNullCursor.
+    if (!IsOk())
+    {
+        EM_ASM({
+            setCursor($0);
+        }, HTML5_CURSOR_TYPE_POINTER);
+        return;
+    }
+
     HTML5CursorType cursorType = M_CURSORDATA->GetCursorType();
     //printf("setcursor: %d\n", cursorType);
 
