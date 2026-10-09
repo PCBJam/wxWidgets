@@ -662,7 +662,21 @@ void wxWindowWasm::OnDomEvent(wxDomEventKind kind)
 
         case wxDOM_EVENT_FOCUSIN:
             // Keep the wx focus model truthful when the browser moves focus.
-            if ( gs_focusWindow != this && CanAcceptFocus() )
+            // Only while the browser STILL has focus on this control: a
+            // focusin fired inside a running wx handler (el.focus() from
+            // SetFocus) is deferred by the dispatch interlock, and by the time
+            // it lands wx may have moved focus on or hidden the control —
+            // KiCad focuses its Search box and hides the pane in one go, and
+            // the stale focusin put focus back on the hidden box
+            // (e2e/hidden-focus.spec.ts). IsShownOnScreen() as well: Chrome
+            // can keep activeElement on a display:none input until its next
+            // rendering update.
+            if ( gs_focusWindow != this && CanAcceptFocus() && IsShownOnScreen() &&
+                 EM_ASM_INT({
+                     var ae = document.activeElement;
+                     return ae && ae.closest &&
+                            ae.closest('[data-wx-dom-id="' + $0 + '"]') ? 1 : 0;
+                 }, m_domId) )
                 SetFocus();
             break;
 
@@ -1126,6 +1140,32 @@ bool wxWindowWasm::Show(bool show)
 
         // Update visibility in element registry
         UpdateElementRegistry(this, false);
+
+        // Native toolkits never leave keyboard focus on a hidden widget (GTK
+        // unsets the toplevel's focus when its focus widget is hidden); this
+        // port kept gs_focusWindow on it. KiCad's board editor focuses the
+        // Search pane's text box while it is built and then hides the pane, so
+        // every hotkey went to the invisible box — and the canvas would not
+        // take focus on hover while a text control "had" it (hover + E did
+        // nothing until the first click; e2e/hidden-focus.spec.ts). Hand focus
+        // back to the frame, whose SetFocus picks its last-focused or largest
+        // shown child (P-4). Runs after the show event so handlers that move
+        // focus themselves win. Top-level windows keep their own hand-off.
+        if (!show && !IsTopLevel() && gs_focusWindow != NULL)
+        {
+            wxWindow *w = static_cast<wxWindow *>(gs_focusWindow);
+            while (w != NULL && w != static_cast<wxWindow *>(this) && !w->IsTopLevel())
+                w = w->GetParent();
+
+            if (w == static_cast<wxWindow *>(this))
+            {
+                gs_focusWindow->KillFocus();
+
+                wxWindowWasm *tlw = wxWasmTopLevelOf(this);
+                if (tlw != NULL && tlw->IsShown() && !tlw->IsBeingDeleted())
+                    tlw->SetFocus();
+            }
+        }
 
         return true;
     }
