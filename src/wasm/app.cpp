@@ -39,6 +39,7 @@ extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg);
 #include <emscripten/html5.h>
 
 void RegisterEmscriptenCallbacks(wxApp* app);
+void UnregisterEmscriptenCallbacks();
 
 // WASM-specific logger that outputs to browser console
 extern wxLog* wxCreateLogWasm();
@@ -59,6 +60,12 @@ wxApp::wxApp()
 
 wxApp::~wxApp()
 {
+    // The DOM callbacks carry `this` as userData. The page outlives the app
+    // (File→Quit returns from main(), then the host navigates away), so a
+    // callback left registered fires into freed memory: the navigation's
+    // beforeunload ran UnloadCallback → app->GetTopWindow() through a dead
+    // vtable → "null function" trap.
+    UnregisterEmscriptenCallbacks();
     delete m_display;
 }
 
@@ -1390,6 +1397,34 @@ void RegisterEmscriptenCallbacks(wxApp* app)
             registerDragDropHandlers();
         }
     });
+}
+
+// Remove every handler RegisterEmscriptenCallbacks installed (a NULL callback
+// unregisters). Results are not asserted: "#canvas" may already be gone.
+void UnregisterEmscriptenCallbacks()
+{
+    const char* window = EMSCRIPTEN_EVENT_TARGET_WINDOW;
+
+    emscripten_set_keydown_callback(window, nullptr, false, nullptr);
+    emscripten_set_keyup_callback(window, nullptr, false, nullptr);
+    emscripten_set_keypress_callback(window, nullptr, false, nullptr);
+
+    emscripten_set_mousedown_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_mouseup_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_mouseenter_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_mouseleave_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_mousemove_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_wheel_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_touchstart_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_touchend_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_touchmove_callback("#canvas", nullptr, false, nullptr);
+    emscripten_set_touchcancel_callback("#canvas", nullptr, false, nullptr);
+
+    emscripten_set_resize_callback(window, nullptr, false, nullptr);
+    emscripten_set_focus_callback(window, nullptr, false, nullptr);
+    emscripten_set_blur_callback(window, nullptr, false, nullptr);
+
+    emscripten_set_beforeunload_callback(nullptr, nullptr);
 }
 
 // ============================================================================
