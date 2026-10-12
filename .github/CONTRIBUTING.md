@@ -1,17 +1,13 @@
-# How to Contribute to wxWidgets
+# PCBJam's wxWidgets fork
 
-We appreciate receiving contributions and have a detailed
-[contributor guide](https://www.wxwidgets.org/develop/how-to-contribute/)
-which explains everything you ever wanted to know for contributing to
-wxWidgets.
+This is not upstream wxWidgets. It's PCBJam's fork, with a WebAssembly port
+(`src/wasm/`, `build/wasm/wx.js`) that lets KiCad run in the browser.
 
-For the impatient, the short version is that you may [report issues][1] or,
-even better, open [pull requests][2] in [wxWidgets repository][3] on GitHub
-with your changes. But please consider reading the guide above if you hadn't
-done this before.
+We don't accept pull requests here, and this repo's issues are off. Report bugs
+in [PCBJam/pcbjam's issues](https://github.com/PCBJam/pcbjam/issues) or in the
+`#bug-reports` forum on our [Discord](https://discord.gg/ybhqJxjR3E); see
+[PCBJam/pcbjam's CONTRIBUTING.md](https://github.com/PCBJam/pcbjam/blob/main/CONTRIBUTING.md).
 
-[1]: https://github.com/wxWidgets/wxWidgets/issues/new
-[2]: https://help.github.com/articles/about-pull-requests/
-[3]: https://github.com/wxWidgets/wxWidgets/
-
-### Thanks in advance and looking forward to your contributions!
+For wxWidgets itself, see
+[wxWidgets/wxWidgets](https://github.com/wxWidgets/wxWidgets) and its
+[contributor guide](https://www.wxwidgets.org/develop/how-to-contribute/).
