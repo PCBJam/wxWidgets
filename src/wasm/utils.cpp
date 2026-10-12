@@ -167,6 +167,37 @@ bool wxDoLaunchDefaultBrowser(const wxLaunchBrowserParams& params)
     return true;
 }
 
+static bool EmscriptenOpenLocalFile(const wxString& path)
+{
+    return EM_ASM_INT({
+        var p = UTF8ToString($0);
+        try {
+            var data = FS.readFile(p);
+            var ext = (p.split('.').pop() || '').toLowerCase();
+            // No object literal: its commas would split the EM_ASM macro.
+            var type = 'application/octet-stream';
+            if (ext == 'pdf') type = 'application/pdf';
+            else if (ext == 'html' || ext == 'htm') type = 'text/html';
+            else if (ext == 'txt') type = 'text/plain';
+            else if (ext == 'png') type = 'image/png';
+            else if (ext == 'jpg' || ext == 'jpeg') type = 'image/jpeg';
+            else if (ext == 'svg') type = 'image/svg+xml';
+            var blob = new Blob([data], ({ type: type }));
+            openUrl(URL.createObjectURL(blob));
+            return 1;
+        } catch (e) {
+            return 0;
+        }
+    }, static_cast<const char *>(path.utf8_str())) != 0;
+}
+
+static void EmscriptenOpenLocalFileAsync(void *arg)
+{
+    wxString *path = static_cast<wxString *>(arg);
+    EmscriptenOpenLocalFile(*path);
+    delete path;
+}
+
 bool wxLaunchDefaultApplication(const wxString& path, int WXUNUSED(flags))
 {
     // In a browser context, we can only launch URLs
@@ -187,8 +218,22 @@ bool wxLaunchDefaultApplication(const wxString& path, int WXUNUSED(flags))
         return true;
     }
 
-    // For local file paths, we cannot launch external applications in a browser
-    // Return false to indicate the operation is not supported
+    // A local file lives in the in-memory filesystem: hand its bytes to the
+    // browser as a blob URL in a new tab (a datasheet PDF, an exported file).
+    // The read runs on the main runtime thread, which owns MEMFS.
+    if (path.StartsWith("/"))
+    {
+        if (emscripten_is_main_runtime_thread())
+        {
+            return EmscriptenOpenLocalFile(path);
+        }
+
+        emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_VI,
+                &EmscriptenOpenLocalFileAsync,
+                new wxString(path));
+        return true;
+    }
+
     return false;
 }
 
