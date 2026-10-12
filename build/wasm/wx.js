@@ -555,6 +555,13 @@ if (typeof navigator !== 'undefined') {
         '.wx-inert, .wx-inert * {',
         '  pointer-events: none !important;',
         '}',
+        // Per-control barrier under an open popup (combo dropdown etc., see
+        // recomputePopupShadow). Kept apart from .wx-inert on purpose: it
+        // never sets .inert, so a focused input beneath the popup keeps its
+        // focus (blurring it would itself dismiss the popup).
+        '.wx-popup-shadowed, .wx-popup-shadowed * {',
+        '  pointer-events: none !important;',
+        '}',
         '.window-canvas {',
         '  position: absolute;',
         '  top: 0;',
@@ -1176,6 +1183,85 @@ if (typeof navigator !== 'undefined') {
           try { c.inert = covered; } catch (e) { /* older engine: CSS suffices */ }
         });
     }
+
+    recomputePopupShadow();
+  };
+
+  // Popups (wxPopupTransientWindow: generic wxOwnerDrawnComboBox /
+  // wxBitmapComboBox / wxComboCtrl dropdowns) are canvas-drawn with a
+  // pointer-events:none .window, so a click on a row falls through to #canvas
+  // and the C++ hit-test routes it to the popup. But a pointer-events:auto
+  // DOM control of the window BENEATH the popup (a dialog's <input>, a
+  // button, a tab strip) sits above #canvas and catches that click instead:
+  // the input takes focus, FOCUSIN -> SetFocus dismisses the popup, and the
+  // row is never picked (a button would even get pressed). Popups are kept
+  // out of the window-level barrier above (they must never make the dialog
+  // beneath inert), so here each such control that lies under a visible
+  // popup — outside it, in a lower window — gets .wx-popup-shadowed. Only the
+  // overlapped controls are affected; the rest of the dialog stays live, and
+  // the class drops as soon as the popup hides, moves away or is destroyed
+  // (every show/raise/rect/destroy path recomputes the barrier).
+  var POPUP_SHADOW_SELECTOR =
+      '.wx-dom-control, .wx-tab-strip, [data-wx-menu-bar="1"], ' +
+      '.window-titlebar, .window-resize-handle';
+
+  var windowZ = function (el) {
+    var z = parseInt(document.defaultView.getComputedStyle(el).zIndex, 10);
+    return isNaN(z) ? 0 : z;
+  };
+
+  var recomputePopupShadow = function () {
+    var popups = [];
+    windowMap.forEach(function (windowData, id) {
+      if (id === 0 || !windowData) return;
+      var el = windowData.window;
+      if (!el || !el.classList || !el.classList.contains('popup')) return;
+      if (el.style.display === 'none' || !el.isConnected) return;
+      var r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      popups.push({ el: el, z: windowZ(el), rect: r });
+    });
+
+    if (!popups.length) {
+      document.querySelectorAll('.wx-popup-shadowed').forEach(function (c) {
+        c.classList.remove('wx-popup-shadowed');
+      });
+      return;
+    }
+
+    var container = document.getElementById('window-container');
+    var zCache = new Map();
+    // The control's own top-level window div: the #window-container child
+    // that holds it, or null for #main-window (always below every popup —
+    // #window-container out-stacks it).
+    var ownerOf = function (c) {
+      var n = c;
+      while (n && n.parentElement && n.parentElement !== container) {
+        n = n.parentElement;
+      }
+      return n && n.parentElement === container ? n : null;
+    };
+
+    document.querySelectorAll(POPUP_SHADOW_SELECTOR).forEach(function (c) {
+      var owner = ownerOf(c);
+      var shadowed = false;
+      var cr = c.getBoundingClientRect();
+      if (cr.width > 0 && cr.height > 0) {
+        var ownerZ = -Infinity;
+        if (owner) {
+          if (!zCache.has(owner)) zCache.set(owner, windowZ(owner));
+          ownerZ = zCache.get(owner);
+        }
+        shadowed = popups.some(function (p) {
+          if (p.el === owner || !rectsOverlap(p.rect, cr)) return false;
+          if (ownerZ !== p.z) return ownerZ < p.z;
+          // Equal z: the later sibling paints on top.
+          return !!(owner.compareDocumentPosition(p.el) &
+                    Node.DOCUMENT_POSITION_FOLLOWING);
+        });
+      }
+      c.classList.toggle('wx-popup-shadowed', shadowed);
+    });
   };
 
   // Window rects change per animation frame during a titlebar drag or edge
