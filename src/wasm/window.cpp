@@ -961,18 +961,63 @@ EM_ASYNC_JS(int, wxDomPopupMenuModal,
         'popup');
 });
 
+// Sends wxEVT_MENU_OPEN / wxEVT_MENU_CLOSE for a popup menu and all its
+// submenus, the way wxGTK's "map"/"hide" signals do (popup menu: id -1, so
+// wxMenuEvent::IsPopup() holds; submenus: id 0). The DOM popup is serialized
+// once up front, so every submenu is reported open before serialization
+// (wxGTK only reports a submenu when it is shown) and closed when the popup
+// goes away.
+static void WasmSendPopupMenuEvent(wxEventType type, wxMenu *menu,
+                                   wxWindow *win, bool isTop)
+{
+    wxMenuEvent event(type, isTop ? -1 : 0, menu);
+    wxMenu::ProcessMenuEvent(menu, event, win);
+
+    // The OPEN handler may rebuild the menu (KiCad's dirty CONDITIONAL_MENU
+    // fills itself in it), so walk the items only afterwards.
+    for ( wxMenuItemList::compatibility_iterator node =
+              menu->GetMenuItems().GetFirst();
+          node;
+          node = node->GetNext() )
+    {
+        if ( wxMenu *sub = node->GetData()->GetSubMenu() )
+            WasmSendPopupMenuEvent(type, sub, win, false);
+    }
+}
+
 bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
 {
     wxCHECK_MSG(menu, false, wxT("DoPopupMenu: NULL menu"));
 
-    // Build the JSON up front; the suspended frame keeps it alive for the
-    // menu's whole lifetime.
+    // What the native ports do while showing a popup: report it open, then
+    // refresh the items' state from wxEVT_UPDATE_UI. KiCad depends on both:
+    // a context menu requested with TOOL_MENU::ShowContextMenu() (the
+    // footprint/symbol editor library tree, LIB_TREE::onItemContextMenu) is
+    // empty until wxEVT_MENU_OPEN reaches it through the frame, and its
+    // enable/check state comes from the frame's UPDATE_UI handlers. Without
+    // the event the tree popped an empty menu.
+    WasmSendPopupMenuEvent(wxEVT_MENU_OPEN, menu, this, true);
+    menu->UpdateUI();
+
+    // Build the JSON now that the menu is final; the suspended frame keeps
+    // it alive for the menu's whole lifetime.
     const wxString json = menu->WasmItemsToJson();
 
     // x/y are client coords of this window, OR wxDefaultCoord meaning "at the
     // mouse position" — passed through as -1 so JS uses the last pointer.
-    const int vx = (x == wxDefaultCoord) ? -1 : x;
-    const int vy = (y == wxDefaultCoord) ? -1 : y;
+    // Client coords go to JS as screen (= #canvas-relative) coords with no
+    // invoker element: wx-dom.js would otherwise add them to the invoker's
+    // element box, or for a window without one (a frame) to the canvas
+    // origin, which put KiCad's frame->PopupMenu(menu, ScreenToClient(mouse))
+    // a menu-bar height above the pointer.
+    int vx = -1;
+    int vy = -1;
+    if ( x != wxDefaultCoord && y != wxDefaultCoord )
+    {
+        const wxPoint screen = ClientToScreen(wxPoint(x, y));
+        vx = screen.x;
+        vy = screen.y;
+    }
 
     // The invoking dispatch chain suspends for the menu's whole lifetime;
     // event dispatch must keep running meanwhile (the menu itself and the
@@ -982,8 +1027,11 @@ bool wxWindowWasm::DoPopupMenu(wxMenu *menu, int x, int y)
     const int savedDispatchDepth = wxWasmDispatchDepth;
     wxWasmDispatchDepth = 0;
     const int chosenId =
-        wxDomPopupMenuModal(json.utf8_str(), WasmGetDomId(), vx, vy);
+        wxDomPopupMenuModal(json.utf8_str(), 0, vx, vy);
     wxWasmDispatchRestore(savedDispatchDepth, "PopupMenu");
+
+    // Closed before the chosen command is dispatched, as on wxGTK/wxMSW.
+    WasmSendPopupMenuEvent(wxEVT_MENU_CLOSE, menu, this, true);
 
     if ( chosenId < 0 )
         return false; // cancelled

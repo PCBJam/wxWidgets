@@ -3032,12 +3032,25 @@ void wxDataViewMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
         if (itemText.IsEmpty())
             itemText = wxString::Format("Row %u", item);
 
-        // Register the dataview row (rect is owner-relative)
+        // Register the dataview row. The registry entry stays keyed on the
+        // owner (OnPaint unregisters by GetOwner()), but x_start/
+        // reg_line_start are logical (unscrolled) coords of THIS main
+        // window, which sits below the column header: convert them to
+        // device coords and offset by this window's position in the owner.
+        // Using them as owner coords put every row a header height (plus
+        // the scroll offset) too high, so a click at a row's registry
+        // centre hit the row above it.
+        int reg_x = 0;
+        int reg_y = 0;
+        m_owner->CalcScrolledPosition(static_cast<int>(x_start),
+                                      static_cast<int>(reg_line_start),
+                                      &reg_x, &reg_y);
+        const wxPoint inOwner = GetPosition();
         wxWasmTrackElement(GetOwner(), "dataviewitem",
                            selected ? "selected" : "row",
                            static_cast<int>(item), itemText,
                            wxString::Format("Row %u", item),
-                           wxRect(x_start, reg_line_start,
+                           wxRect(inOwner.x + reg_x, inOwner.y + reg_y,
                                   x_last - x_start, line_height));
 
         reg_line_start += line_height;
