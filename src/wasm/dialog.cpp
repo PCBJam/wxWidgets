@@ -207,13 +207,13 @@ int wxDialog::ShowModal()
         return GetReturnCode();
     }
 
-    // Use the app's top level window as parent if none given unless explicitly
-    // forbidden
-    wxWindow * const parent = GetParentForModalDialog();
-    if ( parent && parent != this )
-    {
-        m_parent = parent;
-    }
+    // Never re-point m_parent at GetParentForModalDialog() (wxUniv does; the
+    // native ports don't). The dialog stays in its creation parent's child
+    // list, so a dialog created on a control inside another dialog (KiCad's
+    // Set Hotkey prompt, parented to the hotkey list) would be unlinked from
+    // the WRONG parent on destruction, leaving a dangling child: the next
+    // mouse hit-test (wxFindWindowAtPoint) and the outer dialog's teardown
+    // then trap on the freed window.
 
     // The modal is a registered WAIT begun BEFORE Show(true) — an EndModal
     // running synchronously inside Show() resolves the wait early and
