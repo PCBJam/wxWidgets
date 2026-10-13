@@ -1330,9 +1330,34 @@ const char *UnloadCallback(int WXUNUSED(eventType),
 
 }
 
+// Escape always belongs to the app. Its browser default is "leave
+// fullscreen": Firefox on macOS exits even the browser's own fullscreen on an
+// Escape keydown the page did not preventDefault. KeyCallback prevents every
+// Escape it sees, but handlers below the window stop Escape before it gets
+// there (a wx-dom text input stops every key, DOM popups and page overlays
+// stop the Escape that closes them), so an Escape typed into a field threw the
+// user out of fullscreen. A window CAPTURE listener runs before all of them;
+// it only prevents the default and never stops propagation, so every handler
+// still gets the key. Escape cancelling an IME composition is left alone.
+EM_JS(void, wxWasmInstallEscapeGuard, (), {
+    if (typeof window === 'undefined' || window.__wxEscapeGuard) return;
+    window.__wxEscapeGuard = function (ev) {
+        if (ev.key === 'Escape' && !ev.isComposing) ev.preventDefault();
+    };
+    window.addEventListener('keydown', window.__wxEscapeGuard, true);
+});
+
+EM_JS(void, wxWasmRemoveEscapeGuard, (), {
+    if (typeof window === 'undefined' || !window.__wxEscapeGuard) return;
+    window.removeEventListener('keydown', window.__wxEscapeGuard, true);
+    window.__wxEscapeGuard = null;
+});
+
 void RegisterEmscriptenCallbacks(wxApp* app)
 {
     EMSCRIPTEN_RESULT result;
+
+    wxWasmInstallEscapeGuard();
 
     result = emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, app, false, KeyCallback);
     wxASSERT(result == EMSCRIPTEN_RESULT_SUCCESS);
@@ -1405,6 +1430,7 @@ void UnregisterEmscriptenCallbacks()
 {
     const char* window = EMSCRIPTEN_EVENT_TARGET_WINDOW;
 
+    wxWasmRemoveEscapeGuard();
     emscripten_set_keydown_callback(window, nullptr, false, nullptr);
     emscripten_set_keyup_callback(window, nullptr, false, nullptr);
     emscripten_set_keypress_callback(window, nullptr, false, nullptr);
