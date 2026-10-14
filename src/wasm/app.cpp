@@ -34,6 +34,7 @@ extern "C" void wxWasmRunOnDispatchContext(void (*fn)(void *), void *arg);
 #include "wx/wasm/private/timer.h"
 
 #include <emscripten.h>
+#include <locale.h>
 #include <deque>
 #include <string>
 #include <emscripten/html5.h>
@@ -55,6 +56,15 @@ wxApp::wxApp()
       m_parkedMotionQueued(false)
 {
     printf("Creating app\n");
+
+    // musl starts in the "C" locale, where a wide character above 0x7F can't
+    // be converted: wxString::Format("%.2f%s", v, "°") comes back EMPTY (KiCad's
+    // 3D-model rotation fields, every degree-formatted text). Character
+    // handling is UTF-8, like the browser; numbers keep the "C" format.
+    // Plain setlocale(): wxSetlocale() is a no-op on this port (wxcrt.cpp), so
+    // wxLocale never changes the C library's locale and this one stays.
+    setlocale(LC_CTYPE, "C.UTF-8");
+
     RegisterEmscriptenCallbacks(this);
 }
 
