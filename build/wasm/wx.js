@@ -418,10 +418,41 @@ if (typeof navigator !== 'undefined') {
   })();
 }
 
+  // Links come from documents anyone can write (a symbol's Datasheet field),
+  // and a new window opened from here shares the editor's origin. So only web
+  // and mail links open, with no opener; the editor's own blob: URLs (a file
+  // from the project, see EmscriptenOpenLocalFile) open too, but only as a
+  // PDF, an image or plain text: any other blob (HTML, SVG, XML, an empty
+  // type) opens as plain text, or a browser could run its script in the
+  // editor's origin.
+  var OPENABLE_URL = /^(https?:|mailto:)/i;
+  var PASSIVE_BLOB_TYPE = /^(application\/pdf|image\/png|image\/jpeg|text\/plain)(;|$)/i;
+
   var openUrl = function(url) {
-    if (typeof window !== 'undefined') {
-      window.open(url, '_blank');
+    if (typeof window === 'undefined') {
+      return;
     }
+    var s = String(url).trim();
+    if (/^blob:/i.test(s) && s.slice(5, 5 + window.location.origin.length) === window.location.origin) {
+      fetch(s).then(function(res) {
+        return res.blob();
+      }).then(function(blob) {
+        var shown = PASSIVE_BLOB_TYPE.test(blob.type) ? blob : new Blob([blob], { type: 'text/plain' });
+        var target = shown === blob ? s : URL.createObjectURL(shown);
+        window.open(target, '_blank', 'noopener');
+        if (target !== s) {
+          setTimeout(function() { URL.revokeObjectURL(target); }, 60000);
+        }
+      }).catch(function(err) {
+        console.warn('[wx] could not open a file from the project: ' + (err && err.message));
+      });
+      return;
+    }
+    if (!OPENABLE_URL.test(s)) {
+      console.warn('[wx] not opening a link that is not http, https or mailto: ' + s.slice(0, 60));
+      return;
+    }
+    window.open(s, '_blank', 'noopener');
   };
 
   var setIcon = function(id) {
