@@ -72,9 +72,9 @@ wxApp::~wxApp()
 {
     // The DOM callbacks carry `this` as userData. The page outlives the app
     // (File→Quit returns from main(), then the host navigates away), so a
-    // callback left registered fires into freed memory: the navigation's
-    // beforeunload ran UnloadCallback → app->GetTopWindow() through a dead
-    // vtable → "null function" trap.
+    // callback left registered fires into freed memory (seen with the former
+    // beforeunload handler: app->GetTopWindow() through a dead vtable → "null
+    // function" trap).
     UnregisterEmscriptenCallbacks();
     delete m_display;
 }
@@ -1324,20 +1324,6 @@ EM_BOOL FocusCallback(int eventType,
     return true;
 }
 
-const char *UnloadCallback(int WXUNUSED(eventType),
-                           const void *WXUNUSED(emscriptenEvent),
-                           void *userData)
-{
-    //printf("UnloadCallback\n");
-    wxApp* app = static_cast<wxApp*>(userData);
-
-    wxCloseEvent event(wxEVT_CLOSE_WINDOW);
-    event.SetCanVeto(true);
-    app->HandleCloseEvent(&event);
-
-    return event.GetVeto() ? "veto" : "";
-}
-
 }
 
 // Escape always belongs to the app. Its browser default is "leave
@@ -1423,8 +1409,13 @@ void RegisterEmscriptenCallbacks(wxApp* app)
     result = emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, app, false, FocusCallback);
     wxASSERT(result == EMSCRIPTEN_RESULT_SUCCESS);
 
-    result = emscripten_set_beforeunload_callback(app, UnloadCallback);
-    wxASSERT(result == EMSCRIPTEN_RESULT_SUCCESS);
+    // No beforeunload handler: closing the top window there can't work. The
+    // browser calls it synchronously, outside any promising entry, so the
+    // first JSPI wait in the app's close handler (an unsaved-changes dialog,
+    // the teardown) threw SuspendError on every tab close or reload; a modal
+    // can't be shown there at all. The page's memory goes with it, so the
+    // close has nothing to save. A host that wants a "Leave site?" warning
+    // adds its own listener.
 
     // Initialize HTML5 drag and drop handlers
     EM_ASM({
@@ -1459,8 +1450,6 @@ void UnregisterEmscriptenCallbacks()
     emscripten_set_resize_callback(window, nullptr, false, nullptr);
     emscripten_set_focus_callback(window, nullptr, false, nullptr);
     emscripten_set_blur_callback(window, nullptr, false, nullptr);
-
-    emscripten_set_beforeunload_callback(nullptr, nullptr);
 }
 
 // ============================================================================
