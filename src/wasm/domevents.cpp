@@ -129,10 +129,12 @@ void EMSCRIPTEN_KEEPALIVE wx_dom_event(int domId, int kind)
 // x/y: #canvas-relative CSS px (same space as Emscripten targetX/Y).
 // button/buttons/detail: DOM MouseEvent semantics.
 // modifiers: 1 ctrl | 2 shift | 4 alt | 8 meta.
+// deltaY/deltaX: WheelEvent deltas (kind 4 only).
 // Returns 1 when wx consumed the event (JS uses it for preventDefault).
 int EMSCRIPTEN_KEEPALIVE wx_dom_mouse(int kind, int x, int y,
                                       int button, int buttons, int detail,
-                                      int modifiers, double deltaY)
+                                      int modifiers, double deltaY,
+                                      double deltaX)
 {
     if ( !wxTheApp )
         return 0;
@@ -159,12 +161,25 @@ int EMSCRIPTEN_KEEPALIVE wx_dom_mouse(int kind, int x, int y,
         memset(&wheel, 0, sizeof(wheel));
         wheel.mouse = mouse;
         wheel.deltaY = deltaY;
+        wheel.deltaX = deltaX;
 
-        if ( !EmscriptenWheelEventToWXEvent(wheel, wxVERTICAL, &event) )
-            return 0;
+        // a trackpad scrolls both axes in one browser event: one wx event
+        // per axis, horizontal first (shift+wheel arrives as deltaX)
+        bool handled = false;
+        if ( EmscriptenWheelEventToWXEvent(wheel, wxHORIZONTAL, &event) )
+        {
+            wxTheApp->HandleMouseWheelEvent(&event);
+            handled = true;
+        }
 
-        wxTheApp->HandleMouseWheelEvent(&event);
-        return 1;
+        wxMouseEvent vertical;
+        if ( EmscriptenWheelEventToWXEvent(wheel, wxVERTICAL, &vertical) )
+        {
+            wxTheApp->HandleMouseWheelEvent(&vertical);
+            handled = true;
+        }
+
+        return handled ? 1 : 0;
     }
 
     int emType;

@@ -1691,7 +1691,7 @@
   var canvasRect = null;
   window.addEventListener('resize', function () { canvasRect = null; });
 
-  function wxForwardMouse(ev, kind, deltaY) {
+  function wxForwardMouse(ev, kind, deltaY, deltaX) {
     var c = Module['canvas'];
     if (!c) return 0;
     if (!canvasRect) canvasRect = c.getBoundingClientRect();
@@ -1700,11 +1700,12 @@
     try {
       return Module['ccall']('wx_dom_mouse', 'number',
         ['number', 'number', 'number', 'number',
-         'number', 'number', 'number', 'number'],
+         'number', 'number', 'number', 'number', 'number'],
         [kind,
          Math.round(ev.clientX - canvasRect.left),
          Math.round(ev.clientY - canvasRect.top),
-         ev.button | 0, ev.buttons | 0, ev.detail | 0, mods, deltaY || 0]);
+         ev.button | 0, ev.buttons | 0, ev.detail | 0, mods, deltaY || 0,
+         deltaX || 0]);
     } catch (e) {
       return 0;
     }
@@ -1752,16 +1753,20 @@
     var ctl = forwardTarget(ev);
     if (!ctl) return;
     // A natively scrollable element under the cursor (textarea, multi-
-    // select, checklist) keeps its own wheel behavior.
+    // select, checklist) keeps its own wheel behavior, per axis scrolled.
     for (var n = ev.target; n; n = n.parentElement) {
-      var oy = getComputedStyle(n).overflowY;
-      if ((oy === 'auto' || oy === 'scroll') &&
+      var cs = getComputedStyle(n);
+      if (ev.deltaY && (cs.overflowY === 'auto' || cs.overflowY === 'scroll') &&
           n.scrollHeight > n.clientHeight) {
+        return;
+      }
+      if (ev.deltaX && (cs.overflowX === 'auto' || cs.overflowX === 'scroll') &&
+          n.scrollWidth > n.clientWidth) {
         return;
       }
       if (n === ctl) break;
     }
-    if (wxForwardMouse(ev, 4, ev.deltaY)) ev.preventDefault();
+    if (wxForwardMouse(ev, 4, ev.deltaY, ev.deltaX)) ev.preventDefault();
   }, { passive: false });
 
   document.addEventListener('contextmenu', function (ev) {

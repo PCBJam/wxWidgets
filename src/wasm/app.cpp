@@ -1274,14 +1274,16 @@ EM_BOOL WheelCallback(int WXUNUSED(eventType),
     //printf("WheelCallback: %f %f %ld %ld\n", event->deltaX, event->deltaY, event->mouse.targetX, event->mouse.targetY);
 
     wxApp* app = static_cast<wxApp*>(userData);
-    wxMouseEvent event;
 
-    if (EmscriptenWheelEventToWXEvent(*emscriptenEvent, wxHORIZONTAL, &event))
+    // a trackpad scrolls both axes in one browser event: one wx event per
+    // axis, horizontal first (shift+wheel arrives as deltaX)
+    const wxOrientation axes[] = { wxHORIZONTAL, wxVERTICAL };
+    for (wxOrientation axis : axes)
     {
-    }
+        wxMouseEvent event;
+        if (!EmscriptenWheelEventToWXEvent(*emscriptenEvent, axis, &event))
+            continue;
 
-    if (EmscriptenWheelEventToWXEvent(*emscriptenEvent, wxVERTICAL, &event))
-    {
         wxWasmMouseJob* job = new wxWasmMouseJob();
         job->app = app;
         job->event = event;
