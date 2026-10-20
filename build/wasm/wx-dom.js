@@ -82,6 +82,25 @@
   var NAV_KEY_EVT = { ArrowUp: EVT.KEY_UP, ArrowDown: EVT.KEY_DOWN,
                       PageUp: EVT.KEY_PAGEUP, PageDown: EVT.KEY_PAGEDOWN };
 
+  // Enter in an <input> is handed to wx as EVT.ENTER. Its handler may move
+  // wx focus to a canvas-drawn window (a grid editor commits and the grid
+  // takes focus), which blurs the input before the browser sends that same
+  // Enter's keypress, to <body>: the canvas KeyCallback would then deliver a
+  // second wxEVT_CHAR(WXK_RETURN), and wxGrid reopens the editor with it,
+  // writing '\r' over the committed text (issue #36). Window capture runs
+  // before Emscripten's window listeners, so the stray keypress stops here.
+  function swallowEnterKeypress() {
+    function onPress(ev) {
+      if (ev.key === 'Enter') ev.stopPropagation();
+    }
+    function done() {
+      window.removeEventListener('keypress', onPress, true);
+      window.removeEventListener('keyup', done, true);
+    }
+    window.addEventListener('keypress', onPress, true);
+    window.addEventListener('keyup', done, true);
+  }
+
   // Last pointer position in viewport (clientX/Y) coordinates — read by
   // wxShowContextMenu when DoPopupMenu is invoked "at the mouse" (the KiCad
   // canvas right-click case passes wxDefaultCoord). Tracked on every pointer
@@ -445,6 +464,7 @@
       if (isEditable(valueEl)) {
         valueEl.addEventListener('keydown', function (ev) {
           if (ev.key === 'Enter' && valueEl.tagName === 'INPUT') {
+            swallowEnterKeypress();
             dispatch(domId, EVT.ENTER);
           } else if (valueEl.tagName === 'INPUT' && NAV_KEY_EVT[ev.key] &&
                      !ev.ctrlKey && !ev.metaKey && !ev.altKey) {

@@ -120,9 +120,21 @@ void wxTextCtrl::OnDomEvent(wxDomEventKind kind)
         case wxDOM_EVENT_ENTER:
             // Native ordering: wxEVT_CHAR_HOOK first (a consuming handler —
             // KiCad LIB_TREE's Enter-confirms — suppresses everything
-            // after it), then the control's own wxEVT_TEXT_ENTER.
+            // after it), then wxEVT_KEY_DOWN (a grid cell editor's pushed
+            // wxGridCellEditorEvtHandler commits and moves down on it), then
+            // the control's own wxEVT_TEXT_ENTER.
             if (WasmSendDomCharHook(WXK_RETURN))
                 return;
+
+            {
+                wxKeyEvent down(wxEVT_KEY_DOWN);
+                down.m_keyCode = WXK_RETURN;
+                down.m_uniChar = WXK_RETURN;
+                down.SetEventObject(this);
+                down.SetId(GetId());
+                if (HandleWindowEvent(down))
+                    return;
+            }
 
             if (GetWindowStyle() & wxTE_PROCESS_ENTER)
             {
