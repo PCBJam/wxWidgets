@@ -87,7 +87,7 @@
   // takes focus), which blurs the input before the browser sends that same
   // Enter's keypress, to <body>: the canvas KeyCallback would then deliver a
   // second wxEVT_CHAR(WXK_RETURN), and wxGrid reopens the editor with it,
-  // writing '\r' over the committed text (issue #36). Window capture runs
+  // writing '\r' over the committed text. Window capture runs
   // before Emscripten's window listeners, so the stray keypress stops here.
   function swallowEnterKeypress() {
     function onPress(ev) {
