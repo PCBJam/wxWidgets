@@ -1058,23 +1058,50 @@
 
   // ========== Menus & toolbars ==========
 
-  var openMenuPopup = null;
+  // The open menu popups, root first: a menubar menu or a context menu at
+  // level 0, then one cascaded submenu per level. menuChainDismiss is the
+  // cancel hook of a blocking context menu (settles its Promise with -1).
+  var menuChain = [];
+  var menuChainDismiss = null;
 
-  function closeMenuPopup() {
-    if (openMenuPopup) {
-      openMenuPopup.remove();
-      openMenuPopup = null;
+  function closeMenuFrom(level) {
+    var reg = window.wxElementRegistry;
+    while (menuChain.length > level) {
+      var p = menuChain.pop();
+      p.remove();
+      // the rows are gone from the DOM, so is their registry geometry
+      if (reg && reg.unregisterRenderedByParent)
+        reg.unregisterRenderedByParent(p.dataset.wxRegistryParent);
     }
   }
 
+  function closeMenuPopup() {
+    var dismiss = menuChainDismiss;
+    menuChainDismiss = null;
+    closeMenuFrom(0);
+    if (dismiss) dismiss();
+  }
+
+  function inMenuChain(target) {
+    return menuChain.some(function (p) { return p.contains(target); });
+  }
+
+  // Capture phase: a control that stops mousedown propagation still closes
+  // the menus. Mousedown so the click on another control still lands. A
+  // menubar title toggles its own menu, except over a context menu.
   document.addEventListener('mousedown', function (ev) {
-    // any click outside an open menu closes it (mousedown so the click on
-    // another control still lands)
-    if (openMenuPopup && !openMenuPopup.contains(ev.target)) {
-      var inTitle = ev.target.closest && ev.target.closest('.wx-menu-title');
-      if (!inTitle) closeMenuPopup();
+    if (!menuChain.length || inMenuChain(ev.target)) return;
+    var inTitle = ev.target.closest && ev.target.closest('.wx-menu-title');
+    if (!inTitle || menuChainDismiss) closeMenuPopup();
+  }, true);
+
+  document.addEventListener('keydown', function (ev) {
+    if (menuChain.length && ev.key === 'Escape') {
+      ev.stopPropagation();
+      ev.preventDefault();
+      closeMenuPopup();
     }
-  });
+  }, true);
 
   function registryRegister(id, info) {
     var reg = window.wxElementRegistry;
@@ -1087,13 +1114,46 @@
              centerX: r.x + r.width / 2, centerY: r.y + r.height / 2 };
   }
 
+  // A popup at `level` of the chain, closing any at that level or deeper.
+  // place(pop) positions it once it is in the document (sized).
+  function openMenuLevel(level, items, registryParent, font, onChoose, place) {
+    closeMenuFrom(level);
+    var pop = document.createElement('div');
+    pop.className = 'wx-menu-popup';
+    pop.dataset.wxRegistryParent = registryParent;
+    pop.style.cssText =
+      'position:fixed;z-index:10000;background:#d4d0c8;' +
+      'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
+      'padding:2px;white-space:pre;min-width:120px;left:0;top:0;';
+    if (font) pop.style.font = font;
+    buildMenuItemRows(pop, items, registryParent, level, font, onChoose);
+    document.body.appendChild(pop);
+    menuChain.push(pop);
+    place(pop);
+    return pop;
+  }
+
+  // Places a popup wanted at (x, y) inside the viewport: altX / altY are
+  // where it goes when it overflows the right / bottom edge (a context menu
+  // flips to the other side of the pointer, a submenu to the left of its
+  // parent and up to the bottom edge).
+  function clampMenu(pop, x, y, altX, altY) {
+    var w = pop.offsetWidth, h = pop.offsetHeight;
+    var L = x, T = y;
+    if (L + w > window.innerWidth) L = Math.max(0, altX);
+    if (T + h > window.innerHeight) T = Math.max(0, altY);
+    pop.style.left = L + 'px';
+    pop.style.top = T + 'px';
+  }
+
   // Builds the item rows of a menu popup into `pop` (shared by the menubar
-  // popups and the standalone context menu). items:
+  // popups, the context menu and their submenus). items:
   // [{id,label,kind:'normal'|'separator'|'check'|'radio'|'submenu',
-  //   checked,enabled,items}]. onChoose(id) fires for a leaf row click;
-  // reopenSubmenu(row, subItems) handles a submenu row. Each row is
+  //   checked,enabled,items}]. onChoose(id) fires for a leaf row click at
+  // any depth. Hovering a submenu row cascades its items beside the row at
+  // level + 1; hovering any other row closes the deeper levels. Each row is
   // published to the e2e registry under registryParent as 'menuitem'.
-  function buildMenuItemRows(pop, items, registryParent, onChoose, reopenSubmenu) {
+  function buildMenuItemRows(pop, items, registryParent, level, font, onChoose) {
     items.forEach(function (it, idx) {
       if (it.kind === 'separator') {
         var sep = document.createElement('div');
@@ -1106,19 +1166,38 @@
                         (it.kind === 'submenu' ? '  ▸' : '');
       row.style.cssText = 'padding:2px 14px 2px 6px;cursor:default;' +
                           (it.enabled ? '' : 'color:#808080;');
+      var subParent = registryParent + ':sub:' + idx;
+      function openSub() {
+        var child = menuChain[level + 1];
+        if (child && child.dataset.wxRegistryParent === subParent) return;
+        openMenuLevel(level + 1, it.items || [], subParent, font, onChoose,
+          function (sub) {
+            var r = row.getBoundingClientRect();
+            var pr = pop.getBoundingClientRect();
+            clampMenu(sub, pr.right - 2, r.top - 3, pr.left - sub.offsetWidth + 2,
+                      window.innerHeight - sub.offsetHeight);
+          });
+      }
+      row.addEventListener('mouseenter', function () {
+        if (!it.enabled) {
+          closeMenuFrom(level + 1);
+          return;
+        }
+        row.style.background = '#000080';
+        row.style.color = '#ffffff';
+        if (it.kind === 'submenu') openSub();
+        else closeMenuFrom(level + 1);
+      });
+      row.addEventListener('mouseleave', function () {
+        row.style.background = '';
+        row.style.color = '';
+      });
       if (it.enabled) {
-        row.addEventListener('mouseenter', function () {
-          row.style.background = '#000080';
-          row.style.color = '#ffffff';
-        });
-        row.addEventListener('mouseleave', function () {
-          row.style.background = '';
-          row.style.color = '';
-        });
         row.addEventListener('click', function (ev) {
           ev.stopPropagation();
+          // a click (touch, no hover) opens the submenu too
           if (it.kind === 'submenu') {
-            reopenSubmenu(row, it.items || []);
+            openSub();
             return;
           }
           onChoose(it.id);
@@ -1130,7 +1209,8 @@
         if (!pop.isConnected) return;
         registryRegister(registryParent + ':menuitem:' + idx, Object.assign({
           elementType: 'menuitem',
-          subType: it.kind === 'check' || it.kind === 'radio' ? it.kind : 'normal',
+          subType: it.kind === 'check' || it.kind === 'radio' ? it.kind :
+                   it.kind === 'submenu' ? 'submenu' : 'normal',
           label: it.label, tooltip: '', enabled: !!it.enabled,
           parentId: registryParent, index: idx
         }, rectInfo(row)));
@@ -1141,31 +1221,19 @@
   // Builds and shows the popup for one menubar menu's items below `anchor`.
   function showMenuPopup(domId, anchor, items, registryParent) {
     closeMenuPopup();
-    var pop = document.createElement('div');
-    pop.className = 'wx-menu-popup';
-    var a = anchor.getBoundingClientRect();
-    pop.style.cssText =
-      'position:absolute;z-index:10000;background:#d4d0c8;' +
-      'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
-      'padding:2px;white-space:pre;min-width:120px;' +
-      'left:' + (a.left + window.scrollX) + 'px;' +
-      'top:' + (a.bottom + window.scrollY) + 'px;';
-    pop.style.font = anchor.style.font || getComputedStyle(anchor).font;
-
-    buildMenuItemRows(pop, items, registryParent,
+    openMenuLevel(0, items, registryParent,
+      anchor.style.font || getComputedStyle(anchor).font,
       function (id) {
         var bar = controls.get(domId);
         if (bar) bar.dataset.wxLastCommand = String(id);
         closeMenuPopup();
         dispatch(domId, EVT.MENU);
       },
-      function (row, subItems) {
-        // simple inline expansion: replace popup with the submenu
-        showMenuPopup(domId, row, subItems, registryParent);
+      function (pop) {
+        var a = anchor.getBoundingClientRect();
+        clampMenu(pop, a.left, a.bottom, window.innerWidth - pop.offsetWidth,
+                  window.innerHeight - pop.offsetHeight);
       });
-
-    document.body.appendChild(pop);
-    openMenuPopup = pop;
   }
 
   // ========== Context menu (wxWindow::PopupMenu -> DoPopupMenu) ==========
@@ -1204,61 +1272,25 @@
 
     closeMenuPopup(); // a context menu supersedes any open menubar popup
 
-    var pop = document.createElement('div');
-    pop.className = 'wx-menu-popup';
-    pop.style.cssText =
-      'position:fixed;z-index:10000;background:#d4d0c8;' +
-      'border:1px solid #808080;box-shadow:2px 2px 4px rgba(0,0,0,.3);' +
-      'padding:2px;white-space:pre;min-width:120px;left:0;top:0;';
-    if (Module['canvas']) {
-      pop.style.font = getComputedStyle(Module['canvas']).font;
-    }
+    var font = Module['canvas'] ? getComputedStyle(Module['canvas']).font : '';
 
     return new Promise(function (resolve) {
       var settled = false;
       function settle(id) {
         if (settled) return;
         settled = true;
-        document.removeEventListener('mousedown', onOutside, true);
-        document.removeEventListener('keydown', onKey, true);
-        if (pop.parentNode) pop.remove();
-        if (openMenuPopup === pop) openMenuPopup = null;
-        // Drop the popup's e2e-registry entries so the dismissal is observable
-        // (the rows are gone from the DOM; their geometry is now stale).
-        var reg = window.wxElementRegistry;
-        if (reg && reg.unregisterRenderedByParent)
-          reg.unregisterRenderedByParent('popupmenu');
+        menuChainDismiss = null;
+        closeMenuFrom(0);
         resolve(id);
       }
-      function onOutside(ev) { if (!pop.contains(ev.target)) settle(-1); }
-      function onKey(ev) {
-        if (ev.key === 'Escape') { ev.stopPropagation(); settle(-1); }
-      }
 
-      // reopenSubmenu rebuilds the rows in place for a chosen submenu.
-      function makeReopen() {
-        return function (row, subItems) {
-          pop.textContent = '';
-          buildMenuItemRows(pop, subItems, 'popupmenu',
-            function (id) { settle(id); }, makeReopen());
-        };
-      }
-      buildMenuItemRows(pop, items, 'popupmenu',
-        function (id) { settle(id); }, makeReopen());
-
-      document.body.appendChild(pop);
-      openMenuPopup = pop;
-
-      // Clamp to the viewport: flip left/up when overflowing an edge.
-      var w = pop.offsetWidth, h = pop.offsetHeight;
-      var L = vx, T = vy;
-      if (L + w > window.innerWidth) L = Math.max(0, vx - w);
-      if (T + h > window.innerHeight) T = Math.max(0, vy - h);
-      pop.style.left = L + 'px';
-      pop.style.top = T + 'px';
-
-      document.addEventListener('mousedown', onOutside, true);
-      document.addEventListener('keydown', onKey, true);
+      openMenuLevel(0, items, 'popupmenu', font,
+        function (id) { settle(id); },
+        function (pop) {
+          clampMenu(pop, vx, vy, vx - pop.offsetWidth, vy - pop.offsetHeight);
+        });
+      // outside mousedown and Escape (the chain's listeners) cancel
+      menuChainDismiss = function () { settle(-1); };
 
       // NO popup pump (docs/features/async/17 S4): the top-level tick is the
       // sole dispatcher and keeps the app painting while DoPopupMenu's chain
@@ -1290,7 +1322,7 @@
       btn.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
       btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
-        if (openMenuPopup) {
+        if (menuChain.length) {
           closeMenuPopup();
         } else {
           showMenuPopup(domId, btn, m.items || [], domId + ':' + idx);
