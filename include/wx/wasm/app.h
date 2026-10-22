@@ -17,6 +17,7 @@
 
 class EmscriptenKeyboardEvent;
 class wxWasmDisplay;
+struct wxWasmParkedMouse;
 
 //-----------------------------------------------------------------------------
 // wxApp
@@ -57,14 +58,17 @@ public:
     // Internal use only
     wxWasmDisplay* GetDisplay() { return m_display; }
 
-    // Clears the parked-motion coalescing flag before the base drain, so
-    // the next motion that arrives while a chain is parked is queued again
-    // (see HandleMouseEvent's parked branch).
-    virtual void ProcessPendingEvents() wxOVERRIDE;
-
     bool HandleKeyEvent(wxKeyEvent *event);
     void HandleMouseEvent(wxMouseEvent *event);
     void HandleMouseWheelEvent(wxMouseEvent *event);
+
+    // Internal use only: deliver a wheel tick as if the pointer were at
+    // screenPos (a tick replayed after a park carries the pointer position
+    // it was made at, see HandleMouseWheelEvent).
+    void DispatchMouseWheelEvent(wxMouseEvent *event, const wxPoint& screenPos);
+    // Internal use only: replay the oldest mouse event queued while a chain
+    // was parked, one per step (see HandleMouseEvent's parked branch).
+    void ReplayParkedMouseStep();
     void HandleSizeEvent(const wxSizeEvent& event);
     void HandleActivateEvent(wxActivateEvent *event);
     void HandleCloseEvent(wxCloseEvent* event);
@@ -87,14 +91,21 @@ private:
     WX_DECLARE_HASH_SET(long, wxIntegerHash, wxIntegerEqual, KeyCodeSet);
     KeyCodeSet m_keyCodeSet;
 
-    // Mouse
+    // Mouse. m_mouseState is what wxGetMouseState()/wxGetMousePosition()
+    // report; m_liveMouseState is the browser pointer. They differ only while
+    // mouse events queued during a park are still waiting to be replayed:
+    // each replay sets m_mouseState to the state recorded with that event, so
+    // a handler reading the "live" pointer sees the pointer as it was when
+    // the event happened, and the step after the last replay restores the
+    // live state.
     wxMouseState m_mouseState;
+    wxMouseState m_liveMouseState;
 
-    // True while ONE wxEVT_MOTION has been queued for a parked dispatch
-    // chain and no ProcessPendingEvents() drain has run since (motion is
-    // coalesced while parked; buttons are queued 1:1). Self-healing: every
-    // drain clears it, not the event's consumption.
-    bool m_parkedMotionQueued;
+    // The queued, not yet replayed hover motion (no button held) that later
+    // hover motion is coalesced into, or NULL. Reset by every queued button,
+    // key or held-button motion event, so motion is only coalesced between
+    // them, never across.
+    wxWasmParkedMouse *m_parkedMotion;
 
     friend class wxDropSource;
 };
