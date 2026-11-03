@@ -43,6 +43,19 @@
 #include "wx/wasm/private/mailbox.h"
 #include "wx/wasm/private/yieldwait.h"
 
+#if wxUSE_FILEDLG
+    #include "wx/arrstr.h"
+    #include "wx/button.h"
+    #include "wx/filedlg.h"
+    #include "wx/generic/filectrlg.h"
+    #include "wx/sizer.h"
+    #include "wx/translation.h"
+    #include "wx/weakref.h"
+    #include <emscripten.h>
+    #include <iterator>
+    #include <map>
+#endif
+
 #include <emscripten.h>
 #include <cstdio>
 
@@ -197,6 +210,183 @@ bool wxDialog::IsModal() const
 // WASM-specific modal implementation using JSPI
 // ----------------------------------------------------------------------------
 
+#if wxUSE_FILEDLG
+
+// ----------------------------------------------------------------------------
+// "Upload from this computer..." in the generic file-open dialog
+// ----------------------------------------------------------------------------
+//
+// The generic dialog browses MEMFS only, so a file on the user's disk can be
+// neither opened, imported nor embedded. Every wxFD_OPEN dialog gets a button
+// that opens the browser's own file picker; the picked file is written to
+// wxWASM_UPLOAD_DIR, selected, and the dialog closes as if OK had been
+// pressed on it. The picker opens from a JS listener on the button's own
+// element, inside the trusted click, as every browser requires. A
+// wxFD_MULTIPLE dialog takes several files in one pick: they are selected in
+// the dialog's file list, which GetPaths() returns once no name is typed.
+
+namespace
+{
+
+const char *const wxWASM_UPLOAD_DIR = "/tmp/uploads";
+
+std::map<int, wxWeakRef<wxGenericFileDialog> > s_uploadDialogs;
+int s_uploadSeq = 0;
+
+// The picker's accept list from a wx wildcard ("Fonts|*.ttf;*.otf|All|*.*"):
+// empty when any filter takes every file.
+wxString UploadAccept(const wxString& wildcard)
+{
+    const wxArrayString parts = wxSplit(wildcard, '|');
+    wxArrayString exts;
+
+    for ( size_t i = 1; i < parts.size(); i += 2 )
+    {
+        for ( wxString pattern : wxSplit(parts[i], ';') )
+        {
+            pattern.Trim().Trim(false);
+
+            if ( pattern == "*" || pattern == "*.*" )
+                return wxString();
+
+            if ( pattern.StartsWith("*.") && exts.Index(pattern.Mid(1), false) == wxNOT_FOUND )
+                exts.push_back(pattern.Mid(1));
+        }
+    }
+
+    return wxJoin(exts, ',');
+}
+
+} // anonymous namespace
+
+// clang-format off
+EM_JS(void, wxWasmWireUploadButton, (int domId, int token, const char *accept, const char *dir, int multiple), {
+    const el = window.wxDomControls && window.wxDomControls.get(domId);
+    if (!el)
+        return;
+    const acceptAttr = UTF8ToString(accept);
+    const target = UTF8ToString(dir);
+    el.addEventListener('click', function () {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = !!multiple;
+        if (acceptAttr)
+            input.accept = acceptAttr;
+        input.addEventListener('change', function () {
+            const files = Array.prototype.slice.call(input.files || []);
+            if (!files.length)
+                return;
+            Promise.all(files.map(function (file) {
+                return file.arrayBuffer();
+            })).then(function (bufs) {
+                FS.mkdirTree(target);
+                // No path separators in the MEMFS names (no backslash escapes in EM_JS),
+                // so '/' can join them for the call.
+                const names = files.map(function (file, i) {
+                    const name = file.name.split('/').join('_').split(String.fromCharCode(92)).join('_');
+                    FS.writeFile(target + '/' + name, new Uint8Array(bufs[i]));
+                    return name;
+                });
+                Module['ccall']('wxWasmFileDialogUploaded', null, ['number', 'string'], [token, names.join('/')]);
+            }).catch(function (e) {
+                console.error('[wx] upload failed: ' + e);
+            });
+        });
+        input.click();
+    });
+});
+// clang-format on
+
+// Selects the uploaded files in the dialog's file list, with no typed name
+// left, so GetPaths() returns all of them.
+static void wxWasmSelectUploads(wxGenericFileDialog *dlg, const wxArrayString& files)
+{
+    dlg->SetFilename(wxString()); // clears the typed name and the selection
+
+    for ( wxWindow *child : dlg->GetChildren() )
+    {
+        wxGenericFileCtrl *ctrl = wxDynamicCast(child, wxGenericFileCtrl);
+
+        if ( !ctrl )
+            continue;
+
+        wxFileListCtrl *list = ctrl->GetFileList();
+
+        // Each selection event types that file's name, and clears it again
+        // once more than one is selected.
+        for ( long item = 0; item < list->GetItemCount(); ++item )
+        {
+            if ( files.Index(list->GetItemText(item), true) != wxNOT_FOUND )
+                list->SetItemState(item, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+        }
+
+        return;
+    }
+}
+
+// JS -> wasm once the picked files are in MEMFS, their names joined by '/'.
+// A fresh entry while the modal's chain is parked, so it only queues; the
+// selection and the OK run on the dispatcher.
+extern "C" EMSCRIPTEN_KEEPALIVE void wxWasmFileDialogUploaded(int token, const char *names)
+{
+    const wxArrayString files = wxSplit(wxString::FromUTF8(names), '/', '\0');
+
+    wxTheApp->CallAfter([token, files]()
+    {
+        const auto it = s_uploadDialogs.find(token);
+
+        if ( files.empty() || it == s_uploadDialogs.end() || !it->second
+             || !it->second->IsModal() )
+        {
+            return;
+        }
+
+        wxGenericFileDialog *dlg = it->second;
+        dlg->SetDirectory(wxWASM_UPLOAD_DIR);
+
+        if ( files.size() == 1 )
+            dlg->SetFilename(files[0]);
+        else
+            wxWasmSelectUploads(dlg, files);
+
+        wxCommandEvent ok(wxEVT_BUTTON, wxID_OK);
+        ok.SetEventObject(dlg);
+        dlg->GetEventHandler()->ProcessEvent(ok);
+    });
+}
+
+static void wxWasmAddUploadButton(wxDialog *dialog)
+{
+    wxGenericFileDialog *dlg = wxDynamicCast(dialog, wxGenericFileDialog);
+
+    if ( !dlg || !dlg->HasFdFlag(wxFD_OPEN) || !dlg->GetSizer()
+         || dlg->FindWindow("wxWasmUpload") )
+    {
+        return;
+    }
+
+    wxButton *upload = new wxButton(dlg, wxID_ANY, _("Upload from this computer..."),
+                                    wxDefaultPosition, wxDefaultSize, 0,
+                                    wxDefaultValidator, "wxWasmUpload");
+
+    // Above the OK/Cancel row, the generic dialog's last sizer item.
+    wxSizer *sizer = dlg->GetSizer();
+    sizer->Insert(sizer->GetItemCount() - 1, upload,
+                  wxSizerFlags().Left().Border(wxLEFT | wxRIGHT, 10));
+    sizer->Fit(dlg);
+
+    for ( auto it = s_uploadDialogs.begin(); it != s_uploadDialogs.end(); )
+        it = it->second ? std::next(it) : s_uploadDialogs.erase(it);
+
+    const int token = ++s_uploadSeq;
+    s_uploadDialogs[token] = dlg;
+    wxWasmWireUploadButton(upload->WasmGetDomId(), token,
+                           UploadAccept(dlg->GetWildcard()).utf8_str(), wxWASM_UPLOAD_DIR,
+                           dlg->HasFdFlag(wxFD_MULTIPLE));
+}
+
+#endif // wxUSE_FILEDLG
+
 int wxDialog::ShowModal()
 {
     WX_HOOK_MODAL_DIALOG();
@@ -231,6 +421,10 @@ int wxDialog::ShowModal()
         SetReturnCode(wxID_CANCEL);
         return wxID_CANCEL;
     }
+
+#if wxUSE_FILEDLG
+    wxWasmAddUploadButton(this);
+#endif
 
     m_isShowingModal = true;
     Show(true);
