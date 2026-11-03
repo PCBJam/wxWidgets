@@ -228,6 +228,14 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
         typeName = wxT("StdBitmapButton");
     }
 
+    // wxHyperlinkCtrl is the generic control here: its Create runs through
+    // wxControl's, where RTTI still says "wxControl", so the registration above
+    // is skipped and no port code registers it later. KiCad puts its info bar
+    // actions in one ("Create an editable copy", libs 0031's copy button), and
+    // tests click them: register it (an upsert) on its layout updates.
+    bool isHyperlink = !isNew && (typeName == wxT("wxHyperlinkCtrl") ||
+                                  typeName == wxT("wxGenericHyperlinkCtrl"));
+
     // Some widgets (e.g. wxCollapsiblePane) override GetLabel() to access child
     // widgets that don't exist yet during base class construction. Skip GetLabel()
     // for these widgets to avoid WASM memory access errors (NULL pointer dereference).
@@ -263,7 +271,7 @@ static void UpdateElementRegistry(wxWindowWasm* window, bool isNew)
     uintptr_t topLevelId = reinterpret_cast<uintptr_t>(wxGetTopLevelParent(window));
 
     // Call the appropriate JavaScript helper function (defined in wx.js)
-    if (isNew || isStdBitmapButton) {
+    if (isNew || isStdBitmapButton || isHyperlink) {
         EM_ASM({
             wxElementRegister(
                 $0.toString(),
