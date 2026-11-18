@@ -780,6 +780,9 @@ if (typeof navigator !== 'undefined') {
       var base = wxScreenBase(window.style.position === 'fixed');
       window.style.left = (x + base.left) + 'px';
       window.style.top = (y + base.top) + 'px';
+      // Kept for wxReanchor: the anchor moves when #canvas does.
+      windowData.wxX = x;
+      windowData.wxY = y;
     }
     window.style.width = width + 'px';
     window.style.height = height + 'px';
@@ -1549,6 +1552,7 @@ if (typeof navigator !== 'undefined') {
     var base = wxScreenBase(false);
     canvas.style.left = (x + base.left) + 'px';
     canvas.style.top = (y + base.top) + 'px';
+    canvas.wxAt = [x, y];  // for wxReanchor
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
 
@@ -1578,6 +1582,30 @@ if (typeof navigator !== 'undefined') {
       canvas.style.display = isVisible ? 'block' : 'none';
     }
   };
+
+  // #canvas can move without wx placing anything again: a host that gives the main window
+  // a box (__wxViewportSize) shifts it when a panel docks on the other side, and the size,
+  // so wx's layout, stays the same. Put every element anchored to #canvas (window divs, GL
+  // canvases) back against it, from the wx coords it was last placed at. On each window
+  // resize, which such a host sends after moving the box.
+  var wxReanchor = function () {
+    windowMap.forEach(function (d, id) {
+      if (id === 0 || d.wxX === undefined) return;
+      var base = wxScreenBase(d.window.style.position === 'fixed');
+      d.window.style.left = (d.wxX + base.left) + 'px';
+      d.window.style.top = (d.wxY + base.top) + 'px';
+    });
+    if (!glCanvasMap.size) return;
+    var glBase = wxScreenBase(false);
+    glCanvasMap.forEach(function (c) {
+      if (!c.wxAt) return;
+      c.style.left = (c.wxAt[0] + glBase.left) + 'px';
+      c.style.top = (c.wxAt[1] + glBase.top) + 'px';
+    });
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', wxReanchor);
+  }
 
   var destroyGLCanvas = function (id) {
     var canvas = glCanvasMap.get(id);
