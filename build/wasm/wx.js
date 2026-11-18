@@ -740,6 +740,18 @@ if (typeof navigator !== 'undefined') {
   // behavior change for the canvas port. (Guarded: with -pthread this script
   // also evaluates in Web Workers, where `window` doesn't exist.)
   if (typeof window !== 'undefined') {
+    // The area the main window fills, as [width, height]: the browser's viewport, or the
+    // element a host marks with data-wx-viewport around it (pcbjam: the editor beside
+    // docked panels, which a page resize doesn't announce; the host then dispatches a
+    // window 'resize' itself).
+    window.__wxViewportSize = function () {
+      var main = typeof mainWindow !== 'undefined' ? mainWindow : null;
+      var host = main && main.parentElement;
+      if (host && host.hasAttribute('data-wx-viewport')) {
+        return [host.clientWidth, host.clientHeight - main.offsetTop];
+      }
+      return [window.innerWidth, window.innerHeight - (main ? main.offsetTop : 0)];
+    };
     window.__wxGetWindowElement = function (id) {
       var windowData = windowMap.get(id);
       return windowData ? windowData.window : null;

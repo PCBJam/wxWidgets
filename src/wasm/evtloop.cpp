@@ -644,11 +644,12 @@ int wxGUIEventLoop::DoRun()
     {
         wxWindow *topWindow = wxTopLevelWindows.front();
 
+        // wx.js's __wxViewportSize: the viewport, or the host's box around the main window.
         int width = EM_ASM_INT({
-            return window.innerWidth;
+            return window.__wxViewportSize()[0];
         });
         int height = EM_ASM_INT({
-            return window.innerHeight - mainWindow.offsetTop;
+            return window.__wxViewportSize()[1];
         });
         topWindow->SetSize(0, 0, width, height);
         topWindow->Refresh();

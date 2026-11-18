@@ -1425,15 +1425,15 @@ EM_BOOL WheelCallback(int WXUNUSED(eventType),
 }
 
 EM_BOOL ResizeCallback(int WXUNUSED(eventType),
-                       const EmscriptenUiEvent *emscriptenEvent,
+                       const EmscriptenUiEvent *WXUNUSED(emscriptenEvent),
                        void *userData)
 {
     //printf("ResizeCallback: %d %d\n", event->windowInnerWidth, event->windowInnerHeight);
     wxApp* app = static_cast<wxApp*>(userData);
-    int offset = EM_ASM_INT({
-        return mainWindow.offsetTop;
-    });
-    wxSize size(emscriptenEvent->windowInnerWidth, emscriptenEvent->windowInnerHeight - offset);
+    // Not the event's window size: a host may give the main window less (wx.js's
+    // __wxViewportSize), and resizes that box without the window changing.
+    wxSize size(EM_ASM_INT({ return window.__wxViewportSize()[0]; }),
+                EM_ASM_INT({ return window.__wxViewportSize()[1]; }));
     wxSizeEvent event(size);
 
     app->HandleSizeEvent(event);
