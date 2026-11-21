@@ -2162,6 +2162,13 @@ if (typeof navigator !== 'undefined') {
       Module.canvas.style.cursor = cursor;
     } else {
       var bitmap = bitmapMap.get(bitmapId);
+      // A custom cursor whose bitmap never reached JS: fall back to the default
+      // pointer. Throwing here unwinds into wx (wxCursor::Install), and under a
+      // C++ destructor (~wxBusyCursor) that terminates the runtime.
+      if (!bitmap) {
+        Module.canvas.style.cursor = cursorMap[0];
+        return;
+      }
 
       var canvas = document.createElement('canvas');
       var ctx = canvas.getContext('2d');
