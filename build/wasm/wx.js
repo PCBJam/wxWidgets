@@ -1531,6 +1531,16 @@ if (typeof navigator !== 'undefined') {
     glCanvasMap.forEach(function (c) { if (c.style.display !== 'none') hasVisibleGL = true; });
     canvas.style.zIndex = hasVisibleGL ? '2147483647' : '100';
     canvas.style.pointerEvents = 'none';  // Don't intercept clicks - let main canvas handle events
+    // Remember the WebGL context this canvas gets (emscripten asks for it right after
+    // this call), so that destroyGLCanvas can hand it back to the browser.
+    var nativeGetContext = canvas.getContext;
+    canvas.getContext = function () {
+      var ctx = nativeGetContext.apply(canvas, arguments);
+      if (ctx && typeof ctx.getExtension === 'function') {
+        canvas._wxGLContext = ctx;
+      }
+      return ctx;
+    };
     document.getElementById('window-container').appendChild(canvas);
     glCanvasMap.set(id, canvas);
     return id;
@@ -1609,6 +1619,19 @@ if (typeof navigator !== 'undefined') {
 
   var destroyGLCanvas = function (id) {
     var canvas = glCanvasMap.get(id);
+    // Give the canvas's WebGL context back to the browser now.
+    // emscripten_webgl_destroy_context() only drops its references, so the context
+    // would live on until the browser's next garbage collection, and a page may hold
+    // only a few live ones (16 in Chromium). Past that the browser takes the OLDEST
+    // context away, which is the main editor canvas's. A dialog with GAL previews
+    // makes several contexts per opening, so a handful of openings in a row got there.
+    if (canvas && canvas._wxGLContext) {
+      var loseContext = canvas._wxGLContext.getExtension('WEBGL_lose_context');
+      if (loseContext) {
+        loseContext.loseContext();
+      }
+      canvas._wxGLContext = null;
+    }
     if (canvas && canvas.parentNode) {
       canvas.parentNode.removeChild(canvas);
     }
